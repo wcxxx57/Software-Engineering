@@ -1,20 +1,28 @@
 base_class = """
 class TeachingScene(Scene):
-    # 右侧安全区域边界常量
-    RIGHT_X_MIN = 0.3
-    RIGHT_X_MAX = 6.5
-    RIGHT_Y_MIN = -3.5
-    RIGHT_Y_MAX = 3.0
-    RIGHT_CENTER = np.array([3.4, -0.25, 0])
-    RIGHT_MAX_WIDTH = 6.0
-    RIGHT_MAX_HEIGHT = 5.5
+    # 固定三分区：顶部标题、左侧讲解文字、右侧动画。没有底部字幕区。
+    LEFT_X_MIN = -6.8
+    LEFT_X_MAX = -0.35
+    CONTENT_Y_MIN = -3.35
+    CONTENT_Y_MAX = 2.75
+    RIGHT_X_MIN = 0.35
+    RIGHT_X_MAX = 6.8
+    RIGHT_Y_MIN = CONTENT_Y_MIN
+    RIGHT_Y_MAX = CONTENT_Y_MAX
+    RIGHT_CENTER = np.array([3.575, -0.3, 0])
+    RIGHT_MAX_WIDTH = 6.2
+    RIGHT_MAX_HEIGHT = 5.9
 
     def _build_lecture_group(self, lecture_lines):
         lecture_texts = [Text(line, font="Noto Sans CJK SC", font_size=20, color="#2C1608") for line in lecture_lines]
         lecture_group = VGroup(*lecture_texts).arrange(DOWN, aligned_edge=LEFT, buff=0.3)
+        if lecture_group.width > 6.2:
+            lecture_group.scale_to_fit_width(6.2)
+        if lecture_group.height > 5.9:
+            raise ValueError("Left lecture page is too tall; paginate by complete highlight groups")
         return lecture_group
 
-    def setup_layout(self, title_text, lecture_lines):
+    def setup_layout(self, title_text, lecture_lines, lecture_line_indices=None):
         # BASE - 温暖配色方案
         self.camera.background_color = "#FFFDF4"  # 温暖米白色背景
         
@@ -23,12 +31,13 @@ class TeachingScene(Scene):
         self.title = Text(title_text, font="Noto Sans CJK SC", font_size=28, color="#BE8944", weight="BOLD").to_edge(UP)
         self.add(self.title)
 
-        # Left-side lecture content (bullets with "-")
+        # 左侧只显示教学短句；spoken_script 与逐句字幕禁止进入画面。
         # ⚠️ 讲解文字从左上角开始，严禁Y轴居中
         self.lecture = self._build_lecture_group(lecture_lines)
-        self.lecture.next_to(self.title, DOWN, buff=1.0).to_edge(LEFT, buff=0.3)
+        self.lecture.next_to(self.title, DOWN, buff=0.65).to_edge(LEFT, buff=0.3)
         self.add(self.lecture)
         self.lecture_anchor = self.lecture.get_corner(UL)
+        self.current_lecture_line_indices = list(lecture_line_indices) if lecture_line_indices is not None else list(range(len(lecture_lines)))
 
         # Define fine-grained animation grid (6x6 grid on right side)
         self.grid = {}
@@ -37,8 +46,8 @@ class TeachingScene(Scene):
 
         for i, row in enumerate(rows):
             for j, col in enumerate(cols):
-                x = 0.5 + j * 1
-                y = 2.2 - i * 1
+                x = 0.6 + j * 1.05
+                y = 2.25 - i * 1.05
                 self.grid[f"{row}{col}"] = np.array([x, y, 0])
 
     def create_code_block(self, code_text, language="python"):
@@ -70,6 +79,27 @@ class TeachingScene(Scene):
         \"\"\"将元素放置到网格位置。\"\"\"
         mobject.scale(scale_factor)
         mobject.move_to(self.grid[grid_pos])
+        self.fit_in_right_region(mobject)
+        return mobject
+
+    def fit_in_right_region(self, mobject):
+        '''Fit a right-side visual into the fixed safe region without entering the text column.'''
+        if mobject.width > self.RIGHT_MAX_WIDTH:
+            mobject.scale_to_fit_width(self.RIGHT_MAX_WIDTH)
+        if mobject.height > self.RIGHT_MAX_HEIGHT:
+            mobject.scale_to_fit_height(self.RIGHT_MAX_HEIGHT)
+        center = mobject.get_center()
+        dx = 0
+        dy = 0
+        if mobject.get_left()[0] < self.RIGHT_X_MIN:
+            dx = self.RIGHT_X_MIN - mobject.get_left()[0]
+        elif mobject.get_right()[0] > self.RIGHT_X_MAX:
+            dx = self.RIGHT_X_MAX - mobject.get_right()[0]
+        if mobject.get_bottom()[1] < self.RIGHT_Y_MIN:
+            dy = self.RIGHT_Y_MIN - mobject.get_bottom()[1]
+        elif mobject.get_top()[1] > self.RIGHT_Y_MAX:
+            dy = self.RIGHT_Y_MAX - mobject.get_top()[1]
+        mobject.shift(np.array([dx, dy, 0]))
         return mobject
 
     def highlight_lecture_line(self, index, color):
@@ -132,7 +162,7 @@ class TeachingScene(Scene):
 
     def play_synced_step(
         self,
-        line_index,
+        line_indices,
         audio_path,
         audio_duration,
         *animations,
@@ -146,19 +176,32 @@ class TeachingScene(Scene):
         - 允许右侧动画与音频并行运行
 
         Args:
-            line_index: 左侧讲解文字索引
+            line_indices: 当前讲解文字的绝对索引，支持一个索引或多个索引
             audio_path: 音频绝对路径
             audio_duration: 音频真实物理时长（秒）
             *animations: 需要与音频并行执行的动画
             highlight_color: 高亮颜色
             reset_color: 恢复颜色
         \"\"\"
-        if not (0 <= line_index < len(self.lecture)):
-            raise IndexError(f"Invalid lecture line index: {line_index}")
+        if isinstance(line_indices, int):
+            line_indices = [line_indices]
+        elif isinstance(line_indices, tuple):
+            line_indices = list(line_indices)
+        if not isinstance(line_indices, list) or not line_indices:
+            raise ValueError("line_indices must be a non-empty int list")
         if audio_duration <= 0:
             raise ValueError(f"audio_duration must be positive, got {audio_duration}")
 
-        self.lecture[line_index].set_color(highlight_color)
+        displayed_indices = []
+        for absolute_index in line_indices:
+            displayed_indices.extend(
+                index for index, value in enumerate(self.current_lecture_line_indices)
+                if value == absolute_index and index not in displayed_indices
+            )
+        if not displayed_indices:
+            raise IndexError(f"Lecture line indices are not on the current page: {line_indices}")
+        for index in displayed_indices:
+            self.lecture[index].set_color(highlight_color)
         self.add_sound(audio_path)
 
         if animations:
@@ -166,18 +209,30 @@ class TeachingScene(Scene):
         else:
             self.wait(audio_duration)
 
-        self.lecture[line_index].set_color(reset_color)
+        for index in displayed_indices:
+            self.lecture[index].set_color(reset_color)
 
-    def replace_lecture_lines(self, lecture_lines):
+    def play_narrated_step(self, audio_path, audio_duration, *animations):
+        '''封面等无左侧讲解列表页面的音画同步原语。'''
+        if audio_duration <= 0:
+            raise ValueError(f"audio_duration must be positive, got {audio_duration}")
+        self.add_sound(audio_path)
+        if animations:
+            self.play(*animations, run_time=audio_duration)
+        else:
+            self.wait(audio_duration)
+
+    def replace_lecture_lines(self, lecture_lines, lecture_line_indices=None):
         \"\"\"
         将左侧讲解文字整体切换为新的一批，并保持左上锚点不变。
         用于 steps 数量较多时的分批显示。
         \"\"\"
         new_lecture = self._build_lecture_group(lecture_lines)
         new_lecture.align_to(self.lecture_anchor, UL)
-        self.play(FadeOut(self.lecture), FadeIn(new_lecture))
+        self.play(FadeOut(self.lecture), FadeIn(new_lecture), run_time=0.25)
         self.remove(self.lecture)
         self.lecture = new_lecture
+        self.current_lecture_line_indices = list(lecture_line_indices) if lecture_line_indices is not None else list(range(len(lecture_lines)))
 
     def place_in_area(self, mobject, top_left, bottom_right, scale_factor=1.0):
         \"\"\"将元素放置到网格区域中心，并自动边界裁剪。\"\"\"
@@ -191,5 +246,6 @@ class TeachingScene(Scene):
         
         mobject.scale(scale_factor)
         mobject.move_to(center)
+        self.fit_in_right_region(mobject)
         return mobject
 """

@@ -208,14 +208,12 @@ def build_overview_lecture_lines(
     lines: List[str] = []
 
     # 起始语
-    lines.append(OVERVIEW_INTRO_LINE)
 
     # Section 列表 — 使用"第X部分，标题"格式（给 TTS 扩写用）
     for idx, title in enumerate(section_titles, start=1):
         lines.append(f"{_ordinal(idx)}部分，{title}")
 
     # 结束语
-    lines.append(OVERVIEW_ENDING_LINE)
 
     return lines
 
@@ -306,10 +304,7 @@ def generate_overview_manim_code(
                 f"\n        # ── 第 {page_idx + 1} 页（共 {num_pages} 页）──"
             )
             block_lines.append(
-                f"        self.play(FadeOut(bullets))"
-            )
-            block_lines.append(
-                f"        self.remove(bullets)"
+                f"        self.remove(*bullets)"
             )
             block_lines.append(
                 f"        bullets = VGroup({', '.join(page_bullet_names)}).arrange(DOWN, center=True, buff=0.35)"
@@ -330,10 +325,14 @@ def generate_overview_manim_code(
                 f"        self.lecture = bullets"
             )
 
+        block_lines.append(
+            f"        self.current_lecture_line_indices = list(range({len(page_bullet_indices)}))"
+        )
+
         # 逐条 FadeIn + play_synced_step
         # step 索引 = bullet 全局索引 + 1（因为 step_0 是起始语）
         for local_idx, bullet_global_idx in enumerate(page_bullet_indices):
-            step_idx = bullet_global_idx + 1  # +1 因为 step_0 是起始语
+            step_idx = bullet_global_idx
             block_lines.append(
                 f"\n        # 第 {bullet_global_idx + 1} 个要点"
             )
@@ -359,9 +358,6 @@ def generate_overview_manim_code(
         page_animation_blocks.append("\n".join(block_lines))
 
     page_animation_code = "\n".join(page_animation_blocks)
-
-    # 最后一步的 step index（结束语）
-    last_step_idx = num_steps - 1
 
     code = f'''from manim import *
 import numpy as np
@@ -394,22 +390,11 @@ class SectionOverviewScene(TeachingScene):
         # 创建全部 bullet Text 对象
 {bullet_creation_code}
 
-        # 显示标题 + 副标题，同时播放起始语旁白（step_0）
-        self.add_sound(steps[0]["audio_path"])
-        self.play(FadeIn(page_title), FadeIn(subtitle), FadeIn(underline), run_time=min(steps[0]["audio_duration"], 2.0))
-        remaining_intro = steps[0]["audio_duration"] - min(steps[0]["audio_duration"], 2.0)
-        if remaining_intro > 0:
-            self.wait(remaining_intro)
+        # 导览标题是结构性文字，不是逐句字幕。
+        self.add(page_title, subtitle, underline)
 
         # ── 分页展示全部章节 ──
 {page_animation_code}
-
-        # ── 结束语旁白（不显示文字，只播放声音）──
-        self.add_sound(steps[{last_step_idx}]["audio_path"])
-        self.wait(steps[{last_step_idx}]["audio_duration"])
-
-        self.play(FadeOut(bullets))
-        self.wait(0.5)
 '''
 
     return code

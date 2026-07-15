@@ -35,11 +35,13 @@ class Settings:
     metadata_dir: str = "data/outputs/metadata"
     
     # LLM API 配置
-    default_api: str = "claude"
+    default_api: str = "gpt-5"
     
     # 视频生成默认配置
-    default_duration: int = 5
+    default_duration: Optional[int] = None
     default_language: str = "Python"
+    task_time_limit_seconds: int = 43200
+    task_soft_time_limit_seconds: int = 41400
     
     # 调试模式
     debug: bool = False
@@ -72,6 +74,14 @@ class Settings:
         
         # LLM API
         self.default_api = os.getenv("DEFAULT_API", self.default_api)
+        self.task_time_limit_seconds = int(
+            os.getenv("VIDEO_TASK_TIME_LIMIT_SECONDS", str(self.task_time_limit_seconds))
+        )
+        self.task_soft_time_limit_seconds = int(
+            os.getenv("VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS", str(self.task_soft_time_limit_seconds))
+        )
+        if self.task_soft_time_limit_seconds >= self.task_time_limit_seconds:
+            raise ValueError("VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS 必须小于硬超时")
         
         # 调试模式
         self.debug = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")

@@ -41,10 +41,30 @@ from src.utils import *
 from src.scope_refine import *
 from src.external_assets import process_storyboard_with_assets
 from src.audio_steps import (
+    _timeline_events_from_statements,
     build_section_steps,
+    repair_cached_step_audio,
     save_section_steps,
     build_section_narration_track,
     remux_video_with_audio,
+)
+from src.pedagogy import (
+    max_new_terms_from_profile,
+    measure_video_duration,
+    parse_stage5_evaluation,
+    select_duration_with_ai,
+    validate_outline,
+    validate_requested_duration,
+    validate_storyboard,
+    normalize_grouped_lecture_lines,
+    wrap_storyboard_lecture_lines,
+)
+from src.rendering import (
+    detect_long_silences,
+    get_render_profile,
+    probe_media,
+    render_fingerprint,
+    validate_rendered_media,
 )
 from src.overview_scene import (
     build_overview_lecture_lines,
@@ -63,6 +83,13 @@ class Section:
     lecture_lines: List[str]
     animations: List[str]
     estimated_duration: Optional[int] = None  # 预计时长（秒）
+    highlight_groups: Optional[List[List[int]]] = None
+    evidence_lines_indices: Optional[List[int]] = None
+    zpd_check_line_index: Optional[int] = None
+    bridge_line_index: Optional[int] = None
+    new_terms_introduced: Optional[List[str]] = None
+    layout_mode: str = "no_code"
+    code_snippets: Optional[List[str]] = None
 
 
 @dataclass
@@ -70,6 +97,10 @@ class TeachingOutline:
     topic: str
     target_audience: str
     sections: List[Dict[str, Any]]
+    teaching_schema_version: str = "zh-cn-pedagogy-v2"
+    factuality_anchor_checklist: Optional[List[str]] = None
+    scaffold_map: Optional[List[Dict[str, Any]]] = None
+    difficulty_level: Optional[str] = None
 
 
 @dataclass
@@ -79,6 +110,9 @@ class VideoFeedback:
     has_issues: bool
     suggested_improvements: List[str]
     raw_response: Optional[str] = None
+    is_good_enough: bool = False
+    good_enough_reason: Optional[str] = None
+    evaluation_scores: Optional[Dict[str, float]] = None
 
 
 @dataclass
@@ -86,14 +120,18 @@ class RunConfig:
     use_feedback: bool = True
     use_assets: bool = True
     api: Callable = None
-    feedback_rounds: int = 2
+    logic_api: Callable = None
+    feedback_rounds: int = 3
     iconfinder_api_key: str = ""
     max_code_token_length: int = 10000
+    max_planning_token_length: int = 16000
     max_fix_bug_tries: int = 10
     max_regenerate_tries: int = 10
     max_feedback_gen_code_tries: int = 3
     max_mllm_fix_bugs_tries: int = 3
-    duration: int = 5
+    duration: Optional[int] = None
+    render_profile: str = "4k30"
+    preview_render_profile: str = "1080p30"
     # 用户个性化配置
     user_profile: Optional[UserProfile] = None
     # 强制大纲难度（入门/中等/进阶），若为空则由画像推断
@@ -119,18 +157,28 @@ class TeachingVideoAgent:
 
         self.use_feedback = cfg.use_feedback
         self.use_assets = cfg.use_assets
-        self.API = cfg.api
+        self.code_API = cfg.api
+        self.logic_API = cfg.logic_api or cfg.api
+        self.API = self.code_API
         self.feedback_rounds = cfg.feedback_rounds
         self.iconfinder_api_key = cfg.iconfinder_api_key
         self.max_code_token_length = cfg.max_code_token_length
+        self.max_planning_token_length = cfg.max_planning_token_length
         self.max_fix_bug_tries = cfg.max_fix_bug_tries
         self.max_regenerate_tries = cfg.max_regenerate_tries
         self.max_feedback_gen_code_tries = cfg.max_feedback_gen_code_tries
         self.max_mllm_fix_bugs_tries = cfg.max_mllm_fix_bugs_tries
         self.forced_difficulty_level = cfg.forced_difficulty_level
-        self.duration = cfg.duration
+        self.duration = validate_requested_duration(self.cfg.duration, 5, 12)
+        self.render_profile = get_render_profile(self.cfg.render_profile)
+        self.preview_render_profile = get_render_profile(self.cfg.preview_render_profile)
+        self.duration_source = "manual" if self.duration is not None else None
+        self.actual_duration_seconds: Optional[float] = None
+        self.actual_narration_seconds: Optional[float] = None
+        self.media_metadata: Dict[str, Any] = {}
+        self.long_silence_intervals: List[Tuple[float, float]] = []
         self.use_assets = cfg.use_assets
-        self.API = cfg.api
+        self.API = self.code_API
         self.feedback_rounds = cfg.feedback_rounds
         self.iconfinder_api_key = cfg.iconfinder_api_key
         self.max_code_token_length = cfg.max_code_token_length
@@ -172,18 +220,56 @@ class TeachingVideoAgent:
         self.section_steps = {}
         self.section_videos = {}
         self.video_feedbacks = {}
+        self.visual_quality_results: Dict[str, Any] = {}
+        self.pinned_final_reused: set[str] = set()
 
         """6. For Efficiency"""
         self.token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-    def _request_api_and_track_tokens(self, prompt, max_tokens=10000):
-        """packages API requests and automatically accumulates token usage"""
-        response, usage = self.API(prompt, max_tokens=max_tokens)
+    def _request_with_tracking(self, api_func, prompt, max_tokens):
+        response, usage = api_func(prompt, max_tokens=max_tokens)
         if usage:
             self.token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
             self.token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
             self.token_usage["total_tokens"] += usage.get("total_tokens", 0)
         return response
+
+    def _request_api_and_track_tokens(self, prompt, max_tokens=10000):
+        """Call the code/authoring model and accumulate token usage."""
+        return self._request_with_tracking(self.code_API, prompt, max_tokens)
+
+    def _request_logic_api_and_track_tokens(self, prompt, max_tokens=12000):
+        """Call the logic/planning model and accumulate token usage."""
+        return self._request_with_tracking(self.logic_API, prompt, max_tokens)
+
+    def _ensure_duration_resolved(self) -> None:
+        if self.duration is not None:
+            return
+        parsed_profile = getattr(self.user_profile, "parsed_profile", None) or {}
+        self.duration, self.duration_source = select_duration_with_ai(
+            self._request_logic_api_and_track_tokens,
+            topic=self.learning_topic,
+            learner_profile=parsed_profile,
+            minimum=5,
+            maximum=12,
+            fallback=8,
+        )
+        print(f"⏱️ 视频目标时长：{self.duration} 分钟（{self.duration_source}）")
+
+    def _validate_outline_payload(self, payload):
+        return validate_outline(
+            payload,
+            target_minutes=self.duration,
+            evidence_types={"算法定义", "不变量", "执行追踪", "复杂度推导", "边界案例"},
+        )
+
+    def _validate_storyboard_payload(self, payload):
+        return validate_storyboard(
+            payload,
+            outline_sections=self.outline.sections,
+            target_minutes=self.duration,
+            max_new_terms=max_new_terms_from_profile(self.user_profile),
+        )
 
     def _request_video_api_and_track_tokens(self, prompt, video_path):
         """Wraps video API requests and accumulates token usage automatically"""
@@ -227,7 +313,14 @@ class TeachingVideoAgent:
 
         return bool(payload.get("streams"))
 
-    def _remux_section_audio(self, section_id: str, video_path: Path) -> Path:
+    def _remux_section_audio(
+        self,
+        section_id: str,
+        video_path: Path,
+        *,
+        profile_name: str,
+        fingerprint: str,
+    ) -> Path:
         steps_file = self.output_dir / f"{section_id}_steps.json"
         code_file = self.output_dir / f"{section_id}.py"
         if not steps_file.exists() or not code_file.exists():
@@ -240,8 +333,8 @@ class TeachingVideoAgent:
                 section_steps = json.load(f)
             self.section_steps[section_id] = section_steps
 
-        remux_dir = self.output_dir / "audio_remux"
-        remux_dir.mkdir(exist_ok=True)
+        remux_dir = self.output_dir / "audio_remux" / profile_name / section_id / fingerprint
+        remux_dir.mkdir(parents=True, exist_ok=True)
         narration_path = remux_dir / f"{section_id}_track.wav"
         fixed_video_path = remux_dir / f"{section_id}_with_audio.mp4"
 
@@ -273,29 +366,72 @@ class TeachingVideoAgent:
             return False, "No construct() method found in generated scene code"
 
         synced_calls = 0
+        narrated_calls = 0
         raw_add_sound_calls = 0
+        raw_play_calls = 0
+        excessive_waits: List[float] = []
         for node in ast.walk(construct_func):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr == "play_synced_step":
                     synced_calls += 1
+                elif node.func.attr == "play_narrated_step":
+                    narrated_calls += 1
                 elif node.func.attr == "add_sound":
                     raw_add_sound_calls += 1
+                elif node.func.attr == "play":
+                    raw_play_calls += 1
+                elif node.func.attr == "wait" and node.args:
+                    value = node.args[0]
+                    if isinstance(value, ast.Constant) and isinstance(value.value, (int, float)):
+                        if float(value.value) > 0.5:
+                            excessive_waits.append(float(value.value))
 
         if raw_add_sound_calls > 0:
             return False, "construct() contains raw add_sound() calls instead of play_synced_step()"
-        if synced_calls < expected_steps:
-            return False, f"construct() only calls play_synced_step() {synced_calls} times, expected {expected_steps}"
+        if raw_play_calls > 0:
+            return False, "construct() contains raw self.play(); every animation must run inside a narrated step"
+        if excessive_waits:
+            return False, f"construct() contains artificial wait() values above 0.5s: {excessive_waits}"
+        covered_calls = synced_calls + narrated_calls
+        if covered_calls != expected_steps:
+            return False, (
+                f"construct() only contains {covered_calls} narrated step calls "
+                f"({synced_calls} highlighted, {narrated_calls} non-lecture), expected {expected_steps}"
+            )
+
+        timeline_events: List[Tuple[str, float]] = []
+        try:
+            _timeline_events_from_statements(construct_func.body, expected_steps, timeline_events)
+        except Exception as exc:
+            return False, f"construct() narration timeline cannot be resolved: {exc}"
+        audio_order = [int(payload) for kind, payload in timeline_events if kind == "audio"]
+        if audio_order != list(range(expected_steps)):
+            return False, (
+                "construct() must play every narration step exactly once and in order; "
+                f"resolved={audio_order}, expected={list(range(expected_steps))}"
+            )
 
         return True, ""
 
     def generate_outline(self) -> TeachingOutline:
+        self._ensure_duration_resolved()
         outline_file = self.output_dir / "outline.json"
+        outline_data = None
 
         if outline_file.exists():
             print("📂 正在读取大纲...")
-            with open(outline_file, "r", encoding="utf-8") as f:
-                outline_data = json.load(f)
-        else:
+            try:
+                with open(outline_file, "r", encoding="utf-8") as f:
+                    cached_outline = json.load(f)
+                cached_outline, cache_errors = self._validate_outline_payload(cached_outline)
+                if cache_errors:
+                    print("♻️ 旧大纲缓存已过期，将重新生成：" + "; ".join(cache_errors))
+                else:
+                    outline_data = cached_outline
+            except Exception as exc:
+                print(f"♻️ 大纲缓存不可用，将重新生成：{exc}")
+
+        if outline_data is None:
             """Step 1: Generate teaching outline from topic"""
             refer_img_path = (
                 self.knowledge_ref_img_folder / img_name
@@ -313,8 +449,11 @@ class TeachingVideoAgent:
             print(f"📝 正在生成大纲...")
 
             for attempt in range(1, self.max_regenerate_tries + 1):
-                api_func = self._request_api_and_track_tokens if refer_img_path else self._request_api_and_track_tokens
-                response = api_func(prompt1, max_tokens=self.max_code_token_length)
+                api_func = self._request_logic_api_and_track_tokens
+                validation_note = ""
+                if attempt > 1 and 'outline_errors' in locals() and outline_errors:
+                    validation_note = "\n\n上一次输出未通过校验，请逐项修正：\n- " + "\n- ".join(outline_errors)
+                response = api_func(prompt1 + validation_note, max_tokens=self.max_planning_token_length)
                 if response is None:
                     print(f"⚠️ 第 {attempt} 次尝试失败，正在重试...")
                     if attempt == self.max_regenerate_tries:
@@ -329,7 +468,14 @@ class TeachingVideoAgent:
                         content = str(response)
                 content = extract_json_from_markdown(content)
                 try:
-                    outline_data = json.loads(content)
+                    candidate = json.loads(content)
+                    outline_data, outline_errors = self._validate_outline_payload(candidate)
+                    if outline_errors:
+                        print(f"⚠️ 第 {attempt} 次大纲结构校验失败：" + "; ".join(outline_errors))
+                        outline_data = None
+                        if attempt == self.max_regenerate_tries:
+                            raise ValueError("大纲结构多次无效：" + "; ".join(outline_errors))
+                        continue
                     with open(self.output_dir / "outline.json", "w", encoding="utf-8") as f:
                         json.dump(outline_data, f, ensure_ascii=False, indent=2)
                     break
@@ -342,6 +488,10 @@ class TeachingVideoAgent:
             topic=outline_data["topic"],
             target_audience=outline_data["target_audience"],
             sections=outline_data["sections"],
+            teaching_schema_version=outline_data["teaching_schema_version"],
+            factuality_anchor_checklist=outline_data.get("factuality_anchor_checklist"),
+            scaffold_map=outline_data.get("scaffold_map"),
+            difficulty_level=outline_data.get("difficulty_level"),
         )
         print(f"== 大纲已生成: {self.outline.topic}")
         return self.outline
@@ -353,20 +503,33 @@ class TeachingVideoAgent:
 
         storyboard_file = self.output_dir / "storyboard.json"
         enhanced_storyboard_file = self.output_dir / "storyboard_with_assets.json"
+        self.enhanced_storyboard = None
 
-        if enhanced_storyboard_file.exists():
-            print("📂 发现已增强的分镜脚本，正在加载...")
-            with open(enhanced_storyboard_file, "r", encoding="utf-8") as f:
-                self.enhanced_storyboard = json.load(f)
-        elif storyboard_file.exists():
-            print("📂 发现分镜脚本，正在加载...")
-            with open(storyboard_file, "r", encoding="utf-8") as f:
-                storyboard_data = json.load(f)
-            if self.use_assets:
-                self.enhanced_storyboard = self._enhance_storyboard_with_assets(storyboard_data)
-            else:
-                self.enhanced_storyboard = storyboard_data
-        else:
+        for cache_file in (enhanced_storyboard_file, storyboard_file):
+            if not cache_file.exists():
+                continue
+            try:
+                print(f"📂 正在检查分镜缓存：{cache_file.name}")
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    cached_storyboard = json.load(f)
+                cached_storyboard = wrap_storyboard_lecture_lines(cached_storyboard)
+                cached_storyboard, cache_errors = self._validate_storyboard_payload(cached_storyboard)
+                if cache_errors:
+                    print("♻️ 分镜缓存已过期：" + "; ".join(cache_errors))
+                    continue
+                if cache_file == storyboard_file and self.use_assets:
+                    cached_storyboard = self._enhance_storyboard_with_assets(cached_storyboard)
+                    cached_storyboard = wrap_storyboard_lecture_lines(cached_storyboard)
+                    cached_storyboard, enhanced_errors = self._validate_storyboard_payload(cached_storyboard)
+                    if enhanced_errors:
+                        print("♻️ 素材增强结果破坏教学结构，将重生成：" + "; ".join(enhanced_errors))
+                        continue
+                self.enhanced_storyboard = cached_storyboard
+                break
+            except Exception as exc:
+                print(f"♻️ 分镜缓存不可用：{exc}")
+
+        if self.enhanced_storyboard is None:
             print("🎬 正在生成分镜脚本...")
             refer_img_path = (
                 self.knowledge_ref_img_folder / img_name
@@ -381,8 +544,11 @@ class TeachingVideoAgent:
             )
 
             for attempt in range(1, self.max_regenerate_tries + 1):
-                api_func = self._request_api_and_track_tokens
-                response = api_func(prompt2, max_tokens=self.max_code_token_length)
+                api_func = self._request_logic_api_and_track_tokens
+                validation_note = ""
+                if attempt > 1 and 'storyboard_errors' in locals() and storyboard_errors:
+                    validation_note = "\n\n上一次输出未通过校验，请逐项修正：\n- " + "\n- ".join(storyboard_errors)
+                response = api_func(prompt2 + validation_note, max_tokens=self.max_planning_token_length)
                 if response is None:
                     print(f"⚠️ 第 {attempt} 次尝试 API 请求失败，正在重试...")
                     if attempt == self.max_regenerate_tries:
@@ -399,7 +565,14 @@ class TeachingVideoAgent:
 
                 try:
                     json_str = extract_json_from_markdown(content)
-                    storyboard_data = json.loads(json_str)
+                    candidate = json.loads(json_str)
+                    candidate = wrap_storyboard_lecture_lines(candidate)
+                    storyboard_data, storyboard_errors = self._validate_storyboard_payload(candidate)
+                    if storyboard_errors:
+                        print(f"⚠️ 第 {attempt} 次分镜结构校验失败：" + "; ".join(storyboard_errors))
+                        if attempt == self.max_regenerate_tries:
+                            raise ValueError("分镜结构多次无效：" + "; ".join(storyboard_errors))
+                        continue
 
                     # Save original storyboard
                     with open(storyboard_file, "w", encoding="utf-8") as f:
@@ -410,6 +583,10 @@ class TeachingVideoAgent:
                         self.enhanced_storyboard = self._enhance_storyboard_with_assets(storyboard_data)
                     else:
                         self.enhanced_storyboard = storyboard_data
+                    self.enhanced_storyboard = wrap_storyboard_lecture_lines(self.enhanced_storyboard)
+                    self.enhanced_storyboard, enhanced_errors = self._validate_storyboard_payload(self.enhanced_storyboard)
+                    if enhanced_errors:
+                        raise ValueError("素材增强后的分镜结构无效：" + "; ".join(enhanced_errors))
                     break
 
                 except json.JSONDecodeError as e:
@@ -422,14 +599,30 @@ class TeachingVideoAgent:
         # Parse into Section objects (using enhanced storyboard)
         self.sections = []
         for section_data in self.enhanced_storyboard["sections"]:
+            lecture_lines = normalize_grouped_lecture_lines(
+                section_data.get("lecture_lines", []),
+                section_data.get("highlight_groups"),
+            )
+            section_data["lecture_lines"] = lecture_lines
             section = Section(
                 id=section_data["id"],
                 title=section_data["title"],
-                lecture_lines=section_data.get("lecture_lines", []),
+                lecture_lines=lecture_lines,
                 animations=section_data["animations"],
                 estimated_duration=section_data.get("estimated_duration"),  # 解析预计时长
+                highlight_groups=section_data.get("highlight_groups"),
+                evidence_lines_indices=section_data.get("evidence_lines_indices"),
+                zpd_check_line_index=section_data.get("zpd_check_line_index"),
+                bridge_line_index=section_data.get("bridge_line_index"),
+                new_terms_introduced=section_data.get("new_terms_introduced"),
+                layout_mode=section_data.get("layout_mode", "no_code"),
+                code_snippets=section_data.get("code_snippets", []),
             )
             self.sections.append(section)
+
+        normalized_storyboard_path = enhanced_storyboard_file if self.use_assets else storyboard_file
+        with open(normalized_storyboard_path, "w", encoding="utf-8") as f:
+            json.dump(self.enhanced_storyboard, f, ensure_ascii=False, indent=2)
 
         print(f"== 分镜处理完成，共生成 {len(self.sections)} 个小节")
         return self.sections
@@ -441,7 +634,7 @@ class TeachingVideoAgent:
         try:
             enhanced_storyboard = process_storyboard_with_assets(
                 storyboard=storyboard_data,
-                api_function=self.API,
+                api_function=self.logic_API,
                 assets_dir=str(self.assets_dir),
                 iconfinder_api_key=self.iconfinder_api_key,
             )
@@ -478,7 +671,7 @@ class TeachingVideoAgent:
             id="section_cover",
             title=self.outline.topic,
             lecture_lines=[intro_text],
-            animations=["Gradient background", "Create decoration lines", "FadeIn title", "FadeIn subtitle", "Play intro audio"],
+            animations=["Show complete cover from frame zero", "Play intro audio over static cover"],
             estimated_duration=10,  # 封面约 8-12 秒（含旁白）
         )
 
@@ -503,6 +696,7 @@ class TeachingVideoAgent:
             short_title=self.learning_topic,
             section_steps=section_steps,
         )
+        code = replace_base_class(code, base_class)
 
         # 保存代码文件
         code_file = self.output_dir / f"{section.id}.py"
@@ -529,25 +723,42 @@ class TeachingVideoAgent:
             print("📋 概述 section 已存在，跳过注入")
             return
 
-        # 从大纲提取 section titles（排除 overview 和 cover）
-        section_titles = [
-            s.title for s in self.sections
-            if s.id not in ("section_overview", "section_cover")
-        ]
+        # A completed overview is immutable input on resume.  Re-running the
+        # title-merging model can yield a different number of bullets, which
+        # invalidates otherwise reusable TTS and template code.  Rehydrate the
+        # exact screen groups first; only a brand-new task calls the model.
+        cached_steps_path = self.output_dir / "section_overview_steps.json"
+        overview_lines = []
+        if cached_steps_path.exists():
+            try:
+                cached_steps = json.loads(cached_steps_path.read_text(encoding="utf-8"))
+                overview_lines = [
+                    str(text).strip()
+                    for step in cached_steps
+                    for text in (step.get("screen_texts") or [])
+                    if str(text).strip()
+                ]
+            except Exception as exc:
+                print(f"♻️ 概述缓存不可读，将重新合并标题: {exc}")
+                overview_lines = []
 
-        # 使用 AI 合并精简 section titles（5-12 条）
-        print("🤖 正在使用 AI 合并精简章节标题...")
-        merged_titles = _merge_section_titles_with_ai(
-            section_titles=section_titles,
-            topic=self.outline.topic,
-            api_func=self._request_api_and_track_tokens,
-        )
-        print(f"📋 合并后共 {len(merged_titles)} 条概要: {merged_titles}")
-
-        # 生成概述的 lecture_lines（不含总起行，直接从 bullet 开始）
-        overview_lines = build_overview_lecture_lines(
-            section_titles=merged_titles,
-        )
+        if overview_lines:
+            print(f"📂 复用概述语义组缓存（{len(overview_lines)} 条）")
+        else:
+            section_titles = [
+                s.title for s in self.sections
+                if s.id not in ("section_overview", "section_cover")
+            ]
+            print("🤖 正在使用 AI 合并精简章节标题...")
+            merged_titles = _merge_section_titles_with_ai(
+                section_titles=section_titles,
+                topic=self.outline.topic,
+                api_func=self._request_logic_api_and_track_tokens,
+            )
+            print(f"📋 合并后共 {len(merged_titles)} 条概要: {merged_titles}")
+            overview_lines = build_overview_lecture_lines(
+                section_titles=merged_titles,
+            )
 
         overview_section = Section(
             id="section_overview",
@@ -635,17 +846,12 @@ class TeachingVideoAgent:
             )
             if (
                 attempt == 1
-                and code_file.exists()
                 and steps_file.exists()
                 and audio_files_exist
             ):
-                print(f"📂 发现 {section.id} 的现有代码，正在读取...")
+                print(f"📂 复用 {section.id} 的旁白步骤并重建确定性封面模板...")
                 with open(steps_file, "r", encoding="utf-8") as f:
                     self.section_steps[section.id] = json.load(f)
-                with open(code_file, "r", encoding="utf-8") as f:
-                    code = f.read()
-                    self.section_codes[section.id] = code
-                    return code
             return self._generate_cover_code(section)
 
         # ── 概述 section 使用确定性模板，跳过 LLM ──
@@ -658,17 +864,12 @@ class TeachingVideoAgent:
             )
             if (
                 attempt == 1
-                and code_file.exists()
                 and steps_file.exists()
                 and audio_files_exist
             ):
-                print(f"📂 发现 {section.id} 的现有代码，正在读取...")
+                print(f"📂 复用 {section.id} 的旁白步骤并重建确定性概览模板...")
                 with open(steps_file, "r", encoding="utf-8") as f:
                     self.section_steps[section.id] = json.load(f)
-                with open(code_file, "r", encoding="utf-8") as f:
-                    code = f.read()
-                    self.section_codes[section.id] = code
-                    return code
             return self._generate_overview_code(section)
 
         code_file = self.output_dir / f"{section.id}.py"
@@ -692,8 +893,13 @@ class TeachingVideoAgent:
                 self.section_steps[section.id] = json.load(f)
             with open(code_file, "r", encoding="utf-8") as f:
                 code = f.read()
+            is_valid, _ = self._validate_synced_step_coverage(
+                code, len(self.section_steps[section.id])
+            )
+            if is_valid:
                 self.section_codes[section.id] = code
                 return code
+            print(f"♻️ {section.id} 代码与当前旁白步骤不一致，只重生成该节代码")
         # print(f"💻 正在为 {section.id} 生成 Manim 代码 (尝试 {attempt}/{self.max_regenerate_tries})...")
         regenerate_note = ""
         if attempt > 1:
@@ -711,6 +917,8 @@ class TeachingVideoAgent:
                 modifier = GridCodeModifier(current_code)
                 modified_code = modifier.parse_feedback_and_modify(feedback_improvements)
                 modified_code = fix_png_path(modified_code, self.assets_dir)
+                if modified_code.strip() == current_code.strip():
+                    raise ValueError("结构化修改器未产生代码变化，改用完整代码修订")
                 with open(code_file, "w", encoding="utf-8") as f:
                     f.write(modified_code)
 
@@ -772,161 +980,247 @@ class TeachingVideoAgent:
         self.section_codes[section.id] = code
         return code
 
-    def prepare_section_steps(self, section: Section) -> List[dict]:
+    def prepare_section_steps(
+        self,
+        section: Section,
+        *,
+        target_audio_seconds: float | None = None,
+        force: bool = False,
+    ) -> List[dict]:
         steps_file = self.output_dir / f"{section.id}_steps.json"
         audio_dir = self.output_dir / "audio" / section.id
         if (
-            steps_file.exists()
+            not force
+            and steps_file.exists()
             and audio_dir.exists()
             and any(file_path.is_file() for file_path in audio_dir.glob("*.wav"))
         ):
             with open(steps_file, "r", encoding="utf-8") as f:
                 section_steps = json.load(f)
-            self.section_steps[section.id] = section_steps
-            return section_steps
+            cached_target = sum(float(step.get("target_audio_seconds") or 0) for step in section_steps)
+            groups = section.highlight_groups or [[index] for index in range(len(section.lecture_lines))]
+            expected_screen_groups = [
+                [section.lecture_lines[index] for index in group]
+                for group in groups
+            ]
+            cached_screen_groups = [list(step.get("screen_texts") or []) for step in section_steps]
+            same_content = cached_screen_groups == expected_screen_groups
+            same_target = target_audio_seconds is None or abs(cached_target - target_audio_seconds) <= 1.0
+            if same_content and same_target:
+                if repair_cached_step_audio(section_steps):
+                    save_section_steps(section_steps, steps_file)
+                    print(f"♻️ {section.id} 仅修复缺失或失配的旁白音频，保留其余缓存")
+                self.section_steps[section.id] = section_steps
+                return section_steps
+            print(
+                f"♻️ {section.id} 旁白缓存与当前语义组或时长目标不一致，只重生成该节"
+            )
 
         section_steps = build_section_steps(
             section=section,
             output_root=self.output_dir,
-            api_func=self._request_api_and_track_tokens,
+            api_func=self._request_logic_api_and_track_tokens,
+            target_audio_seconds=target_audio_seconds,
         )
         save_section_steps(section_steps, steps_file)
         self.section_steps[section.id] = section_steps
         return section_steps
 
-    def debug_and_fix_code(self, section_id: str, max_fix_attempts: int = 3) -> Tuple[bool, Optional[str]]:
-        """Enhanced debug and fix code method
-        
-        Returns:
-            Tuple[bool, Optional[str]]: (成功与否, 最后一次错误信息)
-        """
+    def prepare_all_narration_steps(self, max_rounds: int = 3) -> Dict[str, List[dict]]:
+        """Generate TTS against a physical whole-video narration budget."""
+        if self.duration is None:
+            self._ensure_duration_resolved()
+        target_final_seconds = float(self.duration * 60)
+        transition_budget = min(30.0, max(8.0, len(self.sections) * 1.0))
+        desired_narration_seconds = target_final_seconds - transition_budget
+        minimum_final_seconds = target_final_seconds * 0.85
+        maximum_final_seconds = target_final_seconds * 1.30
+        # 旁白后还会有少量分页切换；下限直接用旁白物理时长保守判断，
+        # 上限预留 transition_budget，避免合并后超过 10:30。
+        acceptable_narration_range = (
+            minimum_final_seconds,
+            maximum_final_seconds - transition_budget,
+        )
+        weights = [max(1.0, float(section.estimated_duration or 1.0)) for section in self.sections]
+        weight_total = sum(weights)
+        targets = {
+            section.id: desired_narration_seconds * weight / weight_total
+            for section, weight in zip(self.sections, weights)
+        }
+
+        for round_index in range(max_rounds):
+
+            def prepare(section):
+                return section.id, self.prepare_section_steps(
+                    section,
+                    target_audio_seconds=targets[section.id],
+                    force=False,
+                )
+
+            with ThreadPoolExecutor(max_workers=min(4, max(1, len(self.sections)))) as executor:
+                futures = [executor.submit(prepare, section) for section in self.sections]
+                for future in as_completed(futures):
+                    section_id, steps = future.result()
+                    self.section_steps[section_id] = steps
+
+            measured_by_section = {
+                section.id: sum(float(step["audio_duration"]) for step in self.section_steps[section.id])
+                for section in self.sections
+            }
+            measured_total = sum(measured_by_section.values())
+            self.actual_narration_seconds = measured_total
+            print(
+                f"🎙️ 第 {round_index + 1}/{max_rounds} 轮物理旁白时长 "
+                f"{measured_total:.2f}s，理想目标 {desired_narration_seconds:.2f}s，"
+                f"可接受 {acceptable_narration_range[0]:.2f}-{acceptable_narration_range[1]:.2f}s"
+            )
+            if acceptable_narration_range[0] <= measured_total <= acceptable_narration_range[1]:
+                return self.section_steps
+            if measured_total <= 0:
+                raise ValueError("TTS physical duration is zero")
+            ratio = desired_narration_seconds / measured_total
+            # LLM 对“目标朗读秒数”的响应通常弱于线性；使用有界过补偿，
+            # 避免三轮都只增加少量文字却始终达不到物理时长。
+            scale = min(1.35, max(0.75, ratio ** 2.5))
+            targets = {
+                section.id: max(2.0, targets[section.id] * scale)
+                for section in self.sections
+            }
+
+        raise ValueError(
+            f"三轮旁白调整后仍未达到可接受范围：actual={self.actual_narration_seconds:.2f}s, "
+            f"accepted={acceptable_narration_range[0]:.2f}-{acceptable_narration_range[1]:.2f}s"
+        )
+
+    def debug_and_fix_code(
+        self,
+        section_id: str,
+        max_fix_attempts: int = 3,
+        *,
+        render_profile=None,
+        force_render: bool = False,
+    ) -> Tuple[bool, Optional[str]]:
+        """Render a code/audio/profile fingerprint and repair only real failures."""
+        code_path = self.output_dir / f"{section_id}.py"
         if section_id not in self.section_codes:
-            code_file = self.output_dir / f"{section_id}.py"
-            if code_file.exists():
-                print(f"📂 [Worker] 从文件重新加载代码: {section_id}")
-                with open(code_file, "r", encoding="utf-8") as f:
-                    self.section_codes[section_id] = f.read()
-            else:
+            if not code_path.exists():
                 return False, "代码文件不存在"
-        
-        last_error = None  # 保存最后一次错误信息
+            self.section_codes[section_id] = code_path.read_text(encoding="utf-8")
 
-        # 动态解析 Scene 名称，避免类名与默认推断不一致
-        code_content_for_scene = self.section_codes.get(section_id, "")
-        scene_candidates = re.findall(r"class\s+(\w+)\s*\([^)]*\):", code_content_for_scene)
-        # 过滤掉没有 construct 方法的类
-        preferred_scene = None
-        if scene_candidates:
-            for cname in scene_candidates:
-                # 简单检查, 该类后出现 'def construct' 字样
-                pattern = rf"class\s+{cname}\s*\([^)]*\):[\s\S]*?def\s+construct\s*\("""
-                if re.search(pattern, code_content_for_scene):
-                    # 排除纯基类名称，如 TeachingScene/BaseScene 等
-                    if cname.lower() not in ("teachingscene", "basescene"):
-                        preferred_scene = cname
-                        break
-            if not preferred_scene:
-                preferred_scene = scene_candidates[-1]
-
-        # 封面 section 现在有旁白（介绍语），与其他 section 走同样的音频回灌流程
-        is_cover = False  # 封面不再特殊处理
-
-        # [Optimized] Check if video already exists to skip rendering
-        scene_name_check = preferred_scene if preferred_scene else f"{section_id.title().replace('_', '')}Scene"
-        code_file_check = f"{section_id}.py"
-        video_patterns_check = [
-            self.output_dir / "media" / "videos" / f"{code_file_check.replace('.py', '')}" / "480p15" / f"{scene_name_check}.mp4",
-            self.output_dir / "media" / "videos" / "480p15" / f"{scene_name_check}.mp4",
-            self.output_dir / "media" / "videos" / f"{code_file_check.replace('.py', '')}" / "1080p60" / f"{scene_name_check}.mp4",
-            self.output_dir / "media" / "videos" / "1080p60" / f"{scene_name_check}.mp4",
-        ]
-        for video_path in video_patterns_check:
-            if video_path.exists():
-                # 封面无旁白，直接使用已有视频，跳过回灌
-                if is_cover:
-                    self.section_videos[section_id] = str(video_path)
-                    print(f"✅ {self.learning_topic} {section_id} 发现已有封面视频，跳过渲染: {video_path}")
-                    return True, None
-
-                if self._video_has_audio_stream(video_path):
-                    try:
-                        fixed_video_path = self._remux_section_audio(section_id, video_path)
-                    except Exception as remux_error:
-                        print(f"⚠️ {self.learning_topic} {section_id} 已有视频回灌失败，将重新渲染: {remux_error}")
-                        break
-
-                    if self._video_has_audio_stream(fixed_video_path):
-                        self.section_videos[section_id] = str(fixed_video_path)
-                        print(f"✅ {self.learning_topic} {section_id} 发现已有视频，回灌后跳过渲染: {fixed_video_path}")
-                        return True, None  # 成功，无错误
-                    print(f"⚠️ {self.learning_topic} {section_id} 已有视频回灌后仍无音轨，重新渲染: {fixed_video_path}")
-                    break
-                print(f"⚠️ {self.learning_topic} {section_id} 已有视频缺少音轨，重新渲染: {video_path}")
+        steps_file = self.output_dir / f"{section_id}_steps.json"
+        if section_id not in self.section_steps:
+            if not steps_file.exists():
+                return False, f"Missing narration steps: {steps_file}"
+            self.section_steps[section_id] = json.loads(steps_file.read_text(encoding="utf-8"))
+        steps = self.section_steps[section_id]
+        profile_value = getattr(render_profile, "name", render_profile) or self.preview_render_profile.name
+        profile = get_render_profile(profile_value)
+        last_error: Optional[str] = None
 
         for fix_attempt in range(max_fix_attempts):
-            print(f"🔧 {self.learning_topic} 正在调试 {section_id} (尝试 {fix_attempt + 1}/{max_fix_attempts})")
+            code = self.section_codes[section_id]
+            scene_candidates = re.findall(r"class\s+(\w+)\s*\([^)]*\):", code)
+            preferred_scene = next(
+                (
+                    name for name in scene_candidates
+                    if name.lower() not in {"teachingscene", "basescene"}
+                    and re.search(rf"class\s+{name}\s*\([^)]*\):[\s\S]*?def\s+construct\s*\(", code)
+                ),
+                scene_candidates[-1] if scene_candidates else f"{section_id.title().replace('_', '')}Scene",
+            )
+            fingerprint = render_fingerprint(code, steps, profile)
+            render_root = self.output_dir / "render_cache" / profile.name / section_id / fingerprint
+            remuxed_path = (
+                self.output_dir / "audio_remux" / profile.name / section_id / fingerprint / f"{section_id}_with_audio.mp4"
+            )
 
+            if not force_render and remuxed_path.exists():
+                try:
+                    validate_rendered_media(remuxed_path, profile, require_audio=True)
+                    self.section_videos[section_id] = str(remuxed_path)
+                    print(f"✅ {section_id} 命中内容指纹缓存: {profile.name}/{fingerprint}")
+                    return True, None
+                except Exception as exc:
+                    print(f"♻️ {section_id} 指纹缓存无效，将重新渲染: {exc}")
+
+            print(
+                f"🔧 {self.learning_topic} 渲染 {section_id} "
+                f"[{profile.name}] ({fix_attempt + 1}/{max_fix_attempts}, {fingerprint})"
+            )
             try:
-                # 首先尝试使用代码中真实存在的 Scene 名称，否则退回到默认推断
-                scene_name = preferred_scene if preferred_scene else f"{section_id.title().replace('_', '')}Scene"
-                code_file = f"{section_id}.py"
-                cmd = [sys.executable, "-m", "manim", "-ql", str(code_file), scene_name]
-
-                result = subprocess.run(cmd, capture_output=True, text=True, cwd=self.output_dir, timeout=2000)
-
-                if result.returncode == 0:
-                    video_patterns = [
-                        self.output_dir / "media" / "videos" / f"{code_file.replace('.py', '')}" / "480p15" / f"{scene_name}.mp4",
-                        self.output_dir / "media" / "videos" / "480p15" / f"{scene_name}.mp4",
-                        self.output_dir / "media" / "videos" / f"{code_file.replace('.py', '')}" / "1080p60" / f"{scene_name}.mp4",
-                        self.output_dir / "media" / "videos" / "1080p60" / f"{scene_name}.mp4",
-                    ]
-
-                    for video_path in video_patterns:
-                        if video_path.exists():
-                            # 封面无旁白，渲染成功后直接使用，跳过回灌
-                            if is_cover:
-                                self.section_videos[section_id] = str(video_path)
-                                print(f"✅ {self.learning_topic} {section_id} 封面渲染完成")
-                                return True, None
-
-                            try:
-                                fixed_video_path = self._remux_section_audio(section_id, video_path)
-                            except Exception as remux_error:
-                                last_error = f"Audio remux failed: {remux_error}"
-                                print(f"❌ {self.learning_topic} {section_id} 音频回灌失败: {remux_error}")
-                                break
-
-                            if not self._video_has_audio_stream(fixed_video_path):
-                                last_error = f"Rendered video has no audio stream after remux: {fixed_video_path}"
-                                print(f"❌ {self.learning_topic} {section_id} 回灌后仍无音轨: {fixed_video_path}")
-                                break
-
-                            self.section_videos[section_id] = str(fixed_video_path)
-                            print(f"✅ {self.learning_topic} {section_id} 完成")
-                            return True, None  # 成功，无错误
-                
-                # 保存错误信息
-                last_error = result.stderr
-
-                current_code = self.section_codes[section_id]
-                fixed_code = self.scope_refine_fixer.fix_code_smart(section_id, current_code, result.stderr, self.output_dir)
-
-                if fixed_code:
-                    self.section_codes[section_id] = fixed_code
-                    with open(self.output_dir / code_file, "w", encoding="utf-8") as f:
-                        f.write(fixed_code)
-                else:
-                    break
-
+                is_valid, validation_error = self._validate_synced_step_coverage(code, len(steps))
+                if not is_valid:
+                    raise ValueError(validation_error)
+                if force_render and render_root.exists():
+                    resolved_root = render_root.resolve()
+                    if self.output_dir.resolve() not in resolved_root.parents:
+                        raise RuntimeError(f"Unsafe render cache path: {resolved_root}")
+                    shutil.rmtree(resolved_root)
+                render_root.mkdir(parents=True, exist_ok=True)
+                output_name = f"{section_id}_{fingerprint}.mp4"
+                timeout_seconds = int(
+                    os.getenv(
+                        "MANIM_RENDER_TIMEOUT_SECONDS",
+                        "21600" if profile.width >= 3840 else "3600",
+                    )
+                )
+                cmd = [
+                    sys.executable,
+                    "-m",
+                    "manim",
+                    "render",
+                    *profile.manim_args,
+                    "--media_dir",
+                    str(render_root),
+                    "--disable_caching",
+                    "-o",
+                    output_name,
+                    str(code_path.name),
+                    preferred_scene,
+                ]
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=self.output_dir,
+                    timeout=timeout_seconds,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr or result.stdout or "Manim rendering failed")
+                candidates = sorted(render_root.rglob(output_name), key=lambda path: path.stat().st_mtime, reverse=True)
+                if not candidates:
+                    candidates = sorted(render_root.rglob("*.mp4"), key=lambda path: path.stat().st_mtime, reverse=True)
+                if not candidates:
+                    raise FileNotFoundError(f"Manim succeeded but no MP4 exists under {render_root}")
+                raw_video = candidates[0]
+                validate_rendered_media(raw_video, profile, require_audio=False)
+                fixed_video = self._remux_section_audio(
+                    section_id,
+                    raw_video,
+                    profile_name=profile.name,
+                    fingerprint=fingerprint,
+                )
+                validate_rendered_media(fixed_video, profile, require_audio=True)
+                self.section_videos[section_id] = str(fixed_video)
+                print(f"✅ {section_id} {profile.name} 渲染与音频回灌完成")
+                return True, None
             except subprocess.TimeoutExpired:
-                last_error = "Manim 渲染超时 (超过 300 秒)"
-                print(f"❌ {self.learning_topic} {section_id} 超时")
+                last_error = f"Manim {profile.name} 渲染超时"
+            except Exception as exc:
+                last_error = str(exc)
+
+            print(f"❌ {section_id} {profile.name} 渲染失败: {last_error}")
+            fixed_code = self.scope_refine_fixer.fix_code_smart(
+                section_id,
+                self.section_codes[section_id],
+                last_error,
+                self.output_dir,
+            )
+            if not fixed_code:
                 break
-            except Exception as e:
-                last_error = str(e)
-                print(f"❌ {self.learning_topic} {section_id} 失败，异常: {e}")
-                break
+            self.section_codes[section_id] = fixed_code
+            code_path.write_text(fixed_code, encoding="utf-8")
+            force_render = True
 
         return False, last_error
 
@@ -936,45 +1230,119 @@ class TeachingVideoAgent:
         current_code = self.section_codes[section.id]
         positions = self.extractor.extract_grid_positions(current_code)
         position_table = self.extractor.generate_position_table(positions)
-        analysis_prompt = get_prompt4_layout_feedback(section=section, position_table=position_table)
+        if section.id in {"section_cover", "section_overview"}:
+            template_role = "全屏居中封面" if section.id == "section_cover" else "全屏章节概览"
+            analysis_prompt = f"""
+你是严格的视频布局质检员。当前片段是{template_role}，不是普通的左文右图教学页，
+因此不要套用右侧动画安全区，也不要把居中的标题或目录文字判为越界。
+
+逐秒检查全部联系表，只把以下真实可见问题判为问题：文字或图形相互遮挡、元素被画面
+裁切、影响阅读的低对比度、字符渲染为方框或乱码、切换后旧元素残留，以及逐句旁白
+字幕或横跨底部的字幕框。正常的标题、副标题、章节目录和装饰线不是字幕。
+
+片段标题：{section.title}
+画面文字：{'；'.join(section.lecture_lines)}
+
+只输出合法 JSON，不要 Markdown、注释、占位符或额外说明：
+{{"layout":{{"has_issues":false,"improvements":[]}}}}
+若确有问题，将 has_issues 改为 true；improvements 最多三项，每项必须是
+{{"problem":"具体可见问题","solution":"可执行修复","line_number":0,"object_affected":"对象名"}}。
+"""
+        else:
+            analysis_prompt = get_prompt4_layout_feedback(section=section, position_table=position_table)
+        evaluation_prompt = get_prompt_aes(self.learning_topic)
+        transition_timestamps: List[float] = []
+        cursor = 0.0
+        previous_page = None
+        for step in self.section_steps.get(section.id, []):
+            page = step.get("page_index")
+            if previous_page is not None and page != previous_page:
+                transition_timestamps.extend([cursor, cursor + 0.25])
+                cursor += 0.25
+            cursor += float(step.get("audio_duration") or 0.0)
+            previous_page = page
+
+        def _request_structured(prompt, parser, label):
+            last_error = None
+            for attempt in range(1, 4):
+                try:
+                    response = request_gemini_video_img(
+                        prompt=prompt,
+                        video_path=video_path,
+                        image_path=self.GRID_IMG_PATH,
+                        sample_timestamps=transition_timestamps,
+                    )
+                    content = extract_answer_from_response(response)
+                    parsed = parser(content)
+                    return content, parsed
+                except Exception as exc:
+                    last_error = exc
+                    print(f"⚠️ {self.learning_topic} {label} 结构化解析失败 {attempt}/3: {exc}")
+            raise ValueError(f"{label} failed structured validation after 3 attempts: {last_error}")
 
         def _parse_layout(feedback_content):
-            has_layout_issues, suggested_improvements = False, []
-            try:
-                data = json.loads(feedback_content)
-                lay = data.get("layout", {})
-                has_layout_issues = bool(lay.get("has_issues", False))
-                for it in lay.get("improvements", []) or []:
-                    if isinstance(it, dict):
-                        prob = str(it.get("problem", "")).strip()
-                        sol = str(it.get("solution", "")).strip()
-                        if prob or sol:
-                            suggested_improvements.append(f"[LAYOUT] Problem: {prob}; Solution: {sol}")
-
-            except json.JSONDecodeError:
-                print(f"⚠️ {self.learning_topic} JSON 解析失败，回退到关键词分析")
-
-                for m in re.finditer(
-                    r"Problem:\s*(.*?);\s*Solution:\s*(.*?)(?=\n|$)", feedback_content, flags=re.IGNORECASE | re.DOTALL
-                ):
-                    suggested_improvements.append(f"[LAYOUT] Problem: {m.group(1).strip()}; Solution: {m.group(2).strip()}")
-
-                if not suggested_improvements:
-                    for sol in re.findall(r"Solution\s*:\s*(.+)", feedback_content, flags=re.IGNORECASE):
-                        suggested_improvements.append(f"[LAYOUT] Problem: ; Solution: {sol.strip()}")
-
-            return has_layout_issues, suggested_improvements
+            data = json.loads(extract_json_from_markdown(feedback_content))
+            lay = data.get("layout")
+            if not isinstance(lay, dict) or not isinstance(lay.get("has_issues"), bool):
+                raise ValueError("layout.has_issues must be boolean")
+            improvements = lay.get("improvements")
+            if not isinstance(improvements, list):
+                raise ValueError("layout.improvements must be a list")
+            suggested = []
+            for item in improvements:
+                if not isinstance(item, dict):
+                    raise ValueError("layout improvement must be an object")
+                problem = str(item.get("problem") or "").strip()
+                solution = str(item.get("solution") or "").strip()
+                if not problem or not solution:
+                    raise ValueError("layout improvement requires problem and solution")
+                suggested.append(f"[LAYOUT] Problem: {problem}; Solution: {solution}")
+            return bool(lay["has_issues"]), suggested
 
         try:
-            response = request_gemini_video_img(prompt=analysis_prompt, video_path=video_path, image_path=self.GRID_IMG_PATH)
-            feedback_content = extract_answer_from_response(response)
-            has_layout_issues, suggested_improvements = _parse_layout(feedback_content)
+            feedback_content, layout_result = _request_structured(
+                analysis_prompt, _parse_layout, "layout feedback"
+            )
+            has_layout_issues, suggested_improvements = layout_result
+            # Cover and overview clips are structural bookends rather than
+            # self-contained teaching sections.  Applying the full pedagogy
+            # rubric to them makes dimensions such as accuracy depth and
+            # execution tracing impossible to satisfy, even when their visual
+            # contract is correct.  They still go through the strict,
+            # every-second layout check above (overlap, clipping, stale
+            # elements and forbidden caption bars).
+            if section.id in {"section_cover", "section_overview"}:
+                evaluation = {
+                    "is_good_enough": not has_layout_issues,
+                    "reason": "模板章节仅按严格布局与无字幕契约验收。",
+                    "scores": {"element_layout": 20.0 if not has_layout_issues else 0.0},
+                    "blockers": [],
+                    "improvements": [],
+                }
+                evaluation_content = json.dumps(evaluation, ensure_ascii=False)
+            else:
+                evaluation_content, evaluation = _request_structured(
+                    evaluation_prompt,
+                    lambda text: parse_stage5_evaluation(extract_json_from_markdown(text)),
+                    "stage5 evaluation",
+                )
+            suggested_improvements = evaluation["improvements"] + suggested_improvements
+            # A reviewer may provide optional polish suggestions while still
+            # declaring the clip good enough.  Only an actual layout failure
+            # or a failed pedagogy threshold should trigger regeneration.
+            has_issues = has_layout_issues or not evaluation["is_good_enough"]
             feedback = VideoFeedback(
                 section_id=section.id,
                 video_path=video_path,
-                has_issues=has_layout_issues,
+                has_issues=has_issues,
                 suggested_improvements=suggested_improvements,
-                raw_response=feedback_content,
+                raw_response=json.dumps(
+                    {"layout_feedback": feedback_content, "stage5_evaluation": evaluation_content},
+                    ensure_ascii=False,
+                ),
+                is_good_enough=evaluation["is_good_enough"],
+                good_enough_reason=evaluation["reason"],
+                evaluation_scores=evaluation["scores"],
             )
             self.video_feedbacks[f"{section.id}_round{round_number}"] = feedback
             return feedback
@@ -984,104 +1352,85 @@ class TeachingVideoAgent:
             return VideoFeedback(
                 section_id=section.id,
                 video_path=video_path,
-                has_issues=False,
-                suggested_improvements=[],
+                has_issues=True,
+                suggested_improvements=[f"[教学评价] 评价失败，不能视为通过：{str(e)}"],
                 raw_response=f"Error: {str(e)}",
             )
 
     def optimize_with_feedback(self, section: Section, feedback: VideoFeedback) -> bool:
-        """Optimize the code based on feedback from the MLLM"""
+        """Apply feedback transactionally and render the new code fingerprint."""
         if not feedback.has_issues or not feedback.suggested_improvements:
             print(f"✅ {self.learning_topic} {section.id} 无需优化")
             return True
 
-        # === Step 1: back up original code AND video ===
         original_code_content = self.section_codes[section.id]
-        
-        # [新增] 备份原始视频文件
         original_video_path = self.section_videos.get(section.id)
-        video_backup_path = None
-        if original_video_path and os.path.exists(original_video_path):
-            try:
-                video_path_obj = Path(original_video_path)
-                # 创建备份文件名，例如: Section01_backup.mp4
-                video_backup_path = video_path_obj.with_name(f"{video_path_obj.stem}_backup{video_path_obj.suffix}")
-                shutil.copy2(original_video_path, video_backup_path)
-                print(f"📦 已备份原始视频: {video_backup_path}")
-            except Exception as e:
-                print(f"⚠️ 视频备份失败: {e}")
+        code_path = self.output_dir / f"{section.id}.py"
 
         for attempt in range(self.max_feedback_gen_code_tries):
             print(
                 f"🎯 {self.learning_topic} MLLM 反馈优化 {section.id} 代码，尝试 {attempt + 1}/{self.max_feedback_gen_code_tries}"
             )
 
-            # === Step 2: back up original code and apply improvements ===
-            if attempt > 0:
-                self.section_codes[section.id] = original_code_content
-
-            # === Step 3: re-generate code with feedback ===
+            self.section_codes[section.id] = original_code_content
+            code_path.write_text(original_code_content, encoding="utf-8")
             self.generate_section_code(
                 section=section, attempt=attempt + 1, feedback_improvements=feedback.suggested_improvements
             )
-            success, _ = self.debug_and_fix_code(section.id, max_fix_attempts=self.max_mllm_fix_bugs_tries)
-            
+            timeline_valid, timeline_error = self._validate_synced_step_coverage(
+                self.section_codes[section.id],
+                len(self.section_steps[section.id]),
+            )
+            if not timeline_valid:
+                print(f"⚠️ {section.id} 视觉修订破坏旁白时间轴，立即回滚: {timeline_error}")
+                self.section_codes[section.id] = original_code_content
+                code_path.write_text(original_code_content, encoding="utf-8")
+                if original_video_path:
+                    self.section_videos[section.id] = original_video_path
+                return False
+            success, _ = self.debug_and_fix_code(
+                section.id,
+                max_fix_attempts=self.max_mllm_fix_bugs_tries,
+                render_profile=self.preview_render_profile,
+                force_render=True,
+            )
             if success:
-                optimized_output_dir = self.output_dir / "optimized_videos"
-                optimized_output_dir.mkdir(exist_ok=True)
-                optimized_video_path = optimized_output_dir / f"{section.id}_optimized.mp4"
-
-                if section.id in self.section_videos:
-                    current_video_path = Path(self.section_videos[section.id])
-                    if current_video_path.exists():
-                        current_video_path.replace(optimized_video_path)
-                        self.section_videos[section.id] = str(optimized_video_path)
-                        print(f"✨ {self.learning_topic} {section.id} 优化后的视频已保存: {optimized_video_path}")
-                        
-                        # [新增] 优化成功，删除不再需要的备份文件
-                        if video_backup_path and video_backup_path.exists():
-                            try:
-                                video_backup_path.unlink()
-                            except:
-                                pass
-                    else:
-                        print(f"⚠️ {self.learning_topic} {section.id} 未找到生成的视频文件: {current_video_path}")
-                else:
-                    print(f"⚠️ {self.learning_topic} {section.id} 未找到优化后的视频路径")
+                print(f"✨ {self.learning_topic} {section.id} 新代码已重新渲染")
                 return True
-            else:
-                print(
-                    f"❌ {self.learning_topic} {section.id} MLLM 优化失败，尝试 {attempt + 1}/{self.max_feedback_gen_code_tries}"
-                )
-        
+            print(f"❌ {self.learning_topic} {section.id} MLLM 优化渲染失败")
+
         print(f"❌ {self.learning_topic} {section.id} 所有优化尝试均失败，回滚到原始版本")
-        
-        # 回滚代码
         self.section_codes[section.id] = original_code_content
-        with open(self.output_dir / f"{section.id}.py", "w", encoding="utf-8") as f:
-            f.write(original_code_content)
-
-        # [新增] 回滚视频文件
-        if video_backup_path and video_backup_path.exists():
-            try:
-                target_path = Path(original_video_path)
-                # 将备份文件移动回原路径（覆盖可能存在的失败产物）
-                video_backup_path.replace(target_path)
-                self.section_videos[section.id] = str(target_path)
-                print(f"♻️ 已从备份恢复原始视频: {target_path}")
-            except Exception as e:
-                print(f"⚠️ 视频恢复失败: {e}")
-        else:
-            print(f"⚠️ 无法恢复视频：未找到备份文件")
-
+        code_path.write_text(original_code_content, encoding="utf-8")
+        if original_video_path:
+            self.section_videos[section.id] = original_video_path
         return False
 
     def generate_codes(self) -> Dict[str, str]:
         if not self.sections:
             raise ValueError(f"{self.learning_topic} 请先生成教学小节")
+        self.prepare_all_narration_steps(max_rounds=3)
+        pinned_cache_path = self.output_dir / "pinned_final_sections.json"
+        pinned_sections = {}
+        if pinned_cache_path.exists():
+            try:
+                pinned_sections = json.loads(
+                    pinned_cache_path.read_text(encoding="utf-8")
+                )
+            except Exception:
+                pinned_sections = {}
 
         def task(section):
             try:
+                if section.id in pinned_sections:
+                    code_path = self.output_dir / f"{section.id}.py"
+                    self.section_codes[section.id] = (
+                        code_path.read_text(encoding="utf-8")
+                        if code_path.exists()
+                        else "# Pinned final section; source recovery is not required for this run.\n"
+                    )
+                    print(f"✅ {section.id} 已有验收后的最终章节缓存，跳过代码重生成")
+                    return section.id, None
                 self.generate_section_code(section, attempt=1)
                 return section.id, None
             except Exception as e:
@@ -1089,10 +1438,16 @@ class TeachingVideoAgent:
 
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = {executor.submit(task, section): section for section in self.sections}
+            failures = []
             for future in as_completed(futures):
                 section_id, err = future.result()
                 if err:
                     print(f"❌ {self.learning_topic} {section_id} 代码生成失败: {err}")
+                    failures.append((section_id, str(err)))
+
+        if failures or len(self.section_codes) != len(self.sections):
+            missing = [section.id for section in self.sections if section.id not in self.section_codes]
+            raise RuntimeError(f"分节代码生成不完整: failures={failures}, missing={missing}")
 
         return self.section_codes
 
@@ -1100,60 +1455,149 @@ class TeachingVideoAgent:
         section_id = section.id
 
         try:
+            pinned_cache_path = self.output_dir / "pinned_final_sections.json"
+            if pinned_cache_path.exists():
+                try:
+                    pinned_sections = json.loads(
+                        pinned_cache_path.read_text(encoding="utf-8")
+                    )
+                    pinned_value = pinned_sections.get(section_id)
+                    if pinned_value:
+                        pinned_video = Path(pinned_value)
+                        if not pinned_video.is_absolute():
+                            pinned_video = self.output_dir / pinned_video
+                        validate_rendered_media(
+                            pinned_video,
+                            self.render_profile,
+                            require_audio=True,
+                        )
+                        self.section_videos[section_id] = str(pinned_video)
+                        self.pinned_final_reused.add(section_id)
+                        print(
+                            f"✅ {section_id} 复用显式验收的最终章节缓存: "
+                            f"{pinned_video}"
+                        )
+                        return True
+                except Exception as exc:
+                    print(f"♻️ {section_id} 显式最终缓存无效，将正常渲染: {exc}")
             success = False
-            last_error = None  # 保存最后一次错误信息用于重试
+            last_error = None
             for regenerate_attempt in range(self.max_regenerate_tries):
-                # print(f"🎯 Processing {section_id} (regenerate attempt {regenerate_attempt + 1}/{self.max_regenerate_tries})")
                 try:
                     if regenerate_attempt > 0:
-                        # 将上次的错误信息传递给代码生成，帮助 LLM 修复问题
                         self.generate_section_code(section, attempt=regenerate_attempt + 1, error_message=last_error)
-                    success, last_error = self.debug_and_fix_code(section_id, max_fix_attempts=self.max_fix_bug_tries)
+                    success, last_error = self.debug_and_fix_code(
+                        section_id,
+                        max_fix_attempts=self.max_fix_bug_tries,
+                        render_profile=self.preview_render_profile,
+                    )
                     if success:
                         break
-                    # last_error 已经在 debug_and_fix_code 中更新
                 except Exception as e:
                     last_error = str(e)
                     print(f"⚠️ {section_id} 第 {regenerate_attempt + 1} 次尝试抛出异常: {str(e)}")
-                    continue
             if not success:
-                print(f"❌ {self.learning_topic} {section_id} 全部失败，跳过该小节")
+                print(f"❌ {self.learning_topic} {section_id} 预览渲染失败")
                 return False
 
-            # MLLM feedback
             if self.use_feedback:
-                try:
-                    for round in range(self.feedback_rounds):
-                        current_video = self.section_videos.get(section_id)
-                        if not current_video:
-                            print(f"❌ {self.learning_topic} {section_id} 没有可用视频进行 MLLM 反馈")
-                            return success
-                        try:
-                            feedback = self.get_mllm_feedback(section, current_video, round_number=round + 1)
+                passed_visual_qa = False
+                qa_fingerprint = render_fingerprint(
+                    self.section_codes[section_id],
+                    self.section_steps[section_id],
+                    self.preview_render_profile,
+                )
+                qa_path = (
+                    self.output_dir
+                    / "visual_qa_cache"
+                    / section_id
+                    / f"{qa_fingerprint}.json"
+                )
+                qa_completed = False
+                if qa_path.exists():
+                    try:
+                        cached_qa = json.loads(qa_path.read_text(encoding="utf-8"))
+                        passed_visual_qa = cached_qa.get("passed") is True
+                        qa_completed = passed_visual_qa or cached_qa.get("completed") is True
+                    except Exception:
+                        passed_visual_qa = False
+                        qa_completed = False
+                if passed_visual_qa:
+                    print(f"✅ {section_id} 命中视觉质检指纹缓存: {qa_fingerprint}")
+                elif qa_completed:
+                    print(f"📝 {section_id} 命中已完成的视觉检查缓存: {qa_fingerprint}")
+                # Completeness comes first: do a small, bounded visual pass
+                # before delivery, but never turn a successfully rendered
+                # section into a missing section merely because a reviewer is
+                # unavailable or still has optional polish suggestions.  The
+                # cached section can be improved again in later runs.
+                predelivery_rounds = 0 if qa_completed else max(
+                    0,
+                    min(
+                        self.feedback_rounds,
+                        int(os.getenv("K2V_PREDELIVERY_FEEDBACK_ROUNDS", "1")),
+                    ),
+                )
+                for round_number in range(1, predelivery_rounds + 1):
+                    current_video = self.section_videos.get(section_id)
+                    if not current_video:
+                        print(f"⚠️ {section_id} 没有可供视觉评价的预览，保留已成功渲染状态")
+                        break
+                    feedback = self.get_mllm_feedback(section, current_video, round_number=round_number)
+                    if feedback.raw_response and feedback.raw_response.startswith("Error:"):
+                        print(f"⚠️ {section_id} 视觉评价不可用，记录问题并继续完整成片")
+                        break
+                    if not feedback.has_issues and feedback.is_good_enough:
+                        passed_visual_qa = True
+                        break
+                    if not self.optimize_with_feedback(section, feedback):
+                        print(f"⚠️ {section_id} 视觉优化未成功，已回退并保留最后一次成功预览")
+                        break
+                if not passed_visual_qa:
+                    print(f"📝 {section_id} 尚有视觉优化空间；不阻塞章节完整渲染")
+                qa_fingerprint = render_fingerprint(
+                    self.section_codes[section_id],
+                    self.section_steps[section_id],
+                    self.preview_render_profile,
+                )
+                qa_path = (
+                    self.output_dir
+                    / "visual_qa_cache"
+                    / section_id
+                    / f"{qa_fingerprint}.json"
+                )
+                qa_path.parent.mkdir(parents=True, exist_ok=True)
+                qa_path.write_text(
+                    json.dumps(
+                        {
+                            "completed": True,
+                            "passed": passed_visual_qa,
+                            "section_id": section_id,
+                            "fingerprint": qa_fingerprint,
+                            "preview_profile": self.preview_render_profile.name,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
 
-                            optimization_success = self.optimize_with_feedback(section, feedback)
-                            if optimization_success:
-                                pass
-                            else:
-                                print(
-                                    f"⚠️ {self.learning_topic} {section_id} 第 {round+1} 轮 MLLM 反馈优化失败，使用当前版本"
-                                )
-                        except Exception as e:
-                            print(
-                                f"⚠️ {self.learning_topic} {section_id} 第 {round+1} 轮 MLLM 反馈处理异常: {str(e)}"
-                            )
-                            continue
-
-                except Exception as e:
-                    print(f"⚠️ {self.learning_topic} {section_id} MLLM 反馈处理异常: {str(e)}")
-
-            return success
+            if self.render_profile.name != self.preview_render_profile.name:
+                success, last_error = self.debug_and_fix_code(
+                    section_id,
+                    max_fix_attempts=self.max_fix_bug_tries,
+                    render_profile=self.render_profile,
+                )
+                if not success:
+                    print(f"❌ {section_id} 最终 {self.render_profile.name} 渲染失败: {last_error}")
+                    return False
+            return True
 
         except Exception as e:
             print(f"❌ {self.learning_topic} {section_id} 渲染过程异常: {str(e)}")
             return False
 
-    def render_section_worker(self, section_data) -> Tuple[str, bool, Optional[str]]:
+    def render_section_worker(self, section_data) -> Tuple[str, bool, Optional[str], Dict[str, Any]]:
         section_id = "unknown"
         try:
             section, agent_class, kwargs = section_data
@@ -1161,13 +1605,50 @@ class TeachingVideoAgent:
             agent = agent_class(**kwargs)
             success = agent.render_section(section)
             video_path = agent.section_videos.get(section.id) if success else None
-            return section_id, success, video_path
+            feedback_rounds = []
+            for key, feedback in sorted(agent.video_feedbacks.items()):
+                feedback_rounds.append(
+                    {
+                        "key": key,
+                        "has_issues": feedback.has_issues,
+                        "is_good_enough": feedback.is_good_enough,
+                        "reason": feedback.good_enough_reason,
+                        "scores": feedback.evaluation_scores,
+                        "improvements": feedback.suggested_improvements,
+                    }
+                )
+            reused_accepted_final = section_id in agent.pinned_final_reused
+            visual_passed = reused_accepted_final or (not agent.use_feedback) or any(
+                not feedback.has_issues
+                and feedback.is_good_enough
+                and not (feedback.raw_response or "").startswith("Error:")
+                for feedback in agent.video_feedbacks.values()
+            )
+            quality = {
+                "rendered": bool(success),
+                "passed": bool(visual_passed),
+                "preview_profile": agent.preview_render_profile.name,
+                "final_profile": agent.render_profile.name,
+                "feedback_enabled": agent.use_feedback,
+                "quality_source": (
+                    "pinned_accepted_final" if reused_accepted_final else "visual_feedback"
+                ),
+                "rounds": feedback_rounds,
+            }
+            return section_id, success, video_path, quality
 
         except Exception as e:
             print(f"❌ {self.learning_topic} {section_id} 渲染过程异常: {str(e)}")
-            return section_id, False, None
+            return section_id, False, None, {"passed": False, "error": str(e)}
 
-    def render_all_sections(self, max_workers: int = 6) -> Dict[str, str]:
+    def render_all_sections(self, max_workers: Optional[int] = None) -> Dict[str, str]:
+        if max_workers is None:
+            configured = os.getenv("K2V_RENDER_WORKERS")
+            # Native 4K Manim + FFmpeg and multimodal contact-sheet analysis
+            # can exceed the Docker Desktop memory ceiling when two section
+            # processes overlap.  Prefer a stable serial 4K pipeline; users
+            # with a larger memory budget can still override it explicitly.
+            max_workers = int(configured) if configured else (1 if self.render_profile.width >= 3840 else 4)
         print(f"🎥 开始并行渲染所有分节视频 (最多 {max_workers} 个进程)...")
 
         tasks = []
@@ -1202,7 +1683,8 @@ class TeachingVideoAgent:
                 for future in as_completed(future_to_section):
                     section_id = future_to_section[future]
                     try:
-                        sid, success, video_path = future.result(timeout=1200)
+                        sid, success, video_path, quality = future.result()
+                        self.visual_quality_results[sid] = quality
 
                         if success and video_path:
                             results[sid] = video_path
@@ -1228,10 +1710,10 @@ class TeachingVideoAgent:
         print(f"   成功率: {successful_count/total_sections*100:.1f}%" if total_sections > 0 else "   成功率: 0%")
 
         if successful_count == 0:
-            print("❌ 所有分节视频渲染失败")
-        elif failed_count > 0:
-            print(
-                f"⚠️ {failed_count} 个分节视频渲染失败，但 {successful_count} 个分节视频渲染成功"
+            raise RuntimeError("所有分节视频渲染失败")
+        elif failed_count > 0 or successful_count != total_sections:
+            raise RuntimeError(
+                f"{total_sections - successful_count} 个分节视频实际渲染失败；禁止合并缺少章节的成片"
             )
         else:
             print("🎉 所有分节视频渲染成功！")
@@ -1239,9 +1721,11 @@ class TeachingVideoAgent:
         return results
 
     def merge_videos(self, output_filename: str = None) -> str:
-        """Step 5: Merge all section videos"""
+        """Merge every final-profile section, then physically validate the result."""
         if not self.section_videos:
             raise ValueError("没有可用视频进行合并")
+        if self.duration is None:
+            self._ensure_duration_resolved()
 
         if output_filename is None:
             safe_name = topic_to_safe_name(self.learning_topic)
@@ -1262,36 +1746,68 @@ class TeachingVideoAgent:
                 return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
             ordered_ids = sorted(self.section_videos.keys(), key=natural_keys)
         
+        target_ids = ordered_ids if ordered_ids else sorted(self.section_videos.keys())
+        missing = [section_id for section_id in target_ids if section_id not in self.section_videos]
+        if missing:
+            raise ValueError(f"严格合并禁止缺节：{missing}")
+
         with open(video_list_file, "w", encoding="utf-8") as f:
-            # 优先使用 ordered_ids (来自大纲 self.sections)
-            target_ids = ordered_ids if ordered_ids else sorted(self.section_videos.keys())
-    
             for section_id in target_ids:
-            # 确保只处理不仅在大纲中、且实际生成了视频的 ID
-                if section_id in self.section_videos:
-                    video_path = self.section_videos[section_id].replace(f"{self.output_dir}/", "")
-                    f.write(f"file '{video_path}'\n")
+                video_path = Path(self.section_videos[section_id]).resolve()
+                section_media = validate_rendered_media(
+                    video_path,
+                    self.render_profile,
+                    require_audio=True,
+                )
+                if section_media["video_codec"] != "h264":
+                    raise ValueError(f"{section_id} 视频编码不是 H.264: {section_media['video_codec']}")
+                escaped = str(video_path).replace("'", "'\\''")
+                f.write(f"file '{escaped}'\n")
 
-        # ffmpeg
-        try:
-            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
-            result = subprocess.run(
-                [ffmpeg_exe, "-y", "-f", "concat", "-safe", "0", "-i", str(video_list_file), "-c", "copy", str(output_path)],
-                capture_output=True,
-                text=True,
-            )
+        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+        result = subprocess.run(
+            [
+                ffmpeg_exe,
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(video_list_file),
+                "-c",
+                "copy",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"合并分节视频失败: {result.stderr}")
 
-            if result.returncode == 0:
-                if self._video_has_audio_stream(output_path):
-                    return str(output_path)
-                print(f"❌ 合并结果缺少音轨: {output_path}")
-                return None
-            else:
-                print(f"❌ 合并分节视频失败: {result.stderr}")
-                return None
-        except Exception as e:
-            print(f"❌ 合并分节视频失败: {e}")
-            return None
+        target_seconds = float(self.duration * 60)
+        minimum_seconds = target_seconds * 0.85
+        maximum_seconds = target_seconds * 1.30
+        self.media_metadata = validate_rendered_media(
+            output_path,
+            self.render_profile,
+            duration_range=(minimum_seconds, maximum_seconds),
+            require_audio=True,
+            reject_long_silences=True,
+        )
+        if self.media_metadata["video_codec"] != "h264":
+            raise ValueError(f"成片视频编码不是 H.264: {self.media_metadata['video_codec']}")
+        if self.media_metadata["pixel_format"] != "yuv420p":
+            raise ValueError(f"成片像素格式不是 yuv420p: {self.media_metadata['pixel_format']}")
+        if self.media_metadata["audio_codec"] != "aac":
+            raise ValueError(f"成片音频编码不是 AAC: {self.media_metadata['audio_codec']}")
+        self.actual_duration_seconds = float(self.media_metadata["duration"])
+        self.long_silence_intervals = list(self.media_metadata["long_silences"])
+        print(
+            f"✅ 成片物理验收通过: {self.media_metadata['width']}x{self.media_metadata['height']} "
+            f"{self.media_metadata['fps']:.2f}fps, {self.actual_duration_seconds:.2f}s, 长静音 0"
+        )
+        return str(output_path)
 
     def GENERATE_VIDEO(self) -> str:
         """Generate complete video with MLLM feedback optimization"""
@@ -1424,7 +1940,7 @@ def build_and_parse_args():
         "--API",
         type=str,
         choices=["gpt-41", "claude", "gpt-5", "gpt-4o", "gpt-o4mini", "Gemini"],
-        default="gpt-4o",
+        default="gpt-5",
     )
     parser.add_argument(
         "--folder_prefix",
@@ -1445,8 +1961,14 @@ def build_and_parse_args():
     parser.add_argument("--max_regenerate_tries", type=int, help="max # tries to regenerate", default=10)
     parser.add_argument("--max_feedback_gen_code_tries", type=int, help="max # tries for Critic", default=3)
     parser.add_argument("--max_mllm_fix_bugs_tries", type=int, help="max # tries for Critic to fix bug", default=3)
-    parser.add_argument("--feedback_rounds", type=int, default=2)
-    parser.add_argument("--duration", type=int, default=5, help="Estimated video duration in minutes")
+    parser.add_argument("--feedback_rounds", type=int, default=3)
+    parser.add_argument("--duration", type=int, default=None, help="目标时长（分钟）；不传时由 AI 在 5-12 分钟内选择")
+    parser.add_argument(
+        "--render_profile",
+        choices=["1080p30", "4k30", "4k60"],
+        default="4k30",
+        help="原生渲染规格",
+    )
 
     parser.add_argument("--parallel", action="store_true", default=False)
     parser.add_argument("--no_parallel", action="store_false", dest="parallel")
@@ -1537,6 +2059,7 @@ if __name__ == "__main__":
         max_mllm_fix_bugs_tries=args.max_mllm_fix_bugs_tries,
         feedback_rounds=args.feedback_rounds,
         duration=args.duration,
+        render_profile=args.render_profile,
         user_profile=user_profile,
     )
     

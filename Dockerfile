@@ -39,6 +39,7 @@ RUN apt-get update && \
             texlive-latex-base \
             texlive-latex-extra \
             texlive-fonts-recommended \
+            dvisvgm \
         && break || (echo "=== Retry $i ===" && sleep 5 && apt-get update); \
     done && \
     for i in 1 2 3; do \
@@ -69,7 +70,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     -i https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     --timeout 120 --retries 5 && \
-    pip install --no-cache-dir . \
+    pip install --no-cache-dir ".[dev]" \
     -i https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     --timeout 120 --retries 5

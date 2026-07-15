@@ -58,6 +58,7 @@ def generate_video_task(
             request_claude_token,
             request_gpt4o_token,
             request_gpt5_token,
+            request_gpt5_logic_token,
             request_gemini_token,
             request_o4mini_token,
             request_gpt41_token,
@@ -74,7 +75,8 @@ def generate_video_task(
         age = request_data.get("age")
         gender = request_data.get("gender")
         language = request_data.get("language", "Python")
-        duration = request_data.get("duration", 5)
+        duration = request_data.get("duration")
+        render_profile = str(request_data.get("render_profile") or "4k30").strip().lower()
         difficulty = request_data.get("difficulty", "medium")
         # 规范化难度值（兼容枚举/大小写）
         if hasattr(difficulty, "value"):
@@ -83,18 +85,26 @@ def generate_video_task(
         extra_info = request_data.get("extra_info", "")
         use_feedback = request_data.get("use_feedback", True)
         use_assets = request_data.get("use_assets", True)
-        api_model = request_data.get("api_model", settings.default_api)
+        api_model = str(request_data.get("api_model") or settings.default_api).strip().lower()
         
         # 获取 API 函数（键名与 api_config.json 一致）
         api_mapping = {
             "claude": request_claude_token,
             "gpt4o": request_gpt4o_token,
+            "gpt-4o": request_gpt4o_token,
             "gpt5": request_gpt5_token,
+            "gpt-5": request_gpt5_token,
             "gpt-41": request_gpt41_token,
+            "gpt41": request_gpt41_token,
             "gpt-o4mini": request_o4mini_token,
+            "gpt-o4-mini": request_o4mini_token,
+            "o4mini": request_o4mini_token,
             "gemini": request_gemini_token,
         }
-        api_func = api_mapping.get(api_model, request_claude_token)
+        api_func = api_mapping.get(api_model)
+        if api_func is None:
+            raise ValueError(f"不支持的 api_model：{api_model}")
+        logic_api_func = request_gpt5_logic_token if api_model in {"gpt5", "gpt-5"} else api_func
         
         # ========== 阶段 1: 解析用户画像 ==========
         task_id = callback.on_stage_start("parse_profile", "正在解析用户画像。")
@@ -131,12 +141,15 @@ def generate_video_task(
             
             user_profile = create_profile_from_text(profile_text)
             # 使用 AI 解析用户画像
-            parsed_profile = parse_profile_with_ai_sync(profile_text, api_func)
-            if parsed_profile:
-                # 强制覆盖难度偏好，确保严格与请求 difficulty 一致
-                parsed_profile.setdefault("user_summary", {})
-                parsed_profile["user_summary"]["difficulty_preference"] = forced_difficulty_level
-                user_profile.update_with_parsed_profile(parsed_profile)
+            parsed_profile = parse_profile_with_ai_sync(profile_text, logic_api_func)
+            # 结构化 API 参数优先于 AI 推断；解析失败时也保留明确传入的语言和难度。
+            parsed_profile = parsed_profile or user_profile.parsed_profile or {}
+            parsed_profile.setdefault("user_summary", {})
+            parsed_profile["user_summary"]["target_language"] = language
+            parsed_profile["user_summary"]["difficulty_preference"] = forced_difficulty_level
+            parsed_profile.setdefault("stage3_code_guidance", {})
+            parsed_profile["stage3_code_guidance"]["code_language"] = language
+            user_profile.update_with_parsed_profile(parsed_profile)
             
             callback.on_stage_finish(task_id, "用户画像解析成功。")
         except Exception as e:
@@ -147,21 +160,27 @@ def generate_video_task(
         # 配置
         cfg = RunConfig(
             api=api_func,
+            logic_api=logic_api_func,
             use_feedback=use_feedback,
             use_assets=use_assets,
             duration=duration,
+            render_profile=render_profile,
+            preview_render_profile="1080p30",
             user_profile=user_profile,
             forced_difficulty_level=forced_difficulty_level,
             max_code_token_length=50000,  # 提高 token 上限，避免分镜脚本被截断
+            max_planning_token_length=16000,
             max_fix_bug_tries=10,
             max_regenerate_tries=10,
             max_feedback_gen_code_tries=5,
             max_mllm_fix_bugs_tries=5,
-            feedback_rounds=2,
+            feedback_rounds=3,
         )
         
-        # 创建输出目录
-        folder_path = src_dir / "CASES" / f"API_{api_model}"
+        # 每个 API 任务使用独立目录，避免同一知识点的不同用户画像、难度、
+        # 语言或时长请求复用彼此的中间缓存。
+        request_id = str(self.request.id or channel_name).replace("/", "_")
+        folder_path = src_dir / "CASES" / f"API_{api_model}" / request_id
         folder_path.mkdir(parents=True, exist_ok=True)
         
         # 创建 Agent
@@ -246,7 +265,32 @@ def generate_video_task(
             metadata = {
                 "knowledge_point": knowledge_point,
                 "language": language,
-                "duration": duration,
+                "duration": agent.duration,
+                "duration_source": agent.duration_source,
+                "actual_duration_seconds": agent.actual_duration_seconds,
+                "accepted_duration_seconds": [agent.duration * 60 * 0.85, agent.duration * 60 * 1.30],
+                "actual_narration_seconds": agent.actual_narration_seconds,
+                "render_profile": agent.render_profile.name,
+                "media": agent.media_metadata,
+                "long_silence_count": len(agent.long_silence_intervals),
+                "auto_removed_silence_seconds": 0.0,
+                "visual_quality": {
+                    "preview_profile": agent.preview_render_profile.name,
+                    "feedback_enabled": agent.use_feedback,
+                    "max_repair_rounds": min(
+                        agent.feedback_rounds,
+                        int(os.getenv("K2V_PREDELIVERY_FEEDBACK_ROUNDS", "1")),
+                    ),
+                    "passed": all(
+                        bool(section.get("passed"))
+                        for section in agent.visual_quality_results.values()
+                    ),
+                    "all_sections_rendered": all(
+                        bool(section.get("rendered"))
+                        for section in agent.visual_quality_results.values()
+                    ),
+                    "sections": agent.visual_quality_results,
+                },
                 "difficulty": difficulty,
                 "age": age,
                 "gender": gender,
@@ -265,6 +309,14 @@ def generate_video_task(
             result["success"] = True
             result["video_file"] = video_filename
             result["token_usage"] = agent.token_usage
+            result["duration"] = agent.duration
+            result["duration_source"] = agent.duration_source
+            result["actual_duration_seconds"] = agent.actual_duration_seconds
+            result["actual_narration_seconds"] = agent.actual_narration_seconds
+            result["render_profile"] = agent.render_profile.name
+            result["media"] = agent.media_metadata
+            result["long_silence_count"] = len(agent.long_silence_intervals)
+            result["auto_removed_silence_seconds"] = 0.0
             
         except Exception as e:
             callback.on_stage_failed(task_id, f"视频文件保存失败: {str(e)}")
@@ -273,6 +325,14 @@ def generate_video_task(
         # ========== 发送最终结果 ==========
         callback.on_result("视频生成成功。", {
             "video_file": video_filename,
+            "duration": agent.duration,
+            "duration_source": agent.duration_source,
+            "actual_duration_seconds": agent.actual_duration_seconds,
+            "actual_narration_seconds": agent.actual_narration_seconds,
+            "render_profile": agent.render_profile.name,
+            "media": agent.media_metadata,
+            "long_silence_count": len(agent.long_silence_intervals),
+            "auto_removed_silence_seconds": 0.0,
             "token_usage": agent.token_usage,
         })
         
@@ -281,8 +341,13 @@ def generate_video_task(
         result["error"] = error_msg
         result["traceback"] = traceback.format_exc()
         
-        # 发送失败结果
-        callback.on_result(error_msg, {"error": str(e)})
+        # 发送最终失败事件，并让 Celery 将任务标记为 FAILURE
+        try:
+            callback.on_final_failure(error_msg, {"error": str(e)})
+        except Exception:
+            # 即使 Redis 临时不可用，也必须继续抛出原异常，让 Celery 标记 FAILURE。
+            pass
+        raise
     
     finally:
         redis_client.close()

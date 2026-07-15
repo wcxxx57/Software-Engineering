@@ -4,7 +4,7 @@ from .user_profile import UserProfile, get_default_profile
 
 def get_prompt1_outline(
     knowledge_point: str,
-    duration: int = 5,
+    duration: int,
     reference_image_path: Optional[str] = None,
     user_profile: Optional[UserProfile] = None,
     forced_difficulty_level: Optional[str] = None
@@ -28,6 +28,11 @@ def get_prompt1_outline(
     # 获取 AI 智能生成的用户画像提示词
     profile_prompt = user_profile.get_stage1_prompt()
     target_language = user_profile.get_language()
+    cross_domain_title_instruction = """
+    标题规则：如果用户来自非计算机专业，并使用其熟悉领域作为类比，视频标题优先采用
+    “用[熟悉场景]理解[计算机知识]”的结构。场景必须具体，例如“用电商订单理解优先队列与二叉堆”；
+    不要只写宽泛的“跨学科讲解”，也不要为了显得硬核而堆砌“从零实现”“内存级”等空泛词。
+    """
     
     difficulty_field_instruction = (
         forced_difficulty_level
@@ -48,9 +53,10 @@ def get_prompt1_outline(
     你是一位**计算机科学教育架构师**。你需要设计一个**基于执行追踪（Execution Trace）**的深度算法教学大纲。
 
     目标算法: "{knowledge_point}"
-    要求视频总时长：至少 {duration} 分钟。
+    视频目标总时长：{duration} 分钟；各节预计时长合计应接近该目标，不得用重复内容凑时长。
     
     {profile_prompt}
+    {cross_domain_title_instruction}
     {force_difficulty_prompt}
     
     这意味着你需要：
@@ -151,6 +157,23 @@ def get_prompt1_outline(
     - 对象最后一个字段后有逗号：`{{"id": "1",}}` ❌
     """
     
+    base_prompt += f"""
+
+    # 中文教学结构硬约束（必须进入 JSON）
+    - 顶层必须增加 `teaching_schema_version`: `zh-cn-pedagogy-v2`。
+    - 顶层必须增加 `factuality_anchor_checklist` 和 `scaffold_map`；`factuality_anchor_checklist` 必须是非空字符串数组（例如 `["最小堆父节点不大于子节点", "heapq 默认是最小堆"]`），禁止放对象；`scaffold_map` 按 sections 顺序为每节给出 `section_id`、`prior_knowledge`、`target_concept`、`bridge_strategy`。
+    - 每节只引入一个核心新概念，并增加：
+      - `learning_objective`：本节可检查的学习目标；
+      - `prior_knowledge_activation`：从学生已有知识自然起步；
+      - `new_concept`：本节唯一核心新概念；
+      - `misconception_check`：本节要预防的误区；
+      - `bridge_to_next`：为什么下一节是自然的下一步；
+      - `estimated_duration`：正整数秒；全片合计应接近 {duration * 60} 秒，允许误差 10%；
+      - `evidence_basis`：非空数组，每项含 `claim`、`source_type`、`anchor`。
+    - `source_type` 只能是：算法定义、不变量、执行追踪、复杂度推导、边界案例。
+    - 依据只来自该知识点的定义、不变量、可复核执行过程、复杂度推导和边界案例；没有依据的结论必须删除，严禁猜测。
+    """
+
     if reference_image_path:
         base_prompt += f"\n注：请参考提供的图片来决定数据结构的视觉风格（如树是画成圆圈还是方块）。\n"
 

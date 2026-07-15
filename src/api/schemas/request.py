@@ -15,6 +15,14 @@ class DifficultyLevel(str, Enum):
     HARD = "hard"
 
 
+class RenderProfileName(str, Enum):
+    """可选的原生渲染规格。"""
+
+    HD_1080P30 = "1080p30"
+    UHD_4K30 = "4k30"
+    UHD_4K60 = "4k60"
+
+
 class EventType(str, Enum):
     """SSE 事件类型"""
     RUNNING = "running"
@@ -51,10 +59,14 @@ class VideoGenerateRequest(BaseModel):
         examples=["Python", "Java", "C++", "JavaScript"]
     )
     duration: Optional[int] = Field(
-        5, 
-        ge=1, 
-        le=30,
-        description="视频时长（分钟）"
+        None,
+        ge=5,
+        le=12,
+        description="视频目标时长（分钟）；不传时由 AI 在 5-12 分钟内选择"
+    )
+    render_profile: RenderProfileName = Field(
+        RenderProfileName.UHD_4K30,
+        description="原生渲染规格，默认 3840x2160/30fps",
     )
     
     difficulty: Optional[DifficultyLevel] = Field(
@@ -92,7 +104,8 @@ class VideoGenerateRequest(BaseModel):
                 "age": 20,
                 "gender": "男",
                 "language": "Python",
-                "duration": 5,
+                "duration": None,
+                "render_profile": "4k30",
                 "difficulty": "medium",
                 "extra_info": "我是大学生，有一定编程基础，想深入理解算法"
             }

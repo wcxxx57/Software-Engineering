@@ -48,7 +48,7 @@ def get_prompt2_storyboard(
             - **分页**: 如果代码超过 20 行，必须拆分为连续的子场景 (Sub-scenes, e.g., `Scene 12.1`, `Scene 12.2`)。
 
                 - **强制分页规则 (Pagination Protocol)**:
-                    - **讲解文字逐行限制（硬性）**: 每行讲解文字不超过 **20个中文字符**（含标点、英文字母、数字）即可放一行；只有超过 20 字时才按语义拆分。**禁止把 20 字以内的完整短句强行拆成两行。**
+                    - **讲解文字逐行限制（硬性）**: 每行讲解文字不超过 **20个中文字符**（含标点、英文字母、数字）。保持当前教学信息量，不要过度压缩成只有名词的关键词；只有超过 20 字时才按语义自然换行。
                     - **讲解文字分批规则（硬性，必须按顺序执行）**:
                         1) **先判断是否有代码块**：
                              - 有代码块（左下有 `create_code_block`）→ 每批最多 **4行**
@@ -59,9 +59,11 @@ def get_prompt2_storyboard(
                              - 严禁机械地每批凑满 4 行或 8 行
                         3) **最后检查上限**：若超出 4/8 行，仅在该知识点内部按自然语义断点拆分，禁止跨知识点拼接凑行数。
                     - **代码量控制**: 如果代码过长导致左下区域放不下，**必须**将内容拆分为连续的子场景。宁可多页，不可字小。
-        - **State Monitor (底部/角落)**: 实时显示的变量值（Cost, Index, True/False）。
+        - **State Monitor (右侧角落)**: 实时显示的变量值（Cost, Index, True/False），不得占用底部字幕条形式的区域。
         - **Text Zoning Strategy (文本分区策略)**:
-          - **Lecture Lines (旁白字幕)**: 必须严格限制在屏幕底部的 "Subtitle Bar" (Bottom 15% area)。严禁将长段解释性文字放在屏幕中央或与图形混排。
+          - **Lecture Lines (左侧教学文字)**: 固定放在左侧文字区，保持精炼但有解释作用；它不是字幕。
+          - **No Captions**: 禁止生成逐句旁白字幕、底部字幕文字、字幕背景框或任何 full-width bottom bar。
+          - **Narration Separation**: `lecture_lines` 只负责画面文字；完整口语旁白由后续 `spoken_script` 生成，禁止把完整旁白塞进画面。
           - **Labels (标签)**: 跟随物体的标签必须简短（Max 2-3 words）。
           - **Title**: 每一节的标题固定在左上角或顶部，不可遮挡 Main Visual Area。
 
@@ -86,7 +88,7 @@ def get_prompt2_storyboard(
         - 场景引入 (intro) 通常 30-60 秒
         - 核心算法演示章节通常 45-90 秒
         - 代码展示章节通常 20-40 秒
-        - **重要**：时长估算应保守，宁可多估不可少估，确保观众有足够时间理解
+        - **重要**：时长估算必须服从大纲目标总时长，不能刻意高估，也不能靠重复内容填充
 
     5.  **语言适配要求**:
         - 所有代码示例必须使用 **{target_language}**
@@ -120,8 +122,16 @@ def get_prompt2_storyboard(
                 "estimated_duration": 45,
                 "lecture_lines": [
                     "第一句旁白",
-                    "第二句旁白"
+                    "第二句的上半句，",
+                    "第二句的下半句。"
                 ],
+                "layout_mode": "no_code",
+                "highlight_groups": [[0], [1, 2]],
+                "evidence_lines_indices": [0, 1],
+                "zpd_check_line_index": 0,
+                "bridge_line_index": 2,
+                "new_terms_introduced": [],
+                "code_snippets": [],
                 "animations": [
                     "Define Visual Layout: Left-Right Split.",
                     "Visual: FadeIn title at top.",
@@ -172,6 +182,27 @@ def get_prompt2_storyboard(
     - 所有章节时长之和应大致符合视频总时长要求
     - 请直接输出 JSON，不要用 ```json ``` 包裹
     - 注意：在 JSON 字符串内容中，严禁出现未经转义的双引号（"），如果需要引用，请一律使用单引号（'）或中文书名号（《》、「」）代替。
+    """
+    base_prompt += """
+
+    # 中文教学分镜硬约束（必须进入 JSON）
+    - 顶层必须增加 `teaching_schema_version`: `zh-cn-pedagogy-v2`。
+    - sections 的 id 与大纲严格同序、同值，不得增删或重命名。
+    - 每节必须增加 `layout_mode`，只能是 `no_code`、`with_code`、`full_code`。
+    - `highlight_groups` 必须按自然语义分组：单行组完全合法，多行组也合法；不得为了减少音频段数强行合并无关内容。
+    - `highlight_groups` 的每个成员必须是 `lecture_lines` 的整数下标，例如 `[[0], [1, 2], [3]]`；绝对不能把文字句子放进 `highlight_groups`。
+    - 每个 highlight group 表达一个完整语义句。若一个组跨多行，中间行以中文逗号 `，` 收尾，最后一行以 `。`、`？` 或 `！` 收尾；不要让每一行都机械地以句号结束。
+    - 左侧文字保持与现有版本接近的信息密度，不要退化为只有一两个词的标签，也不要加入口语语气词。
+    - 每节必须增加 `highlight_groups`，按顺序恰好覆盖全部 lecture_lines；同组表示一次旁白同步高亮，可含多行，且不可跨页。
+    - 每节必须增加 `evidence_lines_indices`、`zpd_check_line_index`、`bridge_line_index`、`new_terms_introduced`、`code_snippets`。
+    - `zpd_check_line_index` 必须为 0；`bridge_line_index` 必须位于最后两行；依据行索引必须有效。
+    - 首行先连接已有知识，末尾自然衔接下一概念；首次出现术语时立即用中文解释，不使用未解释的超纲术语。
+    - 全片设置 2-4 个认知检查点：用旁白中的自然疑问语气让学生预测，再揭示答案；不得添加长时间无旁白停顿。
+    - 复杂公式、递推式、状态表或复杂图示的阅读时间包含在对应旁白窗口内；旁白、当前高亮和右侧变化必须一一对应。
+    - 每行最多 20 个中文字符（含标点、英文和数字）；20 字以内的完整短句不强拆。有代码每页最多 4 行，无代码最多 8 行。
+    - `code_snippets` 使用原项目目标编程语言；有代码布局时不能为空，完整代码节可分页但不得省略逻辑。
+    - 禁止无画面旁白、无讲解画面；新主元素出现前必须 FadeOut 并 remove 不再使用的旧元素，避免残留与重叠。
+    - 分镜预计总秒数应接近大纲目标时长，允许误差 10%。
     """
     return base_prompt
 

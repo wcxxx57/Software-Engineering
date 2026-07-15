@@ -41,12 +41,12 @@ celery_app.conf.update(
     },
     
     # 任务时间限制
-    task_time_limit=3600,  # 1 小时硬限制
-    task_soft_time_limit=3000,  # 50 分钟软限制
+    task_time_limit=settings.task_time_limit_seconds,
+    task_soft_time_limit=settings.task_soft_time_limit_seconds,
     
     # 结果后端配置
     result_backend_transport_options={
-        "visibility_timeout": 3600,
+        "visibility_timeout": settings.task_time_limit_seconds,
     },
 )
 

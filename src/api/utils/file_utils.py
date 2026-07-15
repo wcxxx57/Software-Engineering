@@ -55,8 +55,12 @@ def save_video_with_hash(source_path: str, metadata: Optional[Dict[str, Any]] = 
     new_filename = f"{file_hash}{ext}"
     new_path = os.path.join(settings.video_dir, new_filename)
     
-    # 如果文件已存在（相同内容），直接返回
+    # 如果文件已存在（相同内容），复用视频文件，但仍刷新元信息。
+    # 质检结果、任务参数等元数据可能在后续验收运行中更新，不能因
+    # 视频内容哈希未变化而永久保留第一次生成时的旧记录。
     if os.path.exists(new_path):
+        if metadata:
+            save_metadata(file_hash, metadata)
         return new_filename
     
     # 复制文件到目标目录

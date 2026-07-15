@@ -6,15 +6,18 @@ import shutil
 import ast
 import subprocess
 import time
+import uuid
 import wave
 from pathlib import Path
 from typing import Callable, List
 
 import requests
 from pydub import AudioSegment
+from pydub.silence import detect_leading_silence
 import imageio_ffmpeg
 
 from src.gpt_request import cfg
+from src.vivo_tts import synthesize_vivo_tts_audio
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -102,29 +105,61 @@ def expand_screen_text_to_spoken_script(
     api_func: Callable,
     max_retries: int = 3,
     max_tokens: int = 300,
+    *,
+    previous_screen_text: str = "",
+    previous_spoken_script: str = "",
+    next_screen_text: str = "",
+    section_title: str = "",
+    target_seconds: float | None = None,
 ) -> str:
-    # 概述部分使用带范例引导的特殊提示词
-    if _is_overview_screen_text(screen_text):
-        prompt = f"""{_OVERVIEW_EXPANSION_EXAMPLES}{screen_text}""".strip()
-    else:
-        prompt = f"""
-你是教学视频旁白润色器。
+    duration_instruction = ""
+    if target_seconds and target_seconds > 0:
+        duration_instruction = (
+            f"- 这句话的目标朗读时长约为 {target_seconds:.1f} 秒；"
+            "用有效的解释、因果或例子达到时长，不得使用空洞套话\n"
+        )
+    overview_examples = (
+        "这是导览旁白：参考上一句，像老师介绍学习路线一样自然讲解；不要求每句都有过渡词，"
+        "确实需要承接时再根据章节关系选择表达，并避免相邻句机械重复同一个过渡方式。"
+        if _is_overview_screen_text(screen_text)
+        else ""
+    )
+    prompt = f"""
+你是中文教学视频的旁白编剧。屏幕文字和旁白是两条不同的信息链：屏幕保留精炼内容，旁白负责把它讲成完整、流畅的话。
 
 任务：
-- 将下面这条画面短句扩写成一条更自然、口语化、适合 TTS 播放的单句旁白
-- 必须保持原意，不要引入新知识点
-- 必须是"最小增量扩写"，不要写成长段
-- 输出只允许是一句纯文本，不要加引号、编号、解释
+- 把“当前画面分组”改写成一句语法完整、自然、适合学习的中文教学旁白
+- 当前分组即使只有一行，也必须讲成完整句子；多行分组必须用一句话覆盖整组含义
+- 结合前后分组自然承接，但不要机械重复“接下来我们来看”等套话
+- 保持原意，可以补充必要的连接词、因果关系和简短解释，但不能引入本节没有的新知识点
+{duration_instruction}- 输出只能是一行纯文本，不要加引号、编号、标签、换行或解释
+- 必须只包含一个完整句子，并以“。”、“？”或“！”结尾
 
-画面短句：
+本节标题：{section_title or '未提供'}
+上一画面分组：{previous_screen_text or '无，这是本节第一组'}
+上一句旁白：{previous_spoken_script or '无，这是本节第一句'}
+当前画面分组：
 {screen_text}
+下一画面分组：{next_screen_text or '无，这是本节最后一组'}
+{overview_examples}
 """.strip()
 
     def _request():
         response = api_func(prompt, max_tokens=max_tokens)
         spoken_script = extract_response_text(response)
+        spoken_script = re.sub(r"^(旁白|输出|spoken_script|narration)\s*[:：]\s*", "", spoken_script, flags=re.I)
+        spoken_script = re.sub(r"\s+", "", spoken_script).strip()
         if not spoken_script:
             raise ValueError("empty spoken_script")
+        if previous_spoken_script:
+            for marker in ("随后", "接下来", "然后", "接着"):
+                if previous_spoken_script.startswith(marker) and spoken_script.startswith(marker):
+                    raise ValueError(f"adjacent overview narration repeats {marker}: {spoken_script}")
+        if spoken_script[-1:] not in "。？！?!":
+            spoken_script += "。"
+        sentence_marks = re.findall(r"[。？！?!]", spoken_script)
+        if len(sentence_marks) != 1 or spoken_script[-1] not in "。？！?!":
+            raise ValueError(f"spoken_script must be exactly one complete sentence: {spoken_script}")
         return spoken_script
 
     return retry_with_backoff(
@@ -157,6 +192,17 @@ def synthesize_tts_audio(
 ) -> Path:
     output_path = Path(output_path).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    provider = os.getenv("TTS_PROVIDER", "openai").strip().lower()
+    if provider in {"vivo", "bluelm", "vivo_bluelm"}:
+        return retry_with_backoff(
+            operation_name=f"vivo TTS synthesis for {output_path.name}",
+            func=lambda: synthesize_vivo_tts_audio(text=text, output_path=output_path, timeout=timeout),
+            max_retries=max_retries,
+            base_delay=1.0,
+        )
+    if provider not in {"openai", "dmx"}:
+        raise ValueError(f"Unsupported TTS_PROVIDER: {provider}")
+
     api_key, base_url, model, voice = get_tts_endpoint_config()
     endpoint = f"{base_url}/audio/speech"
     headers = {
@@ -256,6 +302,17 @@ def normalize_audio_for_manim(source_path: Path, target_path: Path) -> Path:
         raise RuntimeError(f"TTS audio is silent: {source_path}")
 
     normalized = audio.set_frame_rate(48000).set_channels(2).set_sample_width(2)
+    # Some TTS providers add a noticeable silent pad to both sides of every
+    # request.  Sentence units are concatenated without synthetic waits, so
+    # keep a small safety pad while removing only provider-added dead air.
+    silence_threshold = max(-50.0, normalized.dBFS - 22.0)
+    leading = detect_leading_silence(normalized, silence_threshold=silence_threshold, chunk_size=10)
+    trailing = detect_leading_silence(normalized.reverse(), silence_threshold=silence_threshold, chunk_size=10)
+    keep_ms = 90
+    trim_start = max(0, leading - keep_ms)
+    trim_end = min(len(normalized), len(normalized) - trailing + keep_ms)
+    if trim_end - trim_start >= 250:
+        normalized = normalized[trim_start:trim_end]
     normalized.export(target_path, format="wav")
     return target_path
 
@@ -291,40 +348,204 @@ def reset_section_audio_dir(section_audio_dir: Path) -> Path:
     return section_audio_dir
 
 
+def paginate_highlight_groups(section) -> List[List[dict]]:
+    """按布局分页，保证一个同步高亮组不会被拆到两页。"""
+    groups = getattr(section, "highlight_groups", None) or [[index] for index in range(len(section.lecture_lines))]
+    page_limit = 4 if getattr(section, "layout_mode", "no_code") in {"with_code", "full_code"} else 8
+    pages: List[List[dict]] = []
+    current_page: List[dict] = []
+    current_count = 0
+    for group in groups:
+        if len(group) > page_limit:
+            raise ValueError(f"高亮组 {group} 超过单页 {page_limit} 行限制")
+        if current_page and current_count + len(group) > page_limit:
+            pages.append(current_page)
+            current_page = []
+            current_count = 0
+        current_page.append({
+            "highlight_indices": list(group),
+            "screen_texts": [section.lecture_lines[index] for index in group],
+        })
+        current_count += len(group)
+    if current_page:
+        pages.append(current_page)
+    return pages
+
+
+def _group_descriptors(section) -> List[dict]:
+    descriptors: List[dict] = []
+    for page_index, page_groups in enumerate(paginate_highlight_groups(section)):
+        page_line_indices = [index for group in page_groups for index in group["highlight_indices"]]
+        page_screen_texts = [section.lecture_lines[index] for index in page_line_indices]
+        for step_index_within_page, group in enumerate(page_groups):
+            screen_texts = list(group["screen_texts"])
+            descriptors.append(
+                {
+                    "page_index": page_index,
+                    "page_line_indices": page_line_indices,
+                    "page_screen_texts": page_screen_texts,
+                    "step_index_within_page": step_index_within_page,
+                    "highlight_indices": list(group["highlight_indices"]),
+                    "screen_texts": screen_texts,
+                    "screen_text": "\n".join(screen_texts),
+                    "semantic_text": "".join(screen_texts),
+                }
+            )
+    return descriptors
+
+
 def build_section_steps(
     section,
     output_root: Path,
     api_func: Callable,
     expansion_max_retries: int = 3,
     tts_max_retries: int = 5,
+    target_audio_seconds: float | None = None,
 ) -> List[dict]:
     output_root = Path(output_root).resolve()
-    audio_dir = reset_section_audio_dir(output_root / "audio" / section.id)
+    audio_dir = output_root / "audio" / section.id
+    audio_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging_dir = audio_dir.parent / f".{section.id}.{uuid.uuid4().hex}.building"
+    staging_dir.mkdir(parents=True, exist_ok=False)
     section_steps = []
+    descriptors = _group_descriptors(section)
+    if not descriptors:
+        raise ValueError(f"{section.id} has no semantic narration groups")
 
-    for index, screen_text in enumerate(section.lecture_lines):
-        spoken_script = expand_screen_text_to_spoken_script(
-            screen_text=screen_text,
-            api_func=api_func,
-            max_retries=expansion_max_retries,
-        )
-        audio_path = synthesize_tts_audio(
-            text=spoken_script,
-            output_path=audio_dir / f"step_{index:02d}.wav",
-            max_retries=tts_max_retries,
-        )
-        audio_duration = measure_audio_duration(audio_path)
+    per_group_target = None
+    if target_audio_seconds and target_audio_seconds > 0:
+        per_group_target = target_audio_seconds / len(descriptors)
 
-        section_steps.append(
-            {
-                "screen_text": screen_text,
-                "spoken_script": spoken_script,
-                "audio_path": str(audio_path.resolve()),
-                "audio_duration": audio_duration,
-            }
-        )
+    try:
+        for flat_index, descriptor in enumerate(descriptors):
+            previous_text = descriptors[flat_index - 1]["semantic_text"] if flat_index else ""
+            next_text = descriptors[flat_index + 1]["semantic_text"] if flat_index + 1 < len(descriptors) else ""
+            spoken_script = expand_screen_text_to_spoken_script(
+                screen_text=descriptor["semantic_text"],
+                api_func=api_func,
+                max_retries=expansion_max_retries,
+                previous_screen_text=previous_text,
+                previous_spoken_script=(section_steps[-1]["spoken_script"] if section_steps else ""),
+                next_screen_text=next_text,
+                section_title=getattr(section, "title", ""),
+                target_seconds=per_group_target,
+            )
+            filename = f"step_{flat_index:02d}.wav"
+            staged_audio_path = synthesize_tts_audio(
+                text=spoken_script,
+                output_path=staging_dir / filename,
+                max_retries=tts_max_retries,
+            )
+            audio_duration = measure_audio_duration(staged_audio_path)
 
-    return section_steps
+            section_steps.append(
+                {
+                    "screen_text": descriptor["screen_text"],
+                    "screen_texts": descriptor["screen_texts"],
+                    "spoken_script": spoken_script,
+                    "audio_path": str((audio_dir / filename).resolve()),
+                    "audio_duration": audio_duration,
+                    "target_audio_seconds": per_group_target,
+                    "page_index": descriptor["page_index"],
+                    "page_line_indices": descriptor["page_line_indices"],
+                    "page_screen_texts": descriptor["page_screen_texts"],
+                    "step_index_within_page": descriptor["step_index_within_page"],
+                    "highlight_indices": descriptor["highlight_indices"],
+                }
+            )
+
+        backup_dir = audio_dir.parent / f".{section.id}.{uuid.uuid4().hex}.backup"
+        if audio_dir.exists():
+            audio_dir.replace(backup_dir)
+        try:
+            staging_dir.replace(audio_dir)
+        except Exception:
+            if backup_dir.exists() and not audio_dir.exists():
+                backup_dir.replace(audio_dir)
+            raise
+        finally:
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir)
+        return section_steps
+    except Exception:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+        raise
+
+
+def repair_cached_step_audio(
+    section_steps: List[dict],
+    *,
+    max_retries: int = 5,
+    duration_tolerance: float = 0.08,
+) -> bool:
+    """Repair only missing/stale cached WAVs while preserving timeline duration."""
+    changed = False
+    for step in section_steps:
+        audio_path = Path(str(step.get("audio_path") or "")).resolve()
+        expected_duration = float(step.get("audio_duration") or 0)
+        actual_duration = measure_audio_duration(audio_path) if audio_path.is_file() else -1.0
+        if actual_duration >= 0 and abs(actual_duration - expected_duration) <= duration_tolerance:
+            continue
+
+        spoken_script = str(step.get("spoken_script") or "").strip()
+        if not spoken_script:
+            raise ValueError(f"Cannot repair narration without spoken_script: {audio_path}")
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = audio_path.with_name(f".{audio_path.stem}.{uuid.uuid4().hex}.repair.wav")
+        try:
+            synthesize_tts_audio(
+                text=spoken_script,
+                output_path=temporary_path,
+                max_retries=max_retries,
+            )
+            repaired_duration = measure_audio_duration(temporary_path)
+            if expected_duration > 0 and abs(repaired_duration - expected_duration) > duration_tolerance:
+                tempo = repaired_duration / expected_duration
+                adjusted_path = temporary_path.with_name(f".{temporary_path.stem}.adjusted.wav")
+                ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                filters = []
+                remaining = tempo
+                while remaining > 2.0:
+                    filters.append("atempo=2.0")
+                    remaining /= 2.0
+                while remaining < 0.5:
+                    filters.append("atempo=0.5")
+                    remaining /= 0.5
+                filters.append(f"atempo={remaining:.8f}")
+                result = subprocess.run(
+                    [
+                        ffmpeg_exe,
+                        "-y",
+                        "-i",
+                        str(temporary_path),
+                        "-filter:a",
+                        ",".join(filters),
+                        "-c:a",
+                        "pcm_s16le",
+                        str(adjusted_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(f"Failed to align repaired TTS duration: {result.stderr}")
+                temporary_path.unlink(missing_ok=True)
+                temporary_path = adjusted_path
+
+                target_ms = int(round(expected_duration * 1000))
+                adjusted = AudioSegment.from_file(temporary_path)
+                if len(adjusted) > target_ms:
+                    adjusted = adjusted[:target_ms]
+                elif len(adjusted) < target_ms:
+                    adjusted += AudioSegment.silent(duration=target_ms - len(adjusted), frame_rate=adjusted.frame_rate)
+                adjusted.export(temporary_path, format="wav")
+
+            temporary_path.replace(audio_path)
+            changed = True
+        finally:
+            temporary_path.unlink(missing_ok=True)
+    return changed
 
 
 def save_section_steps(section_steps: List[dict], output_path: Path) -> Path:
@@ -344,7 +565,7 @@ def _extract_constant_number(node) -> float | None:
     return None
 
 
-def _extract_step_index_from_call(call: ast.Call) -> int | None:
+def _extract_step_index_from_call(call: ast.Call, step_aliases: dict[str, int] | None = None) -> int | None:
     if len(call.args) < 2:
         return None
 
@@ -353,6 +574,8 @@ def _extract_step_index_from_call(call: ast.Call) -> int | None:
         return None
 
     value = candidate.value
+    if isinstance(value, ast.Name) and step_aliases and value.id in step_aliases:
+        return step_aliases[value.id]
     if not isinstance(value, ast.Subscript):
         return None
     if not isinstance(value.value, ast.Name) or value.value.id != "steps":
@@ -396,16 +619,44 @@ def _extract_step_index_from_subscript_arg(call: ast.Call, arg_index: int = 0) -
     return None
 
 
-def _timeline_events_from_statements(statements, step_count: int, events: list[tuple[str, float]]):
+def _timeline_events_from_statements(
+    statements,
+    step_count: int,
+    events: list[tuple[str, float]],
+    step_aliases: dict[str, int] | None = None,
+):
+    if step_aliases is None:
+        step_aliases = {}
+
     for stmt in statements:
+        # Generated scenes sometimes use `step = steps[N]` before passing
+        # `step["audio_path"]` to play_synced_step. Track that simple alias so
+        # the physical narration track preserves the correct chronological audio.
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            target_name = stmt.targets[0].id
+            value = stmt.value
+            if isinstance(value, ast.Subscript) and isinstance(value.value, ast.Name) and value.value.id == "steps":
+                step_index = _extract_constant_number(value.slice)
+                if step_index is not None and 0 <= int(step_index) < step_count:
+                    step_aliases[target_name] = int(step_index)
+                    continue
+            step_aliases.pop(target_name, None)
+
         if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and isinstance(stmt.value.func, ast.Attribute):
             call = stmt.value
             attr = call.func.attr
 
             if attr == "play_synced_step":
-                step_index = _extract_step_index_from_call(call)
+                step_index = _extract_step_index_from_call(call, step_aliases)
                 if step_index is None or not (0 <= step_index < step_count):
                     raise ValueError("Unable to resolve step index from play_synced_step call")
+                events.append(("audio", float(step_index)))
+                continue
+
+            if attr == "play_narrated_step":
+                step_index = _extract_step_index_from_subscript_arg(call, arg_index=0)
+                if step_index is None or not (0 <= step_index < step_count):
+                    raise ValueError("Unable to resolve step index from play_narrated_step call")
                 events.append(("audio", float(step_index)))
                 continue
 
@@ -444,7 +695,7 @@ def _timeline_events_from_statements(statements, step_count: int, events: list[t
                 continue
 
             if attr == "replace_lecture_lines":
-                events.append(("silence", 1.0))
+                events.append(("silence", 0.25))
                 continue
 
         if isinstance(stmt, ast.If):
@@ -471,7 +722,7 @@ def _timeline_events_from_statements(statements, step_count: int, events: list[t
                 condition_is_true = step_count > 0
 
             branch = stmt.body if condition_is_true else stmt.orelse
-            _timeline_events_from_statements(branch, step_count, events)
+            _timeline_events_from_statements(branch, step_count, events, step_aliases.copy())
 
 
 def build_section_narration_track(section_steps: List[dict], code_path: Path, output_path: Path) -> Path:
@@ -515,6 +766,25 @@ def remux_video_with_audio(video_path: Path, audio_path: Path, output_path: Path
     audio_path = Path(audio_path).resolve()
     output_path = Path(output_path).resolve()
 
+    ffprobe_exe = shutil.which("ffprobe")
+    if not ffprobe_exe:
+        raise RuntimeError("ffprobe is required for physical media duration validation")
+    probe = subprocess.run(
+        [ffprobe_exe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        raise RuntimeError(f"Failed to measure video duration: {probe.stderr}")
+    video_duration = float(probe.stdout.strip())
+    audio_duration = measure_audio_duration(audio_path)
+    allowed_drift = max(1.0, audio_duration * 0.03)
+    if abs(video_duration - audio_duration) > allowed_drift:
+        raise RuntimeError(
+            f"Audio/video duration mismatch: video={video_duration:.3f}s, "
+            f"audio={audio_duration:.3f}s, allowed={allowed_drift:.3f}s"
+        )
+
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     result = subprocess.run(
         [
@@ -532,7 +802,6 @@ def remux_video_with_audio(video_path: Path, audio_path: Path, output_path: Path
             "copy",
             "-c:a",
             "aac",
-            "-shortest",
             str(output_path),
         ],
         capture_output=True,
@@ -541,3 +810,167 @@ def remux_video_with_audio(video_path: Path, audio_path: Path, output_path: Path
     if result.returncode != 0 or not output_path.exists():
         raise RuntimeError(f"Failed to remux audio into video: {video_path}: {result.stderr}")
     return output_path
+
+
+def cap_video_silences(
+    video_path: Path,
+    max_silence_seconds: float = 3.0,
+    detection_floor_seconds: float = 3.5,
+    noise_threshold: str = "-45dB",
+) -> tuple[Path, list[tuple[float, float]]]:
+    """Cap long silent intervals while cutting video and audio on the same timeline.
+
+    Generated teaching scenes may contain long visual-only waits even though all
+    narration clips are present. Keeping the beginning and end of each pause
+    preserves visual breathing room; removing only its middle avoids 5-16 second
+    dead-air spans without desynchronising the picture and narration.
+    """
+    video_path = Path(video_path).resolve()
+    if not video_path.is_file():
+        raise FileNotFoundError(f"Video not found: {video_path}")
+    if max_silence_seconds <= 0:
+        raise ValueError("max_silence_seconds must be positive")
+    if detection_floor_seconds < max_silence_seconds:
+        raise ValueError("detection_floor_seconds must be >= max_silence_seconds")
+
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+    ffprobe_exe = shutil.which("ffprobe")
+    if not ffprobe_exe:
+        raise RuntimeError("ffprobe is required for physical silence capping")
+
+    probe = subprocess.run(
+        [
+            ffprobe_exe,
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if probe.returncode != 0:
+        raise RuntimeError(f"Failed to measure video duration: {probe.stderr}")
+    original_duration = float(probe.stdout.strip())
+
+    detection = subprocess.run(
+        [
+            ffmpeg_exe,
+            "-hide_banner",
+            "-i",
+            str(video_path),
+            "-af",
+            f"silencedetect=noise={noise_threshold}:d={detection_floor_seconds}",
+            "-f",
+            "null",
+            "-",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if detection.returncode != 0:
+        raise RuntimeError(f"Silence detection failed: {detection.stderr}")
+
+    silence_intervals: list[tuple[float, float]] = []
+    pending_start: float | None = None
+    for event in re.finditer(r"silence_(start|end):\s*([0-9.]+)", detection.stderr):
+        event_type, value = event.group(1), float(event.group(2))
+        if event_type == "start":
+            pending_start = value
+        elif pending_start is not None and value > pending_start:
+            silence_intervals.append((pending_start, min(value, original_duration)))
+            pending_start = None
+    if pending_start is not None and original_duration > pending_start:
+        silence_intervals.append((pending_start, original_duration))
+
+    half_pause = max_silence_seconds / 2
+    removed_intervals = [
+        (start + half_pause, end - half_pause)
+        for start, end in silence_intervals
+        if end - start > max_silence_seconds and end - half_pause > start + half_pause
+    ]
+    if not removed_intervals:
+        return video_path, []
+
+    keep_intervals: list[tuple[float, float]] = []
+    cursor = 0.0
+    for remove_start, remove_end in removed_intervals:
+        if remove_start - cursor > 0.01:
+            keep_intervals.append((cursor, remove_start))
+        cursor = max(cursor, remove_end)
+    if original_duration - cursor > 0.01:
+        keep_intervals.append((cursor, original_duration))
+    if not keep_intervals:
+        raise RuntimeError("Silence capping would remove the entire video")
+
+    filters: list[str] = []
+    concat_inputs: list[str] = []
+    for index, (start, end) in enumerate(keep_intervals):
+        filters.append(f"[0:v]trim=start={start:.6f}:end={end:.6f},setpts=PTS-STARTPTS[v{index}]")
+        filters.append(f"[0:a]atrim=start={start:.6f}:end={end:.6f},asetpts=PTS-STARTPTS[a{index}]")
+        concat_inputs.append(f"[v{index}][a{index}]")
+    filters.append(f"{''.join(concat_inputs)}concat=n={len(keep_intervals)}:v=1:a=1[vout][aout]")
+
+    temp_path = video_path.with_name(f"{video_path.stem}.silence-capped{video_path.suffix}")
+    result = subprocess.run(
+        [
+            ffmpeg_exe,
+            "-y",
+            "-i",
+            str(video_path),
+            "-filter_complex",
+            ";".join(filters),
+            "-map",
+            "[vout]",
+            "-map",
+            "[aout]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            str(temp_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0 or not temp_path.exists():
+        if temp_path.exists():
+            temp_path.unlink()
+        raise RuntimeError(f"Failed to cap long silences: {result.stderr}")
+
+    expected_duration = original_duration - sum(end - start for start, end in removed_intervals)
+    measured_duration = float(
+        subprocess.check_output(
+            [
+                ffprobe_exe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(temp_path),
+            ],
+            text=True,
+        ).strip()
+    )
+    if abs(measured_duration - expected_duration) > 0.75:
+        temp_path.unlink()
+        raise RuntimeError(
+            f"Silence-capped duration mismatch: measured={measured_duration:.3f}s, "
+            f"expected={expected_duration:.3f}s"
+        )
+
+    os.replace(temp_path, video_path)
+    return video_path, removed_intervals

@@ -3,11 +3,19 @@ import time
 import random
 import os
 import base64
+import mimetypes
+import cv2
+import numpy as np
 from openai import OpenAI
 import time
 import json
 import pathlib
 from types import SimpleNamespace
+
+from dotenv import load_dotenv
+
+
+load_dotenv(pathlib.Path(__file__).resolve().parents[1] / ".env")
 
 
 # Read and cache once
@@ -21,8 +29,13 @@ def cfg(svc: str, key: str, default=None):
     if env_value is not None:
         return env_value
 
+    if svc != "iconfinder" and key == "base_url":
+        shared_base_url = os.getenv("DMX_BASE_URL")
+        if shared_base_url:
+            return shared_base_url
+
     if key == "api_key" and svc != "iconfinder":
-        shared_env_value = os.getenv("OPENAI_API_KEY")
+        shared_env_value = os.getenv("DMX_API_KEY") or os.getenv("OPENAI_API_KEY")
         if shared_env_value is not None:
             return shared_env_value
 
@@ -30,7 +43,152 @@ def cfg(svc: str, key: str, default=None):
         if shared_cfg_value is not None:
             return shared_cfg_value
 
+    if key == "model" and svc != "iconfinder":
+        # gpt5 is the default video-generation channel and therefore uses
+        # the stronger code/authoring model. Legacy selectable channels use
+        # the logic model unless explicitly overridden by e.g. GPT5_MODEL.
+        shared_model = os.getenv("CODE_MODEL") if svc == "gpt5" else os.getenv("LOGIC_MODEL")
+        if shared_model:
+            return shared_model
+
     return _CFG.get(svc, {}).get(key, default)
+
+
+def _image_data_url(image_path: str) -> str:
+    """Encode a local image as an OpenAI-compatible data URL."""
+    if not os.path.isfile(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    mime_type = mimetypes.guess_type(image_path)[0] or "image/png"
+    if not mime_type.startswith("image/"):
+        raise ValueError(f"Expected an image file, got {mime_type}: {image_path}")
+    with open(image_path, "rb") as image_file:
+        encoded = base64.b64encode(image_file.read()).decode("utf-8")
+    return f"data:{mime_type};base64,{encoded}"
+
+
+def _sample_video_frames(
+    video_path: str,
+    interval_seconds: float = 1.0,
+    extra_timestamps: list[float] | None = None,
+) -> list[tuple[float, np.ndarray]]:
+    if not os.path.isfile(video_path):
+        raise FileNotFoundError(f"Video not found: {video_path}")
+    if interval_seconds <= 0:
+        raise ValueError("interval_seconds must be positive")
+
+    capture = cv2.VideoCapture(video_path)
+    if not capture.isOpened():
+        capture.release()
+        raise ValueError(f"Could not open video: {video_path}")
+
+    fps = capture.get(cv2.CAP_PROP_FPS) or 1.0
+    frame_count = max(1, int(capture.get(cv2.CAP_PROP_FRAME_COUNT)))
+    duration = max(0.0, (frame_count - 1) / fps)
+    timestamps = [0.0]
+    cursor = interval_seconds
+    while cursor < duration:
+        timestamps.append(cursor)
+        cursor += interval_seconds
+    if duration > 0.05:
+        timestamps.append(duration)
+    for timestamp in extra_timestamps or []:
+        if 0 <= float(timestamp) <= duration:
+            timestamps.append(float(timestamp))
+    timestamps = sorted(set(round(timestamp, 3) for timestamp in timestamps))
+    samples: list[tuple[float, np.ndarray]] = []
+    try:
+        for timestamp in timestamps:
+            frame_index = min(frame_count - 1, int(round(timestamp * fps)))
+            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            ok, frame = capture.read()
+            if ok:
+                samples.append((timestamp, frame))
+    finally:
+        capture.release()
+    if not samples:
+        raise ValueError(f"Could not decode any frames from video: {video_path}")
+    return samples
+
+
+def _video_frame_data_urls(video_path: str, max_frames: int = 4) -> list[str]:
+    """Compatibility helper for callers that need a small number of frames."""
+    samples = _sample_video_frames(video_path)
+    if max_frames < 1:
+        raise ValueError("max_frames must be at least 1")
+    if len(samples) > max_frames:
+        selected = np.linspace(0, len(samples) - 1, max_frames, dtype=int)
+        samples = [samples[int(index)] for index in selected]
+    result: list[str] = []
+    for _, frame in samples:
+        encoded_ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+        if encoded_ok:
+            result.append(f"data:image/jpeg;base64,{base64.b64encode(encoded.tobytes()).decode('utf-8')}")
+    return result
+
+
+def _video_contact_sheet_data_urls(
+    video_path: str,
+    *,
+    interval_seconds: float = 1.0,
+    columns: int = 4,
+    rows: int = 4,
+    extra_timestamps: list[float] | None = None,
+) -> list[str]:
+    """Return chronological contact sheets covering every second and both boundaries."""
+    samples = _sample_video_frames(
+        video_path,
+        interval_seconds=interval_seconds,
+        extra_timestamps=extra_timestamps,
+    )
+    cell_width, cell_height = 480, 270
+    per_sheet = columns * rows
+    urls: list[str] = []
+    for offset in range(0, len(samples), per_sheet):
+        sheet = np.full((rows * cell_height, columns * cell_width, 3), 250, dtype=np.uint8)
+        for local_index, (timestamp, frame) in enumerate(samples[offset:offset + per_sheet]):
+            resized = cv2.resize(frame, (cell_width, cell_height), interpolation=cv2.INTER_AREA)
+            label = f"{timestamp:06.1f}s"
+            cv2.rectangle(resized, (0, 0), (105, 28), (0, 0, 0), thickness=-1)
+            cv2.putText(resized, label, (6, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+            row, column = divmod(local_index, columns)
+            y, x = row * cell_height, column * cell_width
+            sheet[y:y + cell_height, x:x + cell_width] = resized
+        encoded_ok, encoded = cv2.imencode(".jpg", sheet, [int(cv2.IMWRITE_JPEG_QUALITY), 88])
+        if encoded_ok:
+            urls.append(f"data:image/jpeg;base64,{base64.b64encode(encoded.tobytes()).decode('utf-8')}")
+    if not urls:
+        raise ValueError(f"Could not build contact sheets from video: {video_path}")
+    return urls
+
+
+def _video_feedback_content(
+    prompt: str,
+    video_path: str,
+    image_path: str | None = None,
+    sample_timestamps: list[float] | None = None,
+) -> list[dict]:
+    frame_urls = _video_contact_sheet_data_urls(video_path, extra_timestamps=sample_timestamps)
+    content = [
+        {
+            "type": "text",
+            "text": (
+                f"{prompt}\n\n"
+                "The following images are chronological contact sheets sampled every second, "
+                "including the first and final frames. Read timestamps left-to-right and top-to-bottom. "
+                "Evaluate every visible state, including transient overlap and stale elements."
+            ),
+        }
+    ]
+    content.extend(
+        {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}}
+        for data_url in frame_urls
+    )
+    if image_path is not None:
+        content.append(
+            {"type": "image_url", "image_url": {"url": _image_data_url(image_path), "detail": "high"}}
+        )
+    return content
 
 
 def generate_log_id():
@@ -173,7 +331,7 @@ def request_claude_token(prompt, log_id=None, max_tokens=10000, max_retries=3):
 
     return None, usage_info
 
-def request_gemini_with_video(prompt: str, video_path: str, log_id=None, max_tokens: int = 10000, max_retries: int = 10):
+def request_gemini_with_video(prompt: str, video_path: str, log_id=None, max_tokens: int = 10000, max_retries: int = 3):
     """
     Makes a multimodal request to the Gemini model using video + text via OpenAI-compatible proxy.
     """
@@ -187,6 +345,7 @@ def request_gemini_with_video(prompt: str, video_path: str, log_id=None, max_tok
         base_url=base_url,
         api_key=api_key,
         timeout=600.0,
+        max_retries=0,
     )
 
     if log_id is None:
@@ -194,15 +353,7 @@ def request_gemini_with_video(prompt: str, video_path: str, log_id=None, max_tok
 
     extra_headers = {"X-TT-LOGID": log_id}
 
-    # Load and base64-encode video
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"Video not found: {video_path}")
-
-    with open(video_path, "rb") as f:
-        video_bytes = f.read()
-
-    video_base64 = base64.b64encode(video_bytes).decode("utf-8")
-    data_url = f"data:video/mp4;base64,{video_base64}"
+    content = _video_feedback_content(prompt, video_path)
 
     retry_count = 0
     while retry_count < max_retries:
@@ -212,10 +363,7 @@ def request_gemini_with_video(prompt: str, video_path: str, log_id=None, max_tok
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}, "media_type": "video/mp4"},
-                        ],
+                        "content": content,
                     }
                 ],
                 max_tokens=max_tokens,
@@ -233,7 +381,13 @@ def request_gemini_with_video(prompt: str, video_path: str, log_id=None, max_tok
 
 
 def request_gemini_video_img(
-    prompt: str, video_path: str, image_path: str, log_id=None, max_tokens: int = 10000, max_retries: int = 10
+    prompt: str,
+    video_path: str,
+    image_path: str,
+    log_id=None,
+    max_tokens: int = 10000,
+    max_retries: int = 3,
+    sample_timestamps: list[float] | None = None,
 ):
     """
     Makes a multimodal request to the Gemini model using video & ref img + text via OpenAI-compatible proxy.
@@ -248,6 +402,7 @@ def request_gemini_video_img(
         base_url=base_url,
         api_key=api_key,
         timeout=600.0,
+        max_retries=0,
     )
 
     if log_id is None:
@@ -255,19 +410,7 @@ def request_gemini_video_img(
 
     extra_headers = {"X-TT-LOGID": log_id}
 
-    # Load and base64-encode video
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"Video not found: {video_path}")
-    with open(video_path, "rb") as f:
-        video_bytes = f.read()
-    video_base64 = base64.b64encode(video_bytes).decode("utf-8")
-    video_data_url = f"data:video/mp4;base64,{video_base64}"
-
-    if not os.path.isfile(image_path):
-        raise FileNotFoundError(f"Image file not found: {image_path}")
-    with open(image_path, "rb") as image_file:
-        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
-    image_data_url = f"data:image/png;base64,{base64_image}"
+    content = _video_feedback_content(prompt, video_path, image_path, sample_timestamps)
 
     retry_count = 0
     while retry_count < max_retries:
@@ -277,19 +420,7 @@ def request_gemini_video_img(
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": video_data_url, "detail": "high"},
-                                "media_type": "video/mp4",
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": image_data_url, "detail": "high"},
-                                "media_type": "image/png",
-                            },
-                        ],
+                        "content": content,
                     }
                 ],
                 max_tokens=max_tokens,
@@ -308,7 +439,13 @@ def request_gemini_video_img(
 
 
 def request_gemini_video_img_token(
-    prompt: str, video_path: str, image_path: str, log_id=None, max_tokens: int = 10000, max_retries: int = 10
+    prompt: str,
+    video_path: str,
+    image_path: str,
+    log_id=None,
+    max_tokens: int = 10000,
+    max_retries: int = 3,
+    sample_timestamps: list[float] | None = None,
 ):
     """
     Makes a multimodal request to the Gemini model using video & ref img + text (Returns Token Usage).
@@ -323,6 +460,7 @@ def request_gemini_video_img_token(
         base_url=base_url,
         api_key=api_key,
         timeout=600.0,
+        max_retries=0,
     )
 
     if log_id is None:
@@ -332,19 +470,7 @@ def request_gemini_video_img_token(
 
     usage_info = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-    # Load and base64-encode video
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"Video not found: {video_path}")
-    with open(video_path, "rb") as f:
-        video_bytes = f.read()
-    video_base64 = base64.b64encode(video_bytes).decode("utf-8")
-    video_data_url = f"data:video/mp4;base64,{video_base64}"
-
-    if not os.path.isfile(image_path):
-        raise FileNotFoundError(f"Image file not found: {image_path}")
-    with open(image_path, "rb") as image_file:
-        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
-    image_data_url = f"data:image/png;base64,{base64_image}"
+    content = _video_feedback_content(prompt, video_path, image_path, sample_timestamps)
 
     retry_count = 0
     while retry_count < max_retries:
@@ -354,19 +480,7 @@ def request_gemini_video_img_token(
                 messages=[
                     {
                         "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": video_data_url, "detail": "high"},
-                                "media_type": "video/mp4",
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": image_data_url, "detail": "high"},
-                                "media_type": "image/png",
-                            },
-                        ],
+                        "content": content,
                     }
                 ],
                 max_tokens=max_tokens,
@@ -795,20 +909,22 @@ def request_gpt5(prompt, log_id=None, max_tokens=1000, max_retries=10):
             )
             time.sleep(delay)
 
-def request_gpt5_token(prompt, log_id=None, max_tokens=1000, max_retries=10):
-    """
-    Makes a request to the gpt-5 model via standard OpenAI client.
-    """
-    # 1. 读取配置
+def _request_gpt5_token_with_model(
+    prompt,
+    model_name,
+    log_id=None,
+    max_tokens=1000,
+    max_retries=3,
+):
     base_url = cfg("gpt5", "base_url")
     ak = cfg("gpt5", "api_key")
-    model_name = cfg("gpt5", "model")
-
-    # 2. ✅ 修正点：标准 OpenAI 客户端使用 base_url，而不是 azure_endpoint
     client = OpenAI(
-        base_url=base_url,  # 👈 注意这里改成了 base_url
+        base_url=base_url,
         api_key=ak,
-        timeout=600.0,      # 设置 10 分钟超时
+        timeout=600.0,
+        # Avoid two hidden five-minute SDK retries inside every application
+        # retry. The outer loop below owns the retry budget.
+        max_retries=0,
     )
 
     if log_id is None:
@@ -820,18 +936,34 @@ def request_gpt5_token(prompt, log_id=None, max_tokens=1000, max_retries=10):
     retry_count = 0
     while retry_count < max_retries:
         try:
-            completion = client.chat.completions.create(
+            stream = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=max_tokens,
                 extra_headers=extra_headers,
-                timeout=300.0
+                timeout=600.0,
+                stream=True,
             )
-
-            if completion.usage:
-                usage_info["prompt_tokens"] = completion.usage.prompt_tokens
-                usage_info["completion_tokens"] = completion.usage.completion_tokens
-                usage_info["total_tokens"] = completion.usage.total_tokens
+            content_parts = []
+            for chunk in stream:
+                choices = getattr(chunk, "choices", None) or []
+                if choices:
+                    delta = getattr(choices[0], "delta", None)
+                    content = getattr(delta, "content", None) if delta is not None else None
+                    if content:
+                        content_parts.append(content)
+                chunk_usage = getattr(chunk, "usage", None)
+                if chunk_usage:
+                    usage_info["prompt_tokens"] = getattr(chunk_usage, "prompt_tokens", 0) or 0
+                    usage_info["completion_tokens"] = getattr(chunk_usage, "completion_tokens", 0) or 0
+                    usage_info["total_tokens"] = getattr(chunk_usage, "total_tokens", 0) or 0
+            content = "".join(content_parts).strip()
+            if not content:
+                raise ValueError("GPT stream completed without content")
+            completion = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                usage=None,
+            )
             return completion, usage_info
 
         except Exception as e:
@@ -846,6 +978,28 @@ def request_gpt5_token(prompt, log_id=None, max_tokens=1000, max_retries=10):
             )
             time.sleep(delay)
     return None, usage_info
+
+
+def request_gpt5_token(prompt, log_id=None, max_tokens=1000, max_retries=3):
+    """Use the GPT code/authoring model (Sol by default)."""
+    return _request_gpt5_token_with_model(
+        prompt=prompt,
+        model_name=os.getenv("CODE_MODEL") or cfg("gpt5", "model"),
+        log_id=log_id,
+        max_tokens=max_tokens,
+        max_retries=max_retries,
+    )
+
+
+def request_gpt5_logic_token(prompt, log_id=None, max_tokens=12000, max_retries=3):
+    """Use the GPT logic/planning model (Terra by default)."""
+    return _request_gpt5_token_with_model(
+        prompt=prompt,
+        model_name=os.getenv("LOGIC_MODEL") or cfg("gpt5", "model"),
+        log_id=log_id,
+        max_tokens=max_tokens,
+        max_retries=max_retries,
+    )
 
 def request_gpt5_img(prompt, image_path=None, log_id=None, max_tokens=1000, max_retries=10):
     """
