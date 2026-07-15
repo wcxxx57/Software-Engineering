@@ -1,0 +1,15 @@
+# Sibling sub-repos cloned via `just bootstrap` — each has its own .git
+zhiying-infra/
+zhiying-backend/
+zhiying-mocks/
+zhiying-frontend/
+zhiying-ui/
+
+# Local secrets for compose (only .env.example is checked in)
+.env
+
+# OS / editor cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/

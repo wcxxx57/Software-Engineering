@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+README.md
+AGENTS.md
+CLAUDE.md
+PROGRESS.md
+Dockerfile
+.dockerignore
+npm-debug.log
+.DS_Store

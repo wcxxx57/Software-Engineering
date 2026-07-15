@@ -1,0 +1,21 @@
+# 仓库根目录本地配置
+/.env
+/.env.local
+
+# 旧仓库元数据、单仓库导入用临时 Git 元数据与本地 pnpm 缓存
+/.git/
+/.monorepo-git/
+/.pnpm-store/
+
+# 操作系统与编辑器文件
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 通用日志和临时文件
+*.log
+*.tmp
+
+# 各子项目的构建产物由子目录 .gitignore 继续管理

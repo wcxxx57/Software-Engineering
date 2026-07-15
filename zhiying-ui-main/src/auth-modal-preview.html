@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AuthModal — 登录/注册拦截层 · AI编程学习助手</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- React 18 CDN (stable UMD build) -->
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <!-- Babel Standalone for JSX -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
+
+    <link rel="stylesheet" href="variables.css" />
+
+<style>
+    /* =============================================
+       N2W Design System — CSS Tokens
+       ============================================= */
+        :root {
+      --blue: #0085FF;
+    }
+
+    /* =============================================
+       Global Reset
+       ============================================= */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      color: var(--text-primary);
+      background-color: var(--bg-canvas);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* =============================================
+       Animations
+       ============================================= */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(24px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+      20%, 40%, 60%, 80% { transform: translateX(4px); }
+    }
+
+    @keyframes float1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(-20px, 15px) scale(1.05); }
+    }
+
+    @keyframes float2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(15px, -20px) scale(1.08); }
+    }
+
+    @keyframes float3 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(-10px, -15px) scale(1.03); }
+    }
+
+    @keyframes pulse-glow-blue {
+      0%, 100% { box-shadow: 0 0 20px rgba(var(--blue-light-rgb), 0.2); }
+      50% { box-shadow: 0 0 40px rgba(var(--blue-light-rgb), 0.45); }
+    }
+
+    @keyframes pulse-glow-yellow {
+      0%, 100% { box-shadow: 0 0 20px rgba(var(--yellow-rgb), 0.25); }
+      50% { box-shadow: 0 0 40px rgba(var(--yellow-rgb), 0.5); }
+    }
+
+    @keyframes spinner {
+      to { transform: rotate(360deg); }
+    }
+
+    .shake-anim {
+      animation: shake 0.4s ease;
+    }
+
+    /* =============================================
+       Overlay
+       ============================================= */
+    .auth-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* N2W 三色渐变：橙 → 黄 → 蓝（增强可见度） */
+      background: linear-gradient(135deg, 
+        rgba(var(--orange-highlight-rgb), 0.35) 0%,      /* N2W 橙 */
+        rgba(var(--yellow-rgb), 0.4) 35%,     /* N2W 黄 */
+        rgba(var(--yellow-soft-rgb), 0.38) 55%,     /* N2W 黄浅 - 过渡 */
+        rgba(var(--blue-glow-rgb), 0.3) 100%);   /* N2W 蓝 */
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 9999;
+      animation: fadeIn 0.5s ease;
+      overflow: hidden;
+    }
+
+    /* Decorative Blobs */
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+    }
+
+    .blob-orange {
+      width: 450px;
+      height: 450px;
+      background: radial-gradient(circle, rgba(var(--orange-rgb), 0.18) 0%, transparent 70%);
+      top: -120px;
+      right: -80px;
+      animation: float1 8s ease-in-out infinite;
+    }
+
+    .blob-blue {
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(var(--blue-light-rgb), 0.15) 0%, transparent 70%);
+      bottom: -100px;
+      left: -60px;
+      animation: float2 10s ease-in-out infinite;
+    }
+
+    .blob-yellow {
+      width: 420px;
+      height: 420px;
+      /* 增大黄色 blob 可见度 */
+      background: radial-gradient(circle, rgba(var(--yellow-rgb), 0.22) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation: float3 12s ease-in-out infinite;
+    }
+
+    /* =============================================
+       Card
+       ============================================= */
+    .auth-card {
+      position: relative;
+      width: min(480px, calc(100vw - 48px));
+      border-radius: 24px;
+      background: rgba(var(--white-rgb), 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+      animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    }
+
+    .auth-card:hover {
+      box-shadow: var(--shadow-hover);
+    }
+
+    /* Top accent gradient bar */
+    .accent-bar {
+      height: 4px;
+      background: linear-gradient(90deg, var(--orange) 0%, var(--yellow) 50%, var(--blue-light) 100%);
+      width: 100%;
+    }
+
+    .card-content {
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* =============================================
+       Brand Icon
+       ============================================= */
+    .brand-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      /* 稍微更蓝一点的底色 */
+      background: linear-gradient(135deg, var(--blue-lighter) 0%, var(--blue-light) 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      box-shadow: var(--shadow-soft);
+      margin: 0 auto;
+      animation: pulse-glow-blue 3s ease-in-out infinite;
+    }
+
+    /* =============================================
+       Header
+       ============================================= */
+    .auth-header {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .auth-title {
+      font-size: 26px;
+      font-weight: 800;
+      /* 标题加黑一个度 */
+      color: var(--brown-deep);
+      letter-spacing: -0.5px;
+    }
+
+    .auth-subtitle {
+      font-size: 15px;
+      /* 副标题加黑一个度 */
+      color: var(--brown-dark);
+      font-weight: 400;
+      line-height: 1.5;
+    }
+
+    /* =============================================
+       Tab Switcher
+       ============================================= */
+    .tab-container {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      border-radius: 9999px;
+      background: var(--bg-canvas);
+      box-shadow: var(--shadow-inner);
+    }
+
+    .tab-slider {
+      position: absolute;
+      top: 4px;
+      width: calc(50% - 6px);
+      height: calc(100% - 8px);
+      border-radius: 9999px;
+      background: linear-gradient(135deg, var(--orange-light) 0%, var(--orange) 100%);
+      box-shadow: 0 2px 8px rgba(var(--orange-rgb), 0.35);
+      transition: left 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .tab-slider[data-mode="login"] {
+      left: 4px;
+    }
+
+    .tab-slider[data-mode="register"] {
+      left: calc(50% + 2px);
+    }
+
+    .tab-btn {
+      position: relative;
+      z-index: 1;
+      height: 42px;
+      border-radius: 9999px;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 250ms ease;
+    }
+
+    .tab-btn[data-active="true"] {
+      color: var(--white);
+    }
+
+    .tab-btn[data-active="false"] {
+      /* 文字加深 */
+      color: var(--brown-medium);
+    }
+
+    .tab-btn:hover[data-active="false"] {
+      color: var(--brown-dark);
+    }
+
+    /* =============================================
+       Error Message
+       ============================================= */
+    .error-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 14px;
+      padding: 12px 16px;
+      background: var(--warn-bg);
+      color: var(--warn-text);
+      font-size: 14px;
+      font-weight: 500;
+      border-left: 3px solid var(--warn-text);
+      line-height: 1.4;
+    }
+
+    .error-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    /* =============================================
+       Form Fields
+       ============================================= */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 16px;
+      font-size: 18px;
+      /* 图标颜色加深 */
+      color: var(--brown-medium);
+      pointer-events: none;
+      transition: color 200ms ease;
+      z-index: 1;
+    }
+
+    .auth-input {
+      width: 100%;
+      height: 52px;
+      border-radius: 16px;
+      border: 2px solid transparent;
+      padding: 0 48px 0 48px;
+      background: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      box-shadow: var(--shadow-inner);
+      transition: border-color 200ms ease, box-shadow 200ms ease;
+      outline: none;
+    }
+
+    .auth-input::placeholder {
+      /* 占位符颜色加深 */
+      color: var(--brown-medium);
+      font-weight: 400;
+    }
+
+    .auth-input:focus {
+      /* 使用黄色边框，让 N2W 黄色更突出 */
+      border-color: var(--yellow);
+      box-shadow: var(--shadow-inner), 0 0 0 3px rgba(var(--yellow-rgb), 0.18);
+    }
+
+    .auth-input:focus + .input-icon-left,
+    .input-wrapper:focus-within .input-icon {
+      color: var(--brown-gold);
+    }
+
+    /* Password toggle */
+    .pwd-toggle {
+      position: absolute;
+      right: 14px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 18px;
+      /* 眼睛图标颜色加深 */
+      color: var(--brown-medium);
+      padding: 4px;
+      border-radius: 8px;
+      transition: color 200ms ease, background 200ms ease;
+      z-index: 1;
+    }
+
+    .pwd-toggle:hover {
+      color: var(--brown-dark);
+      background: rgba(var(--border-strong-rgb), 0.1);
+    }
+
+    /* =============================================
+       Submit Button
+       ============================================= */
+    .submit-btn {
+      width: 100%;
+      height: 52px;
+      border: none;
+      border-radius: 9999px;
+      /* 方案A：N2W 黄→橙暖色系渐变 */
+      background: linear-gradient(135deg, var(--yellow) 0%, var(--orange) 100%);
+      /* 文字颜色稍微调浅 */
+      color: var(--brown-dark);
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(var(--orange-rgb), 0.35);
+      transition: all 220ms ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, var(--orange-light) 0%, var(--orange) 100%);
+      box-shadow: 0 6px 24px rgba(var(--orange-rgb), 0.45);
+      transform: translateY(-1px);
+    }
+
+    .submit-btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(var(--orange-rgb), 0.25);
+      background: linear-gradient(135deg, var(--orange-light) 0%, var(--orange) 100%);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(var(--white-rgb), 0.3);
+      border-top-color: var(--white);
+      border-radius: 50%;
+      animation: spinner 0.7s linear infinite;
+    }
+
+    /* =============================================
+       Footer / Mode Switch
+       ============================================= */
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--brown-light), transparent);
+      opacity: 0.3;
+    }
+
+    .divider-text {
+      font-size: 13px;
+      /* 分割线文字加深 */
+      color: var(--brown-medium);
+      white-space: nowrap;
+    }
+
+    .auth-footer {
+      text-align: center;
+      font-size: 14px;
+      /* 底部文字加深 */
+      color: var(--brown-dark);
+    }
+
+    .auth-footer a {
+      color: var(--link-cta);
+      text-decoration: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color 200ms ease;
+    }
+
+    .auth-footer a:hover {
+      color: var(--link-hover);
+      text-decoration: underline;
+    }
+
+    /* =============================================
+       Password Strength Indicator (Register mode)
+       ============================================= */
+    .strength-bar {
+      display: flex;
+      gap: 4px;
+      margin-top: -8px;
+    }
+
+    .strength-segment {
+      flex: 1;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(var(--border-strong-rgb), 0.2);
+      transition: background 300ms ease;
+    }
+
+    .strength-segment.active-weak {
+      background: var(--warn-text);
+    }
+
+    .strength-segment.active-medium {
+      background: var(--orange);
+    }
+
+    .strength-segment.active-strong {
+      background: var(--brown-gold);
+    }
+
+    .strength-text {
+      font-size: 12px;
+      font-weight: 500;
+      margin-top: -4px;
+      transition: color 300ms ease;
+    }
+
+    /* =============================================
+       Responsive
+       ============================================= */
+    @media (max-width: 540px) {
+      .card-content {
+        padding: 28px 24px;
+        gap: 20px;
+      }
+
+      .auth-title {
+        font-size: 22px;
+      }
+
+      .brand-icon {
+        width: 52px;
+        height: 52px;
+        font-size: 24px;
+        border-radius: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useCallback, useEffect, useRef } = React;
+
+    /* =============================================
+       Password Strength Calculator
+       ============================================= */
+    function getPasswordStrength(pwd) {
+      if (!pwd) return { level: 0, text: '', color: '' };
+      let score = 0;
+      if (pwd.length >= 6) score++;
+      if (pwd.length >= 10) score++;
+      if (/[A-Z]/.test(pwd)) score++;
+      if (/[0-9]/.test(pwd)) score++;
+      if (/[^A-Za-z0-9]/.test(pwd)) score++;
+
+      if (score <= 2) return { level: 1, text: '弱', color: 'var(--password-weak)' };
+      if (score <= 3) return { level: 2, text: '中等', color: 'var(--password-medium)' };
+      return { level: 3, text: '强', color: 'var(--password-strong)' };
+    }
+
+    /* =============================================
+       AuthModal Component
+       ============================================= */
+    function AuthModal() {
+      const [mode, setMode] = useState('login');
+      const[username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const[confirmPwd, setConfirmPwd] = useState('');
+      const [showPassword, setShowPassword] = useState(false);
+      const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+      const [errorMessage, setErrorMessage] = useState(null);
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [shakeError, setShakeError] = useState(false);
+      const errorRef = useRef(null);
+
+      const title = useMemo(
+        () => (mode === 'login' ? '欢迎回来，继续你的学习旅程' : '创建账号，开启智能学习之旅'),
+        [mode]
+      );
+
+      const pwdStrength = useMemo(
+        () => (mode === 'register' ? getPasswordStrength(password) : { level: 0 }),
+        [password, mode]
+      );
+
+      const switchMode = useCallback((newMode) => {
+        setMode(newMode);
+        setErrorMessage(null);
+        setConfirmPwd('');
+        setShowPassword(false);
+        setShowConfirmPwd(false);
+      },[]);
+
+      const triggerError = useCallback((msg) => {
+        setErrorMessage(msg);
+        setShakeError(true);
+        setTimeout(() => setShakeError(false), 400);
+      },[]);
+
+      const handleSubmit = useCallback(async () => {
+        if (!username.trim() || !password.trim()) {
+          triggerError('用户名和密码不能为空');
+          return;
+        }
+
+        if (mode === 'register') {
+          if (password.length < 6) {
+            triggerError('密码长度至少为 6 位');
+            return;
+          }
+          if (password !== confirmPwd) {
+            triggerError('两次密码输入不一致');
+            return;
+          }
+        }
+
+        setIsSubmitting(true);
+        setErrorMessage(null);
+
+        // Simulate API call
+        await new Promise((resolve) => setTimeout(resolve, 1800));
+
+        if (mode === 'login') {
+          // Simulated success
+          alert('✅ 登录成功！（这是前端演示，无需后端）');
+        } else {
+          alert('✅ 注册成功！请登录（这是前端演示，无需后端）');
+          switchMode('login');
+        }
+        setIsSubmitting(false);
+      },[username, password, confirmPwd, mode, triggerError, switchMode]);
+
+      // Enter key submit
+      const handleKeyDown = useCallback((e) => {
+        if (e.key === 'Enter' && !isSubmitting) {
+          handleSubmit();
+        }
+      }, [handleSubmit, isSubmitting]);
+
+      return (
+        <div className="auth-overlay">
+          {/* Decorative Blobs */}
+          <div className="blob blob-orange" />
+          <div className="blob blob-blue" />
+          <div className="blob blob-yellow" />
+
+          {/* Card */}
+          <div className="auth-card">
+            {/* Top accent gradient bar — N2W三色骨架 */}
+            <div className="accent-bar" />
+
+            <div className="card-content">
+              {/* Brand Icon */}
+              <div className="brand-icon">🔑</div>
+
+              {/* Header */}
+              <div className="auth-header">
+                <h2 className="auth-title">智映通学</h2>
+                <p className="auth-subtitle">{title}</p>
+              </div>
+
+              {/* Tab Switcher */}
+              <div className="tab-container">
+                <div className="tab-slider" data-mode={mode} />
+                <button
+                  type="button"
+                  className="tab-btn"
+                  data-active={mode === 'login' ? 'true' : 'false'}
+                  onClick={() => switchMode('login')}
+                >
+                  登录
+                </button>
+                <button
+                  type="button"
+                  className="tab-btn"
+                  data-active={mode === 'register' ? 'true' : 'false'}
+                  onClick={() => switchMode('register')}
+                >
+                  注册
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {errorMessage && (
+                <div
+                  ref={errorRef}
+                  className={`error-box ${shakeError ? 'shake-anim' : ''}`}
+                >
+                  <span className="error-icon">⚠️</span>
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              {/* Form Fields */}
+              <div className="form-group">
+                {/* Username */}
+                <div className="input-wrapper">
+                  <span className="input-icon" style={{ left: 16 }}>🪪</span>
+                  <input
+                    className="auth-input"
+                    type="text"
+                    placeholder="请输入用户名"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                </div>
+
+                {/* Password */}
+                <div className="input-wrapper">
+                  <span className="input-icon" style={{ left: 16 }}>🔒</span>
+                  <input
+                    className="auth-input"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="请输入密码"
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    className="pwd-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    tabIndex={-1}
+                    title={showPassword ? '隐藏密码' : '显示密码'}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
+
+                {/* Password Strength (Register only) */}
+                {mode === 'register' && password.length > 0 && (
+                  <>
+                    <div className="strength-bar">
+                      {/* 根据强度级别，所有亮起的段都使用同一颜色 */}
+                      <div
+                        className="strength-segment"
+                        style={pwdStrength.level >= 1 ? { background: pwdStrength.color } : {}}
+                      />
+                      <div
+                        className="strength-segment"
+                        style={pwdStrength.level >= 2 ? { background: pwdStrength.color } : {}}
+                      />
+                      <div
+                        className="strength-segment"
+                        style={pwdStrength.level >= 3 ? { background: pwdStrength.color } : {}}
+                      />
+                    </div>
+                    <span className="strength-text" style={{ color: pwdStrength.color }}>
+                      密码强度：{pwdStrength.text}
+                    </span>
+                  </>
+                )}
+
+                {/* Confirm Password (Register only) */}
+                {mode === 'register' && (
+                  <div className="input-wrapper" style={{ 
+                    animation: 'fadeInUp 0.3s ease both',
+                  }}>
+                    <span className="input-icon" style={{ left: 16 }}>🔐</span>
+                    <input
+                      className="auth-input"
+                      type={showConfirmPwd ? 'text' : 'password'}
+                      placeholder="请再次输入密码"
+                      autoComplete="new-password"
+                      value={confirmPwd}
+                      onChange={(e) => setConfirmPwd(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                    />
+                    <button
+                      type="button"
+                      className="pwd-toggle"
+                      onClick={() => setShowConfirmPwd(!showConfirmPwd)}
+                      tabIndex={-1}
+                      title={showConfirmPwd ? '隐藏密码' : '显示密码'}
+                    >
+                      {showConfirmPwd ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="button"
+                className="submit-btn"
+                disabled={isSubmitting}
+                onClick={handleSubmit}
+              >
+                {isSubmitting && <div className="btn-spinner" />}
+                {isSubmitting
+                  ? '处理中...'
+                  : mode === 'login'
+                    ? '🚀 立即登录'
+                    : '🚀 立即注册'}
+              </button>
+
+              {/* Divider */}
+              <div className="auth-divider">
+                <span className="divider-text">or</span>
+              </div>
+
+              {/* Footer: Switch Mode */}
+              <div className="auth-footer">
+                {mode === 'login' ? (
+                  <span>
+                    还没有账号？{' '}
+                    <a onClick={() => switchMode('register')}>立即注册</a>
+                  </span>
+                ) : (
+                  <span>
+                    已有账号？{' '}
+                    <a onClick={() => switchMode('login')}>立即登录</a>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /* =============================================
+       Render
+       ============================================= */
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AuthModal />);
+  </script>
+</body>
+</html>

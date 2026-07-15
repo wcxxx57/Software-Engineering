@@ -1,0 +1,155 @@
+name: zhiying
+
+# 单机生产/演示部署编排。
+# 业务镜像直接从本单仓库的三个源码目录构建；公网只通过 Nginx Proxy Manager 进入。
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: zhiying-npm
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # 管理台仅监听本机，远程维护请使用 SSH 隧道。
+      - "127.0.0.1:81:81"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
+
+  postgres:
+    image: postgres:16
+    container_name: zhiying-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: zhiying-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  backend:
+    build:
+      context: ./zhiying-backend-main
+    image: zhiying/backend:local
+    container_name: zhiying-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 9000
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_DAYS: ${JWT_TTL_DAYS:-30}
+      CORS_ALLOW_ORIGIN: https://${PUBLIC_HOST}
+      REGISTER_BONUS_DIAMONDS: ${REGISTER_BONUS_DIAMONDS:-80}
+      CHECKIN_REWARD_SEQUENCE: ${CHECKIN_REWARD_SEQUENCE:-1,2,3,4,6,8,10}
+      CHECKIN_MAKEUP_GOLD_COST_PER_DAY: ${CHECKIN_MAKEUP_GOLD_COST_PER_DAY:-50}
+      CHECKIN_MAKEUP_DIAMOND_COST: ${CHECKIN_MAKEUP_DIAMOND_COST:-1}
+      KNOWLEDGE_VIDEO_DIAMOND_COST: ${KNOWLEDGE_VIDEO_DIAMOND_COST:-5}
+      CODE_VIDEO_DIAMOND_COST: ${CODE_VIDEO_DIAMOND_COST:-5}
+      INTERACTIVE_HTML_GOLD_COST: ${INTERACTIVE_HTML_GOLD_COST:-10}
+      KNOWLEDGE_EXPLANATION_GOLD_COST: ${KNOWLEDGE_EXPLANATION_GOLD_COST:-10}
+      KNOWLEDGE_VIDEO_EXCHANGE: zhiying.knowledge_video
+      CODE_VIDEO_EXCHANGE: zhiying.code_video
+      INTERACTIVE_HTML_EXCHANGE: zhiying.interactive_html
+      KNOWLEDGE_EXPLANATION_EXCHANGE: zhiying.knowledge_explanation
+      KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
+      CODE_VIDEO_API_KEY: ${CODE_VIDEO_API_KEY}
+      INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
+      KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
+      STUDY_SUBJECT_DIAMOND_COSTS: ${STUDY_SUBJECT_DIAMOND_COSTS:-3:10,7:20,15:40,30:80}
+      PRETEST_EXCHANGE: zhiying.pretest
+      PRETEST_API_KEY: ${PRETEST_API_KEY}
+      PLAN_EXCHANGE: zhiying.plan
+      PLAN_API_KEY: ${PLAN_API_KEY}
+      QUIZ_EXCHANGE: zhiying.quiz
+      QUIZ_API_KEY: ${QUIZ_API_KEY}
+      STUDY_QUIZ_FREE_LIMIT_PER_TASK: ${STUDY_QUIZ_FREE_LIMIT_PER_TASK:-3}
+      STUDY_QUIZ_EXTRA_GOLD_COST: ${STUDY_QUIZ_EXTRA_GOLD_COST:-20}
+      RECHARGE_API_KEY: ${RECHARGE_API_KEY}
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_REGION: ${STORAGE_REGION}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
+      STORAGE_PUBLIC_BASE: ${STORAGE_PUBLIC_BASE}
+
+  mocks:
+    build:
+      context: ./zhiying-mock-main
+    image: zhiying/mocks:local
+    container_name: zhiying-mocks
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+      BACKEND_BASE_URL: http://backend:9000
+      MOCK_GENERATING_DELAY_MS: ${MOCK_GENERATING_DELAY_MS:-500}
+      MOCK_FINISHED_DELAY_MS: ${MOCK_FINISHED_DELAY_MS:-3000}
+      MOCK_FAILURE_RATE: ${MOCK_FAILURE_RATE:-0.0}
+      MOCK_PREFETCH: ${MOCK_PREFETCH:-16}
+      MOCK_VIDEO_OBJECT_KEY: ${MOCK_VIDEO_OBJECT_KEY:-knowledge-videos/mock-placeholder.mp4}
+      MOCK_CODE_VIDEO_OBJECT_KEY: ${MOCK_CODE_VIDEO_OBJECT_KEY:-code-videos/mock-placeholder.mp4}
+      MOCK_HTML_OBJECT_KEY: ${MOCK_HTML_OBJECT_KEY:-interactive-html/mock-placeholder/index.html}
+      MOCK_PRETEST_PROBLEM_COUNT: ${MOCK_PRETEST_PROBLEM_COUNT:-10}
+      MOCK_QUIZ_PROBLEM_COUNT: ${MOCK_QUIZ_PROBLEM_COUNT:-5}
+      MOCK_PLAN_TASKS_PER_STAGE: ${MOCK_PLAN_TASKS_PER_STAGE:-3}
+      KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
+      CODE_VIDEO_API_KEY: ${CODE_VIDEO_API_KEY}
+      INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
+      KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
+      PRETEST_API_KEY: ${PRETEST_API_KEY}
+      PLAN_API_KEY: ${PLAN_API_KEY}
+      QUIZ_API_KEY: ${QUIZ_API_KEY}
+
+  frontend:
+    build:
+      context: ./zhiying-frontend-main
+    image: zhiying/frontend:local
+    container_name: zhiying-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      BACKEND_API_URL: http://backend:9000
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  npm-data:
+  npm-letsencrypt:
+

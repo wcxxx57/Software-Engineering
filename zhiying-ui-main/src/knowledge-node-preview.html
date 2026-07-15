@@ -1,0 +1,3584 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knowledge Node · AI个性化学习助手</title>
+
+    <!-- Google Fonts: Inter & Fira Code -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+    <link rel="stylesheet" href="variables.css" />
+
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          "Inter",
+          -apple-system,
+          BlinkMacSystemFont,
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+        color: var(--text-primary);
+        background-color: var(--bg-canvas);
+        overflow: hidden;
+      }
+
+      /* Scrollbar Styling — 与 dashboard 一致 */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--code-border);
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--border-strong);
+      }
+
+      /* === 基础布局 === */
+      .app-viewport {
+        display: flex;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .left-scroll-area {
+        flex: 1;
+        overflow-y: auto;
+        padding: 40px 60px 100px 80px;
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+        scroll-behavior: smooth;
+      }
+
+      .right-sidebar-fixed {
+        flex: 0 0 30vw;
+        min-width: 320px;
+        max-width: 450px;
+        border-left: 2px solid rgba(var(--border-strong-rgb), 0.15);
+        display: flex;
+        flex-direction: column;
+        background: rgba(var(--surface-soft-rgb), 0.6);
+        backdrop-filter: blur(12px);
+      }
+
+      /* === 标题区域 === */
+      .header-section {
+        margin-top: 16px;
+      }
+
+      .chapter-badge {
+        display: inline-block;
+        padding: 4px 14px;
+        background: var(--blue-mist);
+        color: var(--blue);
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 12px;
+      }
+
+      .page-title {
+        font-size: 48px;
+        font-weight: 900;
+        margin-bottom: 16px;
+        background: linear-gradient(
+          135deg,
+          var(--brown-dark) 0%,
+          var(--orange) 80%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 0 4px 12px rgba(var(--brown-gold-rgb), 0.2);
+        display: flex;
+        align-items: center;
+        letter-spacing: -0.5px;
+        line-height: 1.15;
+      }
+
+      .typewriter-cursor {
+        color: var(--orange);
+        animation: blink 1s step-end infinite;
+        margin-left: 4px;
+        font-weight: 400;
+        -webkit-text-fill-color: var(--orange);
+        text-shadow: 0 0 10px rgba(var(--orange-rgb), 0.5);
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0;
+        }
+      }
+
+      .page-subtitle {
+        color: var(--brown-medium);
+        font-size: 16px;
+        line-height: 1.7;
+        font-weight: 500;
+        max-width: 720px;
+      }
+
+      /* === 通用卡片 === */
+      .content-card {
+        border-radius: 24px;
+        padding: 40px;
+        background: rgba(var(--surface-soft-rgb), 0.7);
+        backdrop-filter: blur(8px);
+        box-shadow: var(--shadow-soft);
+        border: 1px solid rgba(var(--white-rgb), 0.4);
+        transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+      }
+      .content-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-hover);
+      }
+      .content-card.card-theme-blue {
+        overflow: visible;
+      }
+
+      .card-theme-yellow {
+        --theme-grad-start: var(--yellow-light);
+        --theme-grad-end: var(--orange-light);
+        --theme-grad-hover-start: var(--yellow);
+        --theme-grad-hover-end: var(--orange);
+        --theme-icon-color: var(--text-heading);
+        background: rgba(var(--yellow-light-rgb), 0.3);
+        border-color: var(--yellow-light);
+      }
+      .card-theme-purple {
+        --theme-grad-start: var(--purple-lighter);
+        --theme-grad-end: var(--purple-light);
+        --theme-grad-hover-start: var(--purple-light);
+        --theme-grad-hover-end: var(--purple);
+        --theme-icon-color: var(--purple);
+        background: rgba(var(--purple-mist-rgb), 0.9);
+        border-color: rgba(var(--purple-light-rgb), 0.9);
+      }
+      .card-theme-blue {
+        --theme-grad-start: var(--blue-lighter);
+        --theme-grad-end: var(--blue-light);
+        --theme-grad-hover-start: var(--blue-light);
+        --theme-grad-hover-end: var(--blue);
+        --theme-icon-color: var(--blue);
+        background: rgba(var(--blue-mist-rgb), 0.6);
+        border-color: rgba(var(--blue-light-rgb), 0.6);
+      }
+      .card-theme-green {
+        --theme-grad-start: var(--green-lighter);
+        --theme-grad-end: var(--green-light);
+        --theme-grad-hover-start: var(--green-light);
+        --theme-grad-hover-end: var(--green);
+        --theme-icon-color: var(--green);
+        background: rgba(var(--green-mist-rgb), 0.6);
+        border-color: rgba(var(--green-light-rgb), 0.6);
+      }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid rgba(var(--border-strong-rgb), 0.2);
+      }
+
+      .card-header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .card-header-left i {
+        color: inherit;
+        filter: drop-shadow(0 2px 4px rgba(var(--black-rgb), 0.1));
+      }
+
+      .card-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--text-primary);
+      }
+
+      .card-title-sub {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--brown-light);
+        margin-left: 10px;
+      }
+
+      /* === 小按钮 === */
+      .btn-outline-sm {
+        padding: 6px 16px;
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background:
+          linear-gradient(
+              rgba(var(--surface-soft-rgb), 0.95),
+              rgba(var(--surface-soft-rgb), 0.95)
+            )
+            padding-box,
+          linear-gradient(
+              135deg,
+              var(--theme-grad-start, var(--yellow-light)),
+              var(--theme-grad-end, var(--orange-light))
+            )
+            border-box;
+        backdrop-filter: blur(8px);
+        color: var(--brown-dark);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        box-shadow:
+          0 2px 6px rgba(var(--border-muted-rgb), 0.15),
+          0 1px 2px rgba(var(--border-strong-rgb), 0.1);
+      }
+      .btn-outline-sm:hover {
+        transform: translateY(-1px);
+        background:
+          linear-gradient(
+              rgba(var(--surface-soft-rgb), 0.95),
+              rgba(var(--surface-soft-rgb), 0.95)
+            )
+            padding-box,
+          linear-gradient(
+              135deg,
+              var(--theme-grad-hover-start, var(--yellow)),
+              var(--theme-grad-hover-end, var(--orange))
+            )
+            border-box;
+        box-shadow:
+          0 4px 10px rgba(var(--border-muted-rgb), 0.25),
+          0 2px 4px rgba(var(--border-strong-rgb), 0.15);
+      }
+      .btn-outline-sm i {
+        color: var(--theme-icon-color, var(--text-heading));
+      }
+
+      /* === 思维导图区域 === */
+      .mindmap-section {
+        border: 2px dashed rgba(var(--orange-soft-rgb), 0.4);
+        background: var(--yellow-mist);
+        position: relative;
+        overflow: hidden;
+        border-radius: 16px;
+        box-shadow: inset 0 2px 8px rgba(var(--yellow-rgb), 0.5);
+      }
+      .mindmap-section::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(
+          circle,
+          rgba(var(--border-muted-rgb), 0.4) 1px,
+          transparent 1px
+        );
+        background-size: 20px 20px;
+        z-index: 0;
+      }
+      .mindmap-section > * {
+        position: relative;
+        z-index: 1;
+      }
+
+      .mindmap-container {
+        width: 100%;
+        height: 500px;
+        border-radius: 16px;
+      }
+
+      /* === Markdown 深度解析 === */
+      .prose h3 {
+        color: var(--purple);
+        font-weight: 800;
+        font-size: 19px;
+        margin-top: 28px;
+        margin-bottom: 16px;
+        text-shadow: 0 2px 4px rgba(var(--purple-rgb), 0.2);
+      }
+      .prose p {
+        line-height: 1.8;
+        margin-bottom: 16px;
+        color: var(--brown-dark);
+        font-weight: 500;
+      }
+      .prose ul {
+        list-style: disc;
+        padding-left: 24px;
+        margin-bottom: 20px;
+      }
+      .prose ul li {
+        line-height: 1.8;
+        color: var(--brown-dark);
+        margin-bottom: 6px;
+        font-weight: 500;
+      }
+      .prose ul li strong {
+        color: var(--text-primary);
+      }
+
+      .inline-code {
+        padding: 2px 8px;
+        background: rgba(var(--purple-light-rgb), 0.4);
+        color: var(--code-string-alt);
+        border-radius: 6px;
+        font-family: "Fira Code", monospace;
+        font-size: 13px;
+        border: 1px solid rgba(var(--purple-rgb), 0.2);
+      }
+
+      .code-block {
+        background: rgba(var(--white-rgb), 0.6);
+        border-radius: 16px;
+        border: 1px solid rgba(var(--purple-rgb), 0.3);
+        padding: 20px;
+        margin: 16px 0 24px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: inset 0 2px 4px rgba(var(--purple-rgb), 0.1);
+      }
+      .code-block-lang {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: rgba(var(--purple-rgb), 0.2);
+        color: var(--code-string-alt);
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 0 0 0 10px;
+        font-family: "Fira Code", monospace;
+        font-weight: 800;
+      }
+      .code-block pre {
+        font-family: "Fira Code", monospace;
+        font-size: 13px;
+        color: var(--brown-dark);
+        overflow-x: auto;
+        padding-top: 8px;
+        line-height: 1.7;
+      }
+      .code-comment {
+        color: var(--code-comment);
+      }
+      .code-number {
+        color: var(--code-number);
+      }
+      .code-string {
+        color: var(--success-text);
+      }
+
+      .info-callout {
+        padding: 16px 20px;
+        background: rgba(var(--blue-sky-rgb), 0.4);
+        border: 1px solid rgba(var(--blue-light-rgb), 0.3);
+        border-radius: 16px;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .info-callout i {
+        color: var(--blue);
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .info-callout p {
+        font-size: 13px;
+        color: var(--blue);
+        line-height: 1.6;
+        margin: 0;
+        font-weight: 500;
+      }
+
+      /* === K2V 视频区域 === */
+      .video-placeholder {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: linear-gradient(
+          135deg,
+          var(--blue-deep-start),
+          var(--blue-deep-end)
+        );
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        box-shadow:
+          inset 4px 4px 12px rgba(var(--black-rgb), 0.4),
+          inset -4px -4px 12px rgba(var(--blue-light-rgb), 0.1);
+        border: 1px solid rgba(var(--blue-light-rgb), 0.3);
+      }
+      .video-placeholder::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(
+          circle at center,
+          rgba(var(--white-rgb), 0.08) 1px,
+          transparent 1px
+        );
+        background-size: 50px 50px;
+      }
+      .video-play-btn {
+        width: 72px;
+        height: 72px;
+        background: rgba(var(--white-rgb), 0.85);
+        backdrop-filter: blur(12px);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid rgba(var(--white-rgb), 0.9);
+        transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        box-shadow:
+          0 8px 24px rgba(var(--black-rgb), 0.4),
+          inset 0 4px 8px rgba(var(--white-rgb), 0.5);
+        z-index: 1;
+      }
+      .video-placeholder:hover .video-play-btn {
+        transform: scale(1.1);
+        background: rgba(var(--white-rgb), 0.95);
+        box-shadow:
+          0 12px 32px rgba(var(--blue-light-rgb), 0.6),
+          inset 0 4px 8px rgba(var(--white-rgb), 0.6);
+      }
+      .video-progress-bar {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 48px;
+        background: linear-gradient(
+          to top,
+          rgba(var(--black-rgb), 0.8),
+          transparent
+        );
+        display: flex;
+        align-items: flex-end;
+        padding: 0 16px 12px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      .video-placeholder:hover .video-progress-bar {
+        opacity: 1;
+      }
+      .video-progress-track {
+        width: 100%;
+        height: 4px;
+        background: rgba(var(--white-rgb), 0.2);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .video-progress-fill {
+        width: 33%;
+        height: 100%;
+        background: var(--blue-light);
+        box-shadow: 0 0 8px rgba(var(--blue-light-rgb), 0.8);
+      }
+
+      /* === 3D 沙盒区域 === */
+      .sandbox-placeholder {
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: radial-gradient(
+          circle at center,
+          rgba(var(--green-rgb), 0.2) 0%,
+          rgba(var(--green-lightest-rgb), 0.4) 100%
+        );
+        border-radius: 16px;
+        box-shadow:
+          inset 4px 4px 12px rgba(var(--green-rgb), 0.2),
+          inset -4px -4px 12px rgba(var(--white-rgb), 0.8);
+        border: 1px solid rgba(var(--green-light-rgb), 0.5);
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .sandbox-grid-bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 200%;
+        background-image:
+          linear-gradient(
+            to bottom,
+            transparent 49%,
+            rgba(var(--green-rgb), 0.3) 50%,
+            transparent 51%
+          ),
+          linear-gradient(
+            to right,
+            transparent 49%,
+            rgba(var(--green-rgb), 0.3) 50%,
+            transparent 51%
+          );
+        background-size: 40px 40px;
+        transform: perspective(500px) rotateX(60deg);
+        transform-origin: top;
+        opacity: 0.4;
+      }
+      .sandbox-content {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      .sandbox-icon {
+        animation: bounce 2s infinite;
+        color: var(--green);
+        filter: drop-shadow(0 2px 4px rgba(var(--green-rgb), 0.3));
+      }
+      @keyframes bounce {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-12px);
+        }
+      }
+      .sandbox-label {
+        color: var(--green);
+        font-weight: 800;
+        letter-spacing: 0.15em;
+        font-size: 13px;
+        text-transform: uppercase;
+      }
+      .btn-primary {
+        padding: 10px 28px;
+        background: linear-gradient(135deg, var(--green) 0%, var(--green) 100%);
+        color: var(--white);
+        border: none;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.35);
+        transition: all 0.2s ease;
+        margin-top: 8px;
+      }
+      .btn-primary:hover {
+        background: linear-gradient(
+          135deg,
+          var(--green-light) 0%,
+          var(--green) 100%
+        );
+        box-shadow: 0 6px 16px rgba(var(--green-rgb), 0.45);
+        transform: translateY(-2px);
+      }
+
+      .finish-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        margin-top: 20px;
+      }
+      .btn-finish {
+        padding: 16px 40px;
+        background: linear-gradient(
+          135deg,
+          var(--yellow-light) 0%,
+          var(--orange-light) 100%
+        );
+        color: var(--brown-deep);
+        border: none;
+        border-radius: 999px;
+        font-size: 18px;
+        font-weight: 800;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(var(--orange-rgb), 0.4);
+        transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn-finish:hover {
+        background: linear-gradient(
+          135deg,
+          var(--yellow) 0%,
+          var(--orange) 100%
+        );
+        box-shadow: 0 8px 24px rgba(var(--orange-rgb), 0.6);
+        transform: translateY(-4px);
+      }
+
+      .badge-interactive {
+        display: inline-block;
+        padding: 4px 10px;
+        background: linear-gradient(
+          135deg,
+          var(--green-lighter),
+          var(--green-light)
+        );
+        color: var(--brown-dark);
+        font-size: 10px;
+        font-weight: 800;
+        border-radius: 6px;
+        border: 1px solid rgba(var(--green-light-rgb), 0.6);
+        letter-spacing: 0.05em;
+        box-shadow: 0 2px 4px rgba(var(--green-rgb), 0.2);
+      }
+
+      /* === 右侧边栏增强版 (恢复原左右布局并保留波点) === */
+      .sidebar-top-section {
+        position: relative;
+        flex-shrink: 0;
+        border-bottom: 1px dashed rgba(var(--border-strong-rgb), 0.3);
+      }
+
+      .sidebar-top-banner {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(var(--yellow-light-rgb), 0.3) 0%,
+          rgba(var(--orange-warm-rgb), 0.3) 100%
+        );
+        z-index: 0;
+        overflow: hidden;
+      }
+
+      .sidebar-back {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        padding: 0 24px;
+        position: relative;
+        z-index: 1;
+      }
+      .sidebar-back a {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(var(--white-rgb), 0.6);
+        backdrop-filter: blur(8px);
+        color: var(--brown-dark);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 6px 14px;
+        border-radius: 999px;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(var(--white-rgb), 0.8);
+        box-shadow: 0 4px 12px rgba(var(--border-strong-rgb), 0.4);
+      }
+      .sidebar-back a:hover {
+        background: rgba(var(--white-rgb), 0.9);
+        color: var(--brown-medium);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(var(--border-strong-rgb), 0.5);
+      }
+
+      .sidebar-progress {
+        padding: 8px 20px 24px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        position: relative;
+        z-index: 1;
+      }
+      .sidebar-progress-glass {
+        background: rgba(var(--white-rgb), 0.55);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 20px 24px;
+        border: 1px solid rgba(var(--white-rgb), 0.7);
+        box-shadow: 0 4px 12px rgba(var(--border-strong-rgb), 0.15);
+      }
+      .sidebar-progress-title {
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--brown-light);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 20px;
+      }
+      .sidebar-progress-row {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        margin-bottom: 4px;
+      }
+
+      .ring-progress {
+        position: relative;
+        width: 76px;
+        height: 76px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-canvas);
+        border-radius: 50%;
+        box-shadow: 0 4px 8px rgba(var(--border-strong-rgb), 0.2);
+        padding: 4px;
+      }
+      .ring-progress svg {
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+      }
+      .ring-progress .ring-bg {
+        fill: none;
+        stroke: rgba(var(--border-strong-rgb), 0.2);
+        stroke-width: 3;
+      }
+      .ring-progress .ring-fill {
+        fill: none;
+        stroke: var(--orange);
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-dasharray: 60, 100;
+        filter: drop-shadow(0 2px 4px rgba(var(--orange-rgb), 0.4));
+      }
+      .ring-progress .ring-label {
+        position: absolute;
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--brown-dark);
+      }
+
+      .progress-badge {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: linear-gradient(
+          135deg,
+          var(--blue-lighter) 0%,
+          var(--blue-light) 100%
+        );
+        border: 2px solid var(--bg-canvas);
+        box-shadow: 0 2px 4px rgba(var(--blue-rgb), 0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        z-index: 3;
+      }
+
+      .progress-info-title {
+        font-size: 19px;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin-bottom: 6px;
+      }
+      .progress-info-sub {
+        font-size: 14px;
+        color: var(--brown-medium);
+        font-weight: 700;
+      }
+
+      .btn-icon-round {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        transition: background 0.2s ease;
+        color: var(--brown-medium);
+      }
+      .btn-icon-round:hover {
+        background: linear-gradient(
+          135deg,
+          var(--yellow-mist),
+          var(--orange-mist)
+        );
+        color: var(--orange);
+        box-shadow: 0 2px 6px rgba(var(--orange-rgb), 0.15);
+      }
+
+      /* === 加载动画 (复用 c2v/sandbox3d 风格) === */
+      .gen-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      .gen-loading-halo {
+        position: absolute;
+        width: 200px;
+        height: 200px;
+        border-radius: 9999px;
+        background: radial-gradient(
+          circle,
+          rgba(var(--brown-gold-rgb), 0.25) 0%,
+          rgba(var(--brown-gold-rgb), 0.08) 46%,
+          rgba(var(--brown-gold-rgb), 0) 72%
+        );
+        filter: blur(14px);
+        animation: gen-halo-pulse 2s ease-in-out infinite;
+      }
+      @keyframes gen-halo-pulse {
+        0%,
+        100% {
+          opacity: 0.6;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.1);
+        }
+      }
+      .gen-loading-spinner {
+        width: 48px;
+        height: 48px;
+        border-radius: 9999px;
+        border: 4px solid rgba(var(--brown-gold-rgb), 0.2);
+        border-top-color: var(--brown-gold);
+        animation: gen-spin 0.9s linear infinite;
+        z-index: 1;
+      }
+      @keyframes gen-spin {
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .gen-loading-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--brown-dark);
+        z-index: 1;
+      }
+      .gen-loading-msg {
+        font-size: 13px;
+        color: var(--brown-medium);
+        z-index: 1;
+        max-width: 360px;
+        text-align: center;
+        line-height: 1.5;
+      }
+
+      /* 视频加载时背景色 */
+      .video-placeholder.is-loading {
+        background: linear-gradient(
+          135deg,
+          var(--blue-lighter) 0%,
+          var(--blue-mist) 50%,
+          var(--blue-lighter) 100%
+        );
+      }
+      /* 3D加载时背景色 */
+      .sandbox-placeholder.is-loading {
+        background: linear-gradient(
+          135deg,
+          var(--green-lighter) 0%,
+          var(--green-mist) 50%,
+          var(--green-lighter) 100%
+        );
+      }
+
+      .gen-slide-up {
+        animation: gen-slideUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+      @keyframes gen-slideUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* 按钮禁用态 */
+      .btn-outline-sm:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      /* === CustomSelect 下拉组件 — 蓝色系配色 === */
+      .custom-select {
+        position: relative;
+        min-width: 120px;
+      }
+      .custom-select-trigger {
+        display: flex;
+        align-items: center;
+        height: 36px;
+        border-radius: 999px;
+        border: 2px solid transparent;
+        padding: 0 32px 0 14px;
+        background:
+          linear-gradient(
+              rgba(var(--surface-soft-rgb), 0.95),
+              rgba(var(--surface-soft-rgb), 0.95)
+            )
+            padding-box,
+          linear-gradient(135deg, var(--blue-lighter), var(--blue-light))
+            border-box;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--brown-dark);
+        cursor: pointer;
+        user-select: none;
+        transition:
+          border-color 200ms ease,
+          box-shadow 200ms ease;
+        box-shadow:
+          0 4px 12px rgba(var(--blue-rgb), 0.15),
+          0 2px 6px rgba(var(--border-strong-rgb), 0.15);
+      }
+      .custom-select-trigger:hover {
+        border-color: var(--blue-lighter);
+        box-shadow:
+          0 6px 16px rgba(var(--blue-rgb), 0.2),
+          0 2px 6px rgba(var(--border-strong-rgb), 0.15);
+      }
+      .custom-select-trigger.open {
+        border-color: var(--blue-light);
+        box-shadow:
+          0 4px 12px rgba(var(--blue-rgb), 0.15),
+          0 0 0 3px rgba(var(--blue-light-rgb), 0.2);
+      }
+      .custom-select-arrow {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 14px;
+        height: 14px;
+        pointer-events: none;
+        transition: transform 250ms ease;
+        color: var(--brown-medium);
+      }
+      .custom-select-trigger.open .custom-select-arrow {
+        transform: translateY(-50%) rotate(180deg);
+        color: var(--blue);
+      }
+      @keyframes csDropdownSlideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-8px) scaleY(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scaleY(1);
+        }
+      }
+      .custom-select-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        z-index: 100;
+        border-radius: 16px;
+        background: rgba(var(--white-rgb), 0.95);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow:
+          0 8px 32px rgba(var(--blue-rgb), 0.12),
+          0 2px 8px rgba(var(--brown-medium-rgb), 0.08);
+        border: 1.5px solid var(--blue-lighter);
+        padding: 6px;
+        animation: csDropdownSlideIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
+        transform-origin: top center;
+        max-height: 240px;
+        overflow-y: auto;
+        min-width: 120px;
+      }
+      .custom-select-menu::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-select-menu::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-select-menu::-webkit-scrollbar-thumb {
+        background: var(--blue-lighter);
+        border-radius: 3px;
+      }
+      .custom-select-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 150ms ease;
+        text-align: left;
+      }
+      .custom-select-option:hover {
+        background: var(--blue-mist);
+      }
+      .custom-select-option.active {
+        background: var(--blue-lighter);
+        font-weight: 600;
+      }
+      .custom-select-option .cs-check-icon {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        color: var(--blue);
+        opacity: 0;
+        transition: opacity 150ms ease;
+      }
+      .custom-select-option.active .cs-check-icon {
+        opacity: 1;
+      }
+      .custom-select-option .cs-option-name {
+        flex: 1;
+      }
+      .custom-select-hidden {
+        display: none;
+      }
+
+      /* === 练习题模块 === */
+      .card-theme-orange {
+        --theme-grad-start: var(--orange-lighter);
+        --theme-grad-end: var(--orange-light);
+        --theme-grad-hover-start: var(--orange-light);
+        --theme-grad-hover-end: var(--orange);
+        --theme-icon-color: var(--orange);
+        background: rgba(var(--peach-light-rgb), 0.75);
+        border-color: rgba(var(--orange-rgb), 0.4);
+      }
+
+      .quiz-body {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        width: 100%;
+        min-width: 100%;
+      }
+
+      /* 掌握度进度条 */
+      .quiz-mastery-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .quiz-mastery-track {
+        flex: 1;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(var(--border-strong-rgb), 0.15);
+        box-shadow:
+          inset 2px 2px 4px rgba(var(--border-muted-rgb), 0.3),
+          inset -2px -2px 4px rgba(var(--white-rgb), 0.8);
+        overflow: hidden;
+      }
+      .quiz-mastery-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--orange), var(--yellow));
+        transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 0 8px rgba(var(--orange-rgb), 0.4);
+      }
+      .quiz-mastery-fill.passed {
+        background: linear-gradient(90deg, var(--green), var(--green-light));
+        box-shadow: 0 0 8px rgba(var(--green-rgb), 0.4);
+      }
+      .quiz-mastery-label {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--brown-medium);
+        min-width: 48px;
+        text-align: right;
+      }
+
+      /* 测试轮次 Tab 样式 */
+      .quiz-tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 24px;
+        padding: 4px;
+        overflow-x: auto;
+        /* 隐藏滚动条但保留功能 */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .quiz-tabs::-webkit-scrollbar {
+        display: none;
+      }
+      .quiz-tab {
+        flex: 0 0 auto;
+        padding: 12px 20px;
+        border-radius: 14px;
+        background: var(--bg-canvas);
+        border: 2px solid var(--orange-lighter);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        min-width: 110px;
+      }
+      .quiz-tab:hover {
+        border-color: var(--orange-light);
+        background: var(--orange-mist);
+        transform: translateY(-2px);
+      }
+      .quiz-tab.active {
+        background: linear-gradient(135deg, var(--orange-light), var(--orange));
+        border-color: var(--orange);
+        box-shadow: 0 4px 12px rgba(var(--orange-rgb), 0.3);
+      }
+      .quiz-tab-title {
+        font-size: 16px;
+        font-weight: 800;
+        color: var(--brown-medium);
+      }
+      .quiz-tab.active .quiz-tab-title {
+        color: var(--white);
+      }
+      .quiz-tab-score {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--orange);
+      }
+      .quiz-tab.active .quiz-tab-score {
+        color: rgba(var(--white-rgb), 0.9);
+      }
+      .quiz-tab.passed .quiz-tab-score {
+        color: var(--green);
+      }
+      .quiz-tab.active.passed .quiz-tab-score {
+        color: var(--white);
+      }
+
+      /* 「+ 新测验」Tab */
+      .quiz-tab-new {
+        flex: 0 0 auto;
+        padding: 12px 20px;
+        border-radius: 14px;
+        background: var(--bg-canvas);
+        border: 2px dashed var(--orange-lighter);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        min-width: 110px;
+        color: var(--orange);
+        font-size: 14px;
+        font-weight: 700;
+        font-family: inherit;
+      }
+      .quiz-tab-new:hover:not(:disabled) {
+        border-color: var(--orange-light);
+        background: var(--orange-mist);
+        transform: translateY(-2px);
+        border-style: solid;
+        box-shadow: 0 4px 12px rgba(var(--orange-rgb), 0.25);
+      }
+      .quiz-tab-new:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none !important;
+        border-color: rgba(var(--border-strong-rgb), 0.25);
+        color: var(--brown-light);
+      }
+
+      /* 导航区域 */
+      .quiz-nav-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .quiz-nav-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .quiz-nav-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        border: none;
+        background: var(--bg-canvas);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        box-shadow:
+          2px 2px 6px rgba(var(--border-muted-rgb), 0.2),
+          -2px -2px 6px rgba(var(--white-rgb), 0.6);
+        color: var(--brown-medium);
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .quiz-nav-btn:hover:not(:disabled) {
+        background: var(--orange-mist);
+        transform: translateY(-1px);
+        box-shadow:
+          3px 3px 8px rgba(var(--border-muted-rgb), 0.3),
+          -3px -3px 8px rgba(var(--white-rgb), 0.7);
+        color: var(--brown-dark);
+      }
+      .quiz-nav-btn:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .quiz-counter {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--brown-medium);
+        min-width: 50px;
+        text-align: center;
+      }
+      .quiz-fav-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        border: 2px solid var(--yellow-light);
+        background: var(--yellow-mist);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        box-shadow:
+          2px 2px 6px rgba(var(--border-muted-rgb), 0.2),
+          -2px -2px 6px rgba(var(--white-rgb), 0.6);
+        color: var(--brown-medium);
+        font-size: 20px;
+      }
+      .quiz-fav-btn:hover {
+        transform: translateY(-2px);
+        box-shadow:
+          3px 3px 8px rgba(var(--border-muted-rgb), 0.3),
+          -3px -3px 8px rgba(var(--white-rgb), 0.7);
+        color: var(--yellow-gold);
+        background: var(--yellow-lighter);
+        border-color: var(--yellow);
+      }
+      .quiz-fav-btn.favorited {
+        background: linear-gradient(
+          135deg,
+          var(--yellow-lighter),
+          var(--yellow-light)
+        );
+        color: var(--yellow-gold);
+        border-color: var(--yellow);
+        box-shadow:
+          inset 2px 2px 4px rgba(var(--border-muted-rgb), 0.2),
+          inset -2px -2px 4px rgba(var(--white-rgb), 0.6),
+          0 0 0 3px rgba(var(--yellow-rgb), 0.35);
+      }
+
+      /* 题干 */
+      .quiz-stem {
+        font-size: 17px;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.7;
+        white-space: pre-wrap;
+      }
+
+      /* 选项 */
+      .quiz-options {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .quiz-option {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: 100%;
+        padding: 14px 18px;
+        border-radius: 16px;
+        border: 2px solid var(--yellow-light);
+        background: var(--bg-canvas);
+        box-shadow:
+          2px 2px 6px rgba(var(--border-muted-rgb), 0.2),
+          -2px -2px 6px rgba(var(--white-rgb), 0.6);
+        font-family: inherit;
+        font-size: 15px;
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all 220ms ease;
+        text-align: left;
+      }
+      .quiz-option:hover:not(.disabled) {
+        background: var(--yellow-mist);
+        transform: translateY(-2px);
+        box-shadow:
+          3px 3px 8px rgba(var(--border-muted-rgb), 0.3),
+          -3px -3px 8px rgba(var(--white-rgb), 0.7);
+      }
+      .quiz-option.selected {
+        border-color: var(--yellow);
+        background: var(--yellow-lighter);
+        box-shadow:
+          inset 2px 2px 4px rgba(var(--border-muted-rgb), 0.2),
+          inset -2px -2px 4px rgba(var(--white-rgb), 0.6),
+          0 0 0 3px rgba(var(--yellow-rgb), 0.18);
+        transform: translateY(0);
+      }
+      .quiz-option.disabled {
+        cursor: default;
+      }
+      .quiz-option.correct {
+        border-color: rgba(var(--success-text-rgb), 0.5);
+        background: var(--success-bg);
+        box-shadow: inset 1px 1px 3px rgba(var(--success-text-rgb), 0.1);
+      }
+      .quiz-option.wrong {
+        border-color: rgba(var(--danger-rgb), 0.4);
+        background: var(--danger-soft);
+        box-shadow: inset 1px 1px 3px rgba(var(--danger-rgb), 0.05);
+      }
+      .quiz-option.correct .option-label {
+        background: linear-gradient(
+          135deg,
+          var(--green-light),
+          var(--green-vivid)
+        );
+        color: var(--white);
+      }
+      .quiz-option.wrong {
+        border-color: rgba(var(--danger-strong-rgb), 0.28);
+        background: var(--danger-surface);
+      }
+      .quiz-option.wrong .option-label {
+        background: linear-gradient(135deg, var(--danger-light), var(--danger));
+        color: var(--white);
+      }
+      .option-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(
+          135deg,
+          var(--yellow-lighter),
+          var(--yellow-light)
+        );
+        box-shadow:
+          3px 3px 6px rgba(var(--border-muted-rgb), 0.25),
+          -3px -3px 6px rgba(var(--white-rgb), 0.9);
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--brown-medium);
+        flex-shrink: 0;
+        transition: all 200ms ease;
+      }
+      .quiz-option.selected .option-label {
+        background: linear-gradient(135deg, var(--yellow-light), var(--yellow));
+        color: var(--brown-dark);
+        box-shadow:
+          inset 2px 2px 4px rgba(var(--black-rgb), 0.1),
+          inset -2px -2px 4px rgba(var(--white-rgb), 0.3);
+      }
+      .option-text {
+        flex: 1;
+        line-height: 1.5;
+        font-weight: 500;
+      }
+      .option-badge {
+        font-size: 12px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 8px;
+        flex-shrink: 0;
+      }
+      .option-badge.correct-badge {
+        background: var(--green-pale);
+        color: var(--success-text);
+      }
+      .option-badge.wrong-badge {
+        background: var(--warn-bg);
+        color: var(--warn-text);
+      }
+
+      /* 底部操作区 */
+      .quiz-action-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .quiz-submit-btn {
+        flex: 1;
+        max-width: 320px;
+        height: 48px;
+        border: none;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--yellow), var(--orange));
+        color: var(--brown-dark);
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(var(--orange-rgb), 0.35);
+        transition: all 220ms ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .quiz-submit-btn:hover:not(:disabled) {
+        background: linear-gradient(135deg, var(--orange-light), var(--orange));
+        box-shadow: 0 6px 24px rgba(var(--orange-rgb), 0.45);
+        transform: translateY(-1px);
+      }
+      .quiz-submit-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .quiz-skip-btn {
+        padding: 10px 22px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(
+          135deg,
+          rgba(var(--blue-sky-light-rgb), 0.6),
+          rgba(var(--blue-ice-rgb), 0.9)
+        );
+        color: var(--brown-medium);
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: var(--shadow-soft);
+        transition: all 220ms ease;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .quiz-skip-btn:hover {
+        background: linear-gradient(
+          135deg,
+          var(--blue-mist),
+          var(--blue-lighter)
+        );
+        box-shadow: var(--shadow-hover);
+        transform: translateY(-1px);
+        color: var(--blue);
+      }
+
+      /* 结果面板 */
+      .quiz-result-panel {
+        border-radius: 20px;
+        padding: 28px 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        text-align: center;
+      }
+      .quiz-result-panel.result-pass {
+        background: linear-gradient(
+          135deg,
+          var(--green-mist),
+          var(--green-lighter)
+        );
+        border: 1.5px solid rgba(var(--green-light-rgb), 0.5);
+      }
+      .quiz-result-panel.result-fail {
+        background: linear-gradient(
+          135deg,
+          var(--orange-mist),
+          var(--orange-lighter)
+        );
+        border: 1.5px solid rgba(var(--orange-rgb), 0.4);
+      }
+      .quiz-result-icon {
+        font-size: 48px;
+        margin-bottom: 4px;
+      }
+      .quiz-result-title {
+        font-size: 22px;
+        font-weight: 800;
+      }
+      .quiz-result-title.pass {
+        color: var(--green);
+      }
+      .quiz-result-title.fail {
+        color: var(--warn-text);
+      }
+      .quiz-result-desc {
+        font-size: 15px;
+        color: var(--brown-medium);
+        line-height: 1.6;
+        max-width: 420px;
+      }
+      .quiz-result-stats {
+        display: flex;
+        gap: 24px;
+        margin: 8px 0;
+      }
+      .quiz-result-stat {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+      .quiz-result-stat-num {
+        font-size: 28px;
+        font-weight: 900;
+      }
+      .quiz-result-stat-num.green {
+        color: var(--success-text);
+      }
+      .quiz-result-stat-num.red {
+        color: var(--warn-text);
+      }
+      .quiz-result-stat-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--brown-light);
+      }
+      .quiz-retry-btn {
+        padding: 12px 32px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, var(--orange-light), var(--orange));
+        color: var(--white);
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(var(--orange-rgb), 0.4);
+        transition: all 220ms ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .quiz-retry-btn:hover {
+        background: linear-gradient(135deg, var(--orange), var(--accent-warm));
+        box-shadow: 0 6px 16px rgba(var(--orange-rgb), 0.5);
+        transform: translateY(-2px);
+      }
+
+      /* 初始状态（未开始做题） */
+      .quiz-idle-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 24px;
+        gap: 16px;
+        text-align: center;
+      }
+      .quiz-idle-icon {
+        font-size: 56px;
+        filter: drop-shadow(0 4px 8px rgba(var(--orange-rgb), 0.3));
+      }
+      .quiz-idle-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--brown-dark);
+      }
+      .quiz-idle-desc {
+        font-size: 14px;
+        color: var(--brown-medium);
+        max-width: 400px;
+        line-height: 1.6;
+      }
+      .quiz-start-btn {
+        padding: 14px 36px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, var(--yellow), var(--orange));
+        color: var(--brown-dark);
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(var(--orange-rgb), 0.4);
+        transition: all 220ms ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .quiz-start-btn:hover {
+        background: linear-gradient(135deg, var(--orange-light), var(--orange));
+        box-shadow: 0 6px 24px rgba(var(--orange-rgb), 0.5);
+        transform: translateY(-2px);
+      }
+
+      /* 加载区 */
+      .quiz-loading-area {
+        min-height: 280px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Toast 提示 */
+      .quiz-toast {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-120%);
+        z-index: 9999;
+        padding: 14px 28px;
+        border-radius: 16px;
+        font-size: 15px;
+        font-weight: 700;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 8px 32px rgba(var(--black-rgb), 0.12);
+        transition:
+          transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+          visibility 0s 0.35s;
+        pointer-events: none;
+        visibility: hidden;
+      }
+      .quiz-toast.show {
+        transform: translateX(-50%) translateY(0);
+        visibility: visible;
+        transition:
+          transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+          visibility 0s 0s;
+      }
+      .quiz-toast.warn {
+        background: rgba(var(--peach-soft-rgb), 0.95);
+        color: var(--warn-text);
+        border: 1.5px solid rgba(var(--danger-muted-rgb), 0.2);
+      }
+      .quiz-toast.success {
+        background: rgba(var(--green-faint-rgb), 0.95);
+        color: var(--success-text);
+        border: 1.5px solid rgba(var(--success-text-rgb), 0.2);
+      }
+      .quiz-toast.info {
+        background: rgba(var(--yellow-faint-rgb), 0.95);
+        color: var(--brown-dark);
+        border: 1.5px solid rgba(var(--yellow-rgb), 0.4);
+      }
+
+      /* 确认对话框 */
+      @keyframes quizModalFadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes quizModalSlideUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px) scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+      .quiz-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--surface-soft-rgb), 0.7);
+        backdrop-filter: blur(6px);
+        animation: quizModalFadeIn 0.2s ease;
+      }
+      .quiz-confirm-card {
+        width: min(420px, calc(100vw - 48px));
+        border-radius: 20px;
+        background: rgba(var(--white-rgb), 0.92);
+        backdrop-filter: blur(20px);
+        box-shadow: var(--shadow-hover);
+        border: 1.5px solid rgba(var(--yellow-light-rgb), 0.5);
+        padding: 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        text-align: center;
+        animation: quizModalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .quiz-confirm-icon {
+        font-size: 40px;
+      }
+      .quiz-confirm-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--brown-dark);
+      }
+      .quiz-confirm-desc {
+        font-size: 14px;
+        color: var(--brown-medium);
+        line-height: 1.6;
+      }
+      .quiz-confirm-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .quiz-confirm-cancel {
+        padding: 10px 24px;
+        border-radius: 999px;
+        border: 1.5px solid rgba(var(--border-strong-rgb), 0.3);
+        background: var(--bg-canvas);
+        color: var(--brown-medium);
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .quiz-confirm-cancel:hover {
+        background: var(--yellow-mist);
+        border-color: var(--yellow-light);
+      }
+      .quiz-confirm-ok {
+        padding: 10px 24px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, var(--blue-light), var(--blue));
+        color: var(--white);
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(var(--blue-rgb), 0.3);
+        transition: all 0.2s ease;
+      }
+      .quiz-confirm-ok:hover {
+        box-shadow: 0 6px 16px rgba(var(--blue-rgb), 0.4);
+        transform: translateY(-1px);
+      }
+
+      /* 进度条 (顶部小条) */
+      .quiz-progress-bar {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(var(--border-strong-rgb), 0.15);
+        overflow: hidden;
+        margin-bottom: 4px;
+      }
+      .quiz-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--orange), var(--yellow));
+        transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: 0 0 6px rgba(var(--orange-rgb), 0.3);
+      }
+
+      /* 完成按钮禁用态 */
+      .btn-finish.disabled-look {
+        opacity: 0.55;
+        cursor: not-allowed;
+        filter: grayscale(0.3);
+      }
+      .btn-finish.disabled-look:hover {
+        transform: none;
+        box-shadow: 0 4px 16px rgba(var(--orange-rgb), 0.4);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-viewport">
+      <!-- 左侧主内容区 -->
+      <main class="left-scroll-area">
+        <!-- 标题 -->
+        <header class="header-section">
+          <span
+            class="chapter-badge"
+            style="
+              background: linear-gradient(
+                135deg,
+                var(--yellow-light),
+                var(--orange-light)
+              );
+              color: var(--brown-deep);
+              border: none;
+              box-shadow: 0 4px 12px rgba(var(--orange-rgb), 0.3);
+              padding: 6px 18px;
+              border-radius: 12px;
+              font-size: 14px;
+            "
+            >🎯 Day 2 · 知识点 1</span
+          >
+          <h1 class="page-title">
+            <span id="typewriter-text"></span
+            ><span class="typewriter-cursor">|</span>
+          </h1>
+          <p class="page-subtitle">
+            掌握Python中最基本的数据盒子，这是构建一切复杂逻辑的基石。了解不同类型变量的特性及其在内存中的表现。
+          </p>
+        </header>
+
+        <!-- 思维导图卡片 -->
+        <section
+          class="content-card card-theme-yellow"
+          style="color: var(--brown-gold)"
+        >
+          <div class="card-header">
+            <div class="card-header-left">
+              <i data-lucide="brain-circuit"></i>
+              <h2 class="card-title" style="color: var(--brown-dark)">
+                知识图谱导航
+              </h2>
+            </div>
+            <button class="btn-outline-sm">展开全部</button>
+          </div>
+
+          <!-- ECharts 容器 -->
+          <div class="mindmap-section">
+            <div id="mindmap-container" class="mindmap-container"></div>
+          </div>
+        </section>
+
+        <!-- Markdown 深度解析卡片 -->
+        <section
+          class="content-card card-theme-purple"
+          style="color: var(--purple)"
+        >
+          <div class="card-header">
+            <div class="card-header-left">
+              <i data-lucide="book-open"></i>
+              <h2 class="card-title" style="color: var(--brown-dark)">
+                深度解析
+              </h2>
+            </div>
+          </div>
+
+          <div class="prose">
+            <h3>1. 什么是变量？</h3>
+            <p>
+              在 Python
+              中，变量不需要预先声明类型。你可以把它看作是一个贴着标签的盒子。当你写下
+              <code class="inline-code">age = 25</code> 时，你就是把
+              <code class="inline-code">25</code> 这个值放进了名叫
+              <code class="inline-code">age</code> 的盒子里。
+            </p>
+
+            <div class="code-block">
+              <div class="code-block-lang">python</div>
+              <pre><code><span class="code-comment"># 定义一个整数变量</span>
+age = <span class="code-number" style="color: #d63384">25</span>
+
+<span class="code-comment"># 定义一个字符串变量</span>
+name = <span class="code-string" style="color: #198754">"Alice"</span>
+
+<span class="code-comment"># 打印它们</span>
+print(<span class="code-comment">f"</span><span class="code-string" style="color: #198754">{</span>name<span class="code-string" style="color: #198754">} is {</span>age<span class="code-string" style="color: #198754">} years old."</span>)</code></pre>
+            </div>
+
+            <h3>2. 核心数据类型</h3>
+            <ul>
+              <li><strong>整数 (int)</strong>: 例如 1, 100, -5</li>
+              <li><strong>浮点数 (float)</strong>: 例如 3.14, -0.001</li>
+              <li>
+                <strong>字符串 (str)</strong>: 用单引号、双引号括起来的文本，如
+                <code class="inline-code">"Hello"</code>
+              </li>
+              <li>
+                <strong>布尔值 (bool)</strong>: 只有
+                <code class="inline-code">True</code> 和
+                <code class="inline-code">False</code>
+              </li>
+            </ul>
+
+            <div class="info-callout">
+              <i data-lucide="info" size="20"></i>
+              <p>
+                <strong>💡 提示:</strong> 可以使用
+                <code class="inline-code">type()</code>
+                函数随时查看变量的数据类型。Python
+                是动态类型语言，同一个变量可以先后指向不同类型的值。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- K2V 沉浸视界 -->
+        <section
+          class="content-card card-theme-blue"
+          style="color: var(--blue-rich)"
+        >
+          <div class="card-header">
+            <div class="card-header-left">
+              <i data-lucide="film"></i>
+              <h2 class="card-title" style="color: var(--brown-dark)">
+                沉浸视界
+                <span class="card-title-sub" style="color: var(--blue-rich)"
+                  >知识点视频化解析</span
+                >
+              </h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <button
+                id="btn-gen-video"
+                class="btn-outline-sm"
+                onclick="handleGenVideo()"
+              >
+                <i data-lucide="sparkles" size="14"></i> AI 生成
+              </button>
+            </div>
+          </div>
+
+          <div
+            id="video-area"
+            class="video-placeholder"
+            style="
+              background: linear-gradient(
+                135deg,
+                var(--blue-lighter),
+                var(--blue-mist)
+              );
+              box-shadow: inset 0 2px 8px rgba(var(--black-rgb), 0.05);
+              border: 1px solid rgba(var(--blue-light-rgb), 0.3);
+            "
+          >
+            <div
+              id="video-default-content"
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                height: 100%;
+                position: relative;
+              "
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="100"
+                height="100"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--brown-gold)"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="
+                  position: relative;
+                  z-index: 1;
+                  filter: drop-shadow(
+                    0 4px 12px rgba(var(--brown-gold-rgb), 0.3)
+                  );
+                "
+              >
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="10 8 16 12 10 16 10 8"></polygon>
+              </svg>
+              <div
+                style="
+                  content: &quot;&quot;;
+                  position: absolute;
+                  inset: 0;
+                  background: radial-gradient(
+                    circle at top right,
+                    rgba(var(--white-rgb), 0.4) 0%,
+                    transparent 60%
+                  );
+                  pointer-events: none;
+                "
+              ></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3D 具身交互 -->
+        <section
+          class="content-card card-theme-green"
+          style="color: var(--green)"
+        >
+          <div class="card-header">
+            <div class="card-header-left">
+              <i data-lucide="box"></i>
+              <h2 class="card-title" style="color: var(--brown-dark)">
+                具身交互沙盒
+                <span class="card-title-sub" style="color: var(--green)"
+                  >全沉浸可交互环境</span
+                >
+              </h2>
+            </div>
+            <button
+              id="btn-gen-3d"
+              class="btn-outline-sm"
+              onclick="handleGen3D()"
+            >
+              <i data-lucide="sparkles" size="14"></i> AI 生成
+            </button>
+          </div>
+
+          <div
+            id="sandbox-area"
+            class="sandbox-placeholder"
+            style="
+              background: linear-gradient(
+                135deg,
+                var(--green-lighter),
+                var(--green-mist)
+              );
+              box-shadow: inset 0 2px 8px rgba(var(--black-rgb), 0.05);
+              border: 1px solid rgba(var(--green-light-rgb), 0.5);
+            "
+          >
+            <div
+              id="sandbox-default-content"
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                height: 100%;
+                position: relative;
+              "
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="100"
+                height="100"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="var(--brown-gold)"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                style="
+                  position: relative;
+                  z-index: 1;
+                  filter: drop-shadow(0 4px 12px rgba(var(--green-rgb), 0.3));
+                "
+              >
+                <path
+                  d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
+                ></path>
+                <path d="m3.3 7 8.7 5 8.7-5"></path>
+                <path d="M12 22V12"></path>
+              </svg>
+              <div
+                style="
+                  content: &quot;&quot;;
+                  position: absolute;
+                  inset: 0;
+                  background: radial-gradient(
+                    circle at top right,
+                    rgba(var(--white-rgb), 0.4) 0%,
+                    transparent 60%
+                  );
+                  pointer-events: none;
+                "
+              ></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 知识点测验 -->
+        <section
+          id="quiz-section"
+          class="content-card card-theme-orange"
+          style="color: var(--orange); width: 100%"
+        >
+          <div class="card-header">
+            <div class="card-header-left">
+              <i data-lucide="clipboard-check"></i>
+              <h2 class="card-title" style="color: var(--brown-dark)">
+                知识点测验
+                <span class="card-title-sub" style="color: var(--orange)"
+                  >检验掌握度</span
+                >
+              </h2>
+            </div>
+          </div>
+
+          <div id="quiz-content" class="quiz-body">
+            <!-- 初始空闲状态 -->
+            <div id="quiz-idle" class="quiz-idle-placeholder">
+              <div class="quiz-idle-icon">📝</div>
+              <h3 class="quiz-idle-title">
+                完成学习后，来检验一下掌握程度吧！
+              </h3>
+              <p class="quiz-idle-desc">
+                AI 将根据本知识点内容实时生成 10 道选择题，掌握度达到 70%
+                即可通过。
+              </p>
+              <button class="quiz-start-btn" onclick="handleStartQuiz()">
+                🚀 开始测验
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Toast 提示容器 -->
+        <div id="quiz-toast" class="quiz-toast"></div>
+
+        <!-- 完成学习按钮 -->
+        <div class="finish-container">
+          <button
+            id="btn-finish-learning"
+            class="btn-finish"
+            onclick="handleFinishLearning()"
+          >
+            <i data-lucide="check-circle" size="22"></i>
+            已完成本知识点的学习
+          </button>
+          <button
+            class="quiz-skip-btn"
+            onclick="quizShowSkipConfirm()"
+            style="
+              position: absolute;
+              right: 0;
+              padding: 14px 28px;
+              font-size: 15px;
+              font-weight: 700;
+            "
+          >
+            已掌握，跳过 →
+          </button>
+        </div>
+
+        <!-- 底部间距 -->
+        <div style="height: 80px"></div>
+      </main>
+
+      <!-- 右侧 Node Right Sidebar -->
+      <aside class="right-sidebar-fixed">
+        <!-- 侧边栏顶部区域 (恢复水平并排布局+背景波点) -->
+        <div class="sidebar-top-section">
+          <!-- 顶部背景波点及渐变 -->
+          <div class="sidebar-top-banner">
+            <svg width="100%" height="100%" style="opacity: 0.5">
+              <defs>
+                <pattern
+                  id="dot-pattern"
+                  x="0"
+                  y="0"
+                  width="20"
+                  height="20"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <circle cx="2" cy="2" r="1.5" fill="var(--brown-light)" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#dot-pattern)"></rect>
+            </svg>
+          </div>
+
+          <!-- 返回主页面行 -->
+          <div class="sidebar-back">
+            <a href="dashboard-preview.html">
+              <i data-lucide="arrow-left" size="14"></i>
+              返回主控台
+            </a>
+          </div>
+
+          <!-- 学习进度行 -->
+          <div class="sidebar-progress">
+            <div class="sidebar-progress-glass">
+              <h3 class="sidebar-progress-title">今日突击进度</h3>
+
+              <div class="sidebar-progress-row">
+                <!-- 左侧：环形进度条 -->
+                <div class="ring-progress">
+                  <svg viewBox="0 0 36 36">
+                    <path
+                      class="ring-bg"
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    />
+                    <path
+                      class="ring-fill"
+                      stroke-dasharray="60, 100"
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    />
+                  </svg>
+                  <div class="ring-label">3/5</div>
+                  <!-- 完成度小角标 -->
+                  <div class="progress-badge" title="进度良好">
+                    <i data-lucide="check" size="12" stroke-width="3"></i>
+                  </div>
+                </div>
+
+                <!-- 右侧：文字说明 -->
+                <div>
+                  <div class="progress-info-title">当前节点突击</div>
+                  <div class="progress-info-sub" style="margin: 0">
+                    下一个: 控制流与循环
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Chat -->
+        <div
+          style="
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            padding: 24px 20px;
+            overflow: hidden;
+          "
+        >
+          <div
+            style="
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              margin-bottom: 20px;
+            "
+          >
+            <div
+              style="
+                width: 32px;
+                height: 32px;
+                border-radius: 12px;
+                background: var(--chat-orange-surface);
+                color: var(--brown-dark);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 18px;
+                box-shadow: 0 4px 8px rgba(var(--orange-soft-rgb), 0.58);
+              "
+            >
+              🤖
+            </div>
+            <h4
+              style="
+                font-size: 16px;
+                font-weight: 800;
+                color: var(--brown-dark);
+                margin: 0;
+              "
+            >
+              AI 伴学
+            </h4>
+          </div>
+
+          <div
+            style="
+              flex: 1;
+              overflow-y: auto;
+              display: flex;
+              flex-direction: column;
+              gap: 16px;
+              padding-bottom: 80px;
+            "
+          >
+            <!-- AI Message -->
+            <div style="display: flex; gap: 10px; align-items: flex-start">
+              <div
+                style="
+                  max-width: 85%;
+                  background: var(--orange-lighter);
+                  color: var(--brown-deep);
+                  padding: 12px 16px;
+                  border-radius: 16px 16px 16px 4px;
+                  font-size: 14px;
+                  line-height: 1.5;
+                  font-weight: 500;
+                "
+              >
+                嗨呀！看你今天学完了时间复杂度，进度很棒哦！👏<br />需要我给你出一道相关的练习题巩固一下吗？
+              </div>
+            </div>
+
+            <!-- User Message -->
+            <div
+              style="
+                display: flex;
+                gap: 10px;
+                align-items: flex-start;
+                align-self: flex-end;
+              "
+            >
+              <div
+                style="
+                  background: var(--chat-yellow-surface);
+                  color: var(--brown-deep);
+                  padding: 12px 16px;
+                  border-radius: 16px 16px 4px 16px;
+                  font-size: 14px;
+                  line-height: 1.5;
+                  font-weight: 500;
+                "
+              >
+                好呀，来道初级的吧。
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Area -->
+          <div
+            style="
+              position: absolute;
+              bottom: 20px;
+              left: 20px;
+              right: 20px;
+              height: 56px;
+              background: rgba(var(--surface-soft-rgb), 0.8);
+              backdrop-filter: blur(12px);
+              -webkit-backdrop-filter: blur(12px);
+              border-radius: 20px;
+              border: 2px solid rgba(var(--orange-soft-rgb), 0.72);
+              box-shadow:
+                0 8px 16px rgba(var(--border-strong-rgb), 0.15),
+                inset 0 2px 4px rgba(var(--white-rgb), 0.8);
+              display: flex;
+              align-items: center;
+              padding: 0 8px 0 20px;
+              transition: border-color 0.3s ease;
+            "
+          >
+            <input
+              type="text"
+              placeholder="问点什么吧..."
+              style="
+                flex: 1;
+                border: none;
+                background: transparent;
+                outline: none;
+                font-size: 14px;
+                color: var(--text-primary);
+                font-weight: 500;
+              "
+            />
+            <button
+              style="
+                width: 40px;
+                height: 40px;
+                border-radius: 14px;
+                background: var(--chat-orange-accent);
+                border: none;
+                color: var(--brown-dark);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                box-shadow: 0 2px 8px rgba(var(--orange-soft-rgb), 0.72);
+                transition:
+                  transform 0.2s ease,
+                  background 0.2s;
+              "
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      // 等待所有外部脚本加载完成
+      window.addEventListener("load", function () {
+        // 激活 Lucide Icons
+        if (typeof lucide !== "undefined") {
+          lucide.createIcons();
+        }
+
+        // 打字机效果 — 与 dashboard 一致
+        const fullTitle = "Python 基础：变量与数据类型";
+        const el = document.getElementById("typewriter-text");
+        if (el) {
+          let i = 0;
+          const timer = setInterval(function () {
+            el.textContent = fullTitle.slice(0, i + 1);
+            i++;
+            if (i >= fullTitle.length) {
+              clearInterval(timer);
+            }
+          }, 100);
+        }
+
+        // 初始化 ECharts 思维导图
+        initMindmap();
+      });
+
+      const initMindmap = () => {
+        const chartDom = document.getElementById("mindmap-container");
+        if (!chartDom) return;
+        const myChart = echarts.init(chartDom);
+
+        const data = {
+          name: "变量与数据类型",
+          children: [
+            {
+              name: "变量概念",
+              children: [
+                { name: "动态类型", value: 100 },
+                { name: "命名规范", value: 100 },
+                { name: "赋值操作", value: 100 },
+              ],
+            },
+            {
+              name: "基础类型",
+              children: [
+                { name: "int (整数)", value: 100 },
+                { name: "float (浮点数)", value: 100 },
+                { name: "bool (布尔值)", value: 100 },
+              ],
+            },
+            {
+              name: "序列类型",
+              children: [
+                { name: "str (字符串)", value: 100 },
+                { name: "list (列表 - 后续学)", value: 50 },
+                { name: "tuple (元组 - 后续学)", value: 50 },
+              ],
+            },
+          ],
+        };
+
+        const rootStyles = getComputedStyle(document.documentElement);
+        const mindmapNodeColor = rootStyles
+          .getPropertyValue("--brown-gold")
+          .trim();
+        const mindmapBorderColor = rootStyles
+          .getPropertyValue("--border-strong")
+          .trim();
+        const mindmapTextColor = rootStyles
+          .getPropertyValue("--text-primary")
+          .trim();
+        const mindmapLineColor = rootStyles
+          .getPropertyValue("--code-border")
+          .trim();
+
+        const option = {
+          tooltip: {
+            trigger: "item",
+            triggerOn: "mousemove",
+          },
+          series: [
+            {
+              type: "tree",
+              data: [data],
+              top: "10%",
+              left: "15%",
+              bottom: "10%",
+              right: "25%",
+              symbolSize: 10,
+              itemStyle: {
+                color: mindmapNodeColor,
+                borderColor: mindmapBorderColor,
+              },
+              label: {
+                position: "left",
+                verticalAlign: "middle",
+                align: "right",
+                fontSize: 14,
+                fontFamily: "Inter",
+                color: mindmapTextColor,
+              },
+              leaves: {
+                label: {
+                  position: "right",
+                  verticalAlign: "middle",
+                  align: "left",
+                },
+              },
+              emphasis: {
+                focus: "descendant",
+              },
+              expandAndCollapse: true,
+              animationDuration: 550,
+              animationDurationUpdate: 750,
+              lineStyle: {
+                color: mindmapLineColor,
+                width: 2,
+                curveness: 0.5,
+              },
+            },
+          ],
+        };
+
+        myChart.setOption(option);
+        window.addEventListener("resize", () => {
+          myChart.resize();
+        });
+      };
+
+      document.addEventListener("DOMContentLoaded", initMindmap);
+
+      // === Custom Select 逻辑 (蓝色系) ===
+      function initCustomSelect(
+        containerId,
+        hiddenInputId,
+        labelId,
+        options,
+        defaultValue,
+      ) {
+        var menu =
+          document.getElementById(
+            containerId.replace("cs-", "cs-") + "-menu",
+          ) ||
+          document.querySelector("#" + containerId + " .custom-select-menu");
+        if (!menu) return;
+        var html = "";
+        options.forEach(function (opt) {
+          var isActive = opt.value === defaultValue ? " active" : "";
+          html +=
+            '<button type="button" class="custom-select-option' +
+            isActive +
+            '" data-value="' +
+            opt.value +
+            '" onclick="selectCustomOption(\'' +
+            containerId +
+            "', '" +
+            hiddenInputId +
+            "', '" +
+            labelId +
+            "', '" +
+            opt.value +
+            "', '" +
+            opt.label +
+            "')\">" +
+            '<svg class="cs-check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>' +
+            '<span class="cs-option-name">' +
+            opt.label +
+            "</span></button>";
+        });
+        menu.innerHTML = html;
+      }
+
+      function toggleCustomSelect(containerId) {
+        var container = document.getElementById(containerId);
+        var trigger = container.querySelector(".custom-select-trigger");
+        var menu = container.querySelector(".custom-select-menu");
+        var isOpen = trigger.classList.contains("open");
+        // 关闭所有其他
+        document
+          .querySelectorAll(".custom-select-trigger.open")
+          .forEach(function (t) {
+            t.classList.remove("open");
+            t.parentElement.querySelector(".custom-select-menu").style.display =
+              "none";
+          });
+        if (!isOpen) {
+          trigger.classList.add("open");
+          menu.style.display = "";
+        }
+      }
+
+      function selectCustomOption(
+        containerId,
+        hiddenInputId,
+        labelId,
+        value,
+        label,
+      ) {
+        document.getElementById(hiddenInputId).value = value;
+        document.getElementById(labelId).textContent = label;
+        // 更新active状态
+        var container = document.getElementById(containerId);
+        container
+          .querySelectorAll(".custom-select-option")
+          .forEach(function (opt) {
+            opt.classList.toggle(
+              "active",
+              opt.getAttribute("data-value") === value,
+            );
+          });
+        // 关闭菜单
+        container
+          .querySelector(".custom-select-trigger")
+          .classList.remove("open");
+        container.querySelector(".custom-select-menu").style.display = "none";
+      }
+
+      // 点击外部关闭
+      document.addEventListener("mousedown", function (e) {
+        document.querySelectorAll(".custom-select").forEach(function (cs) {
+          if (!cs.contains(e.target)) {
+            var trigger = cs.querySelector(".custom-select-trigger");
+            var menu = cs.querySelector(".custom-select-menu");
+            if (trigger) trigger.classList.remove("open");
+            if (menu) menu.style.display = "none";
+          }
+        });
+      });
+
+      // =============================================
+      // === 练习题模块 — 全部逻辑 ===
+      // =============================================
+
+      // 题库：两组各10道，用于模拟"重新生成"
+      var QUIZ_BANK_A = [
+        {
+          id: "qa1",
+          question: "在 Python 中，以下哪个可以用来定义变量？",
+          options: ["var x = 10", "x = 10", "int x = 10", "define x = 10"],
+          answer: "x = 10",
+        },
+        {
+          id: "qa2",
+          question: "以下哪个是合法的 Python 变量名？",
+          options: ["2name", "my-var", "_count", "class"],
+          answer: "_count",
+        },
+        {
+          id: "qa3",
+          question: "type(3.14) 的返回值是？",
+          options: [
+            "<class 'int'>",
+            "<class 'float'>",
+            "<class 'str'>",
+            "<class 'double'>",
+          ],
+          answer: "<class 'float'>",
+        },
+        {
+          id: "qa4",
+          question: "以下哪个表达式的结果是 True？",
+          options: ["bool(0)", 'bool("")', "bool(None)", "bool(1)"],
+          answer: "bool(1)",
+        },
+        {
+          id: "qa5",
+          question: "Python 中字符串可以用以下哪种方式定义？",
+          options: ["单引号", "双引号", "三引号", "以上都可以"],
+          answer: "以上都可以",
+        },
+        {
+          id: "qa6",
+          question: "x = 5; type(x) 返回什么？",
+          options: [
+            "<class 'int'>",
+            "<class 'float'>",
+            "<class 'number'>",
+            "<class 'integer'>",
+          ],
+          answer: "<class 'int'>",
+        },
+        {
+          id: "qa7",
+          question: "以下哪个不是 Python 的基本数据类型？",
+          options: ["int", "float", "char", "bool"],
+          answer: "char",
+        },
+        {
+          id: "qa8",
+          question: 'a = "hello"; a[0] 的值是？',
+          options: ['"hello"', '"h"', '"e"', "报错"],
+          answer: '"h"',
+        },
+        {
+          id: "qa9",
+          question: "Python 是哪种类型的语言？",
+          options: ["静态类型", "动态类型", "弱类型", "无类型"],
+          answer: "动态类型",
+        },
+        {
+          id: "qa10",
+          question: 'int("42") 的结果是？',
+          options: ["42", '"42"', "4.2", "报错"],
+          answer: "42",
+        },
+      ];
+
+      var QUIZ_BANK_B = [
+        {
+          id: "qb1",
+          question: "下面哪个赋值语句是正确的？",
+          options: ["x := 10", "x = 10", "let x = 10", "x == 10"],
+          answer: "x = 10",
+        },
+        {
+          id: "qb2",
+          question: "type(True) 的结果是什么？",
+          options: [
+            "<class 'int'>",
+            "<class 'bool'>",
+            "<class 'str'>",
+            "<class 'true'>",
+          ],
+          answer: "<class 'bool'>",
+        },
+        {
+          id: "qb3",
+          question: "以下哪个变量名会导致错误？",
+          options: ["myVar", "_test", "123abc", "name_1"],
+          answer: "123abc",
+        },
+        {
+          id: "qb4",
+          question: "float(5) 的结果是？",
+          options: ["5", "5.0", '"5.0"', "报错"],
+          answer: "5.0",
+        },
+        {
+          id: "qb5",
+          question: "str(100) 返回什么类型？",
+          options: ["int", "float", "str", "bool"],
+          answer: "str",
+        },
+        {
+          id: "qb6",
+          question: "Python 中 None 的类型是？",
+          options: [
+            "<class 'None'>",
+            "<class 'NoneType'>",
+            "<class 'null'>",
+            "<class 'void'>",
+          ],
+          answer: "<class 'NoneType'>",
+        },
+        {
+          id: "qb7",
+          question: 'x = "3" + "4"，x 的值是？',
+          options: ["7", "34", '"34"', "报错"],
+          answer: '"34"',
+        },
+        {
+          id: "qb8",
+          question: 'bool("") 的结果是？',
+          options: ["True", "False", '"False"', "报错"],
+          answer: "False",
+        },
+        {
+          id: "qb9",
+          question: "以下哪个操作可以查看变量类型？",
+          options: ["typeof(x)", "type(x)", "dtype(x)", "class(x)"],
+          answer: "type(x)",
+        },
+        {
+          id: "qb10",
+          question: 'x = 10; x = "hello" 执行后 x 是什么类型？',
+          options: ["int", "str", "报错", "undefined"],
+          answer: "str",
+        },
+      ];
+
+      // 状态管理
+      var quizState = "idle"; // idle | loading | testing | submitted
+      var quizRounds = []; // [[round1_questions], [round2_questions]]
+      var currentRoundHistory = []; // { roundIndex: { questions: [], answers: {}, accuracy: 0, favorited: {}, passed: false, state: 'testing'|'submitted' } }
+      var currentRoundIndex = 0;
+      var quizCurrentIndex = 0;
+      var quizPassed = false; // 意味着本知识点已经通过（任一轮 >= 70%）
+      var quizSkipped = false;
+
+      // HTML 转义工具函数
+      function escapeHtml(text) {
+        var div = document.createElement("div");
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+      }
+
+      // Toast
+      function showQuizToast(msg, type, duration) {
+        var t = document.getElementById("quiz-toast");
+        t.textContent = msg;
+        t.className = "quiz-toast " + (type || "info");
+        // force reflow
+        void t.offsetWidth;
+        t.classList.add("show");
+        clearTimeout(t._timer);
+        t._timer = setTimeout(function () {
+          t.classList.remove("show");
+        }, duration || 2500);
+      }
+
+      // 开始测验
+      function handleStartQuiz() {
+        quizState = "loading";
+        currentRoundIndex = 0;
+        currentRoundHistory = [];
+        renderQuizContent();
+
+        // 模拟 AI 生成
+        var msgs = ["分析知识点结构…", "匹配题目难度…", "生成选择题…"];
+        var msgIdx = 0;
+        var loadMsgEl;
+        var msgTimer = setInterval(function () {
+          msgIdx++;
+          loadMsgEl = document.getElementById("quiz-loading-msg");
+          if (loadMsgEl && msgIdx < msgs.length)
+            loadMsgEl.textContent = msgs[msgIdx];
+        }, 800);
+
+        setTimeout(function () {
+          clearInterval(msgTimer);
+
+          // 初始化首轮
+          currentRoundHistory.push({
+            questions: QUIZ_BANK_A.slice(),
+            answers: {},
+            favorited: {},
+            accuracy: 0,
+            passed: false,
+            state: "testing",
+          });
+
+          currentRoundIndex = 0;
+          quizCurrentIndex = 0;
+          quizState = "testing";
+          renderQuizContent();
+          if (typeof lucide !== "undefined") lucide.createIcons();
+        }, 2800);
+      }
+
+      // 重新生成题目 — 创建新的一轮测试，保留之前的成绩
+      function handleRetryQuiz() {
+        quizState = "loading";
+        renderQuizContent();
+
+        var msgs = ["重新分析薄弱点…", "调整题目难度…", "生成新一轮测验…"];
+        var msgIdx = 0;
+        var msgTimer = setInterval(function () {
+          msgIdx++;
+          var el = document.getElementById("quiz-loading-msg");
+          if (el && msgIdx < msgs.length) el.textContent = msgs[msgIdx];
+        }, 800);
+
+        setTimeout(function () {
+          clearInterval(msgTimer);
+
+          // 创建新轮次
+          var newQuestions =
+            currentRoundHistory.length % 2 === 0
+              ? QUIZ_BANK_A.slice()
+              : QUIZ_BANK_B.slice();
+
+          currentRoundHistory.push({
+            questions: newQuestions,
+            answers: {},
+            favorited: {},
+            accuracy: 0,
+            passed: false,
+            state: "testing",
+          });
+
+          currentRoundIndex = currentRoundHistory.length - 1;
+          quizCurrentIndex = 0;
+          quizState = "testing";
+          renderQuizContent();
+          if (typeof lucide !== "undefined") lucide.createIcons();
+        }, 2800);
+      }
+
+      // 切换测试轮次
+      function switchQuizRound(idx) {
+        if (idx === currentRoundIndex) return;
+        currentRoundIndex = idx;
+        quizCurrentIndex = 0;
+        // 同步全局状态（虽然主要在 history 里存）
+        quizState = currentRoundHistory[idx].state;
+        renderQuizContent();
+
+        // 更新顶栏掌握度条
+        updateMasteryBar(
+          currentRoundHistory[idx].accuracy,
+          currentRoundHistory[idx].passed,
+        );
+      }
+
+      // 更新掌握度条 (保留空函数防止报错)
+      function updateMasteryBar(accuracy, isPassed) {}
+
+      // 选择答案
+      function quizSelectAnswer(idx) {
+        if (quizState !== "testing") return;
+        var round = currentRoundHistory[currentRoundIndex];
+        round.answers[quizCurrentIndex] =
+          round.questions[quizCurrentIndex].options[idx];
+
+        // 实时更新当前这一轮的准确率（供顶栏显示）
+        var correct = 0;
+        var total = round.questions.length;
+        var answeredCount = 0;
+        for (var i = 0; i < total; i++) {
+          if (round.answers.hasOwnProperty(i)) {
+            answeredCount++;
+            if (round.answers[i] === round.questions[i].answer) correct++;
+          }
+        }
+        // 实时计算已作答部分的“预期准确率”或者直接按满分 10 题算？按 10 题算更直观
+        var liveAccuracy = Math.round((correct / total) * 100);
+        round.accuracy = liveAccuracy;
+        updateMasteryBar(liveAccuracy, false);
+
+        renderQuizContent();
+      }
+
+      // 切换收藏
+      function quizToggleFav() {
+        var round = currentRoundHistory[currentRoundIndex];
+        if (round.favorited[quizCurrentIndex]) {
+          delete round.favorited[quizCurrentIndex];
+        } else {
+          round.favorited[quizCurrentIndex] = true;
+        }
+        renderQuizContent();
+      }
+
+      // 上一题
+      function quizPrev() {
+        if (quizCurrentIndex > 0) {
+          quizCurrentIndex--;
+          renderQuizContent();
+        }
+      }
+
+      // 下一题
+      function quizNext() {
+        var round = currentRoundHistory[currentRoundIndex];
+        var limit = round.questions.length - 1;
+        if (quizCurrentIndex < limit) {
+          quizCurrentIndex++;
+          renderQuizContent();
+        }
+      }
+
+      // 提交答案
+      function quizSubmit() {
+        var round = currentRoundHistory[currentRoundIndex];
+        // 检查是否全部作答
+        var unanswered = 0;
+        var total = round.questions.length;
+        for (var i = 0; i < total; i++) {
+          if (!round.answers.hasOwnProperty(i)) unanswered++;
+        }
+        if (unanswered > 0) {
+          showQuizToast(
+            "还有 " + unanswered + " 道题未作答，请全部完成后再提交",
+            "warn",
+          );
+          return;
+        }
+
+        // 计算最后分数
+        var correct = 0;
+        for (var i = 0; i < total; i++) {
+          if (round.answers[i] === round.questions[i].answer) correct++;
+        }
+        round.accuracy = Math.round((correct / total) * 100);
+        round.passed = round.accuracy >= 70;
+        round.state = "submitted";
+        quizState = "submitted";
+        quizCurrentIndex = total;
+
+        // 更新全局通过状态
+        if (round.passed) quizPassed = true;
+
+        renderQuizContent();
+
+        // 滚动到结果
+        setTimeout(function () {
+          var section = document.getElementById("quiz-section");
+          if (section)
+            section.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 300);
+      }
+
+      // 跳过测验 — 显示确认弹窗
+      function quizShowSkipConfirm() {
+        var overlay = document.createElement("div");
+        overlay.className = "quiz-confirm-overlay";
+        overlay.id = "quiz-skip-overlay";
+        overlay.innerHTML =
+          '<div class="quiz-confirm-card">' +
+          '<div class="quiz-confirm-icon">🎓</div>' +
+          '<h3 class="quiz-confirm-title">确定跳过测验？</h3>' +
+          '<p class="quiz-confirm-desc">你可以随时回来做测验检验掌握情况。<br>跳过后将直接标记为已完成该知识点。</p>' +
+          '<div class="quiz-confirm-actions">' +
+          '<button class="quiz-confirm-cancel" onclick="quizCloseSkipConfirm()">再想想</button>' +
+          '<button class="quiz-confirm-ok" onclick="quizConfirmSkip()">确认跳过</button>' +
+          "</div>" +
+          "</div>";
+        document.body.appendChild(overlay);
+      }
+
+      function quizCloseSkipConfirm() {
+        var el = document.getElementById("quiz-skip-overlay");
+        if (el) el.remove();
+      }
+
+      function quizConfirmSkip() {
+        quizCloseSkipConfirm();
+        quizSkipped = true;
+
+        // 写入 localStorage 标记完成（与 handleFinishLearning 逻辑一致）
+        var params = new URLSearchParams(window.location.search);
+        var dayId = parseInt(params.get("dayId"), 10);
+        var taskId = parseInt(params.get("taskId"), 10);
+
+        if (dayId && taskId) {
+          var existing = [];
+          try {
+            var raw = localStorage.getItem("completedTasks");
+            if (raw) existing = JSON.parse(raw);
+            if (!Array.isArray(existing)) existing = [];
+          } catch (e) {
+            existing = [];
+          }
+
+          var alreadyExists = existing.some(function (c) {
+            return c.dayId === dayId && c.taskId === taskId;
+          });
+          if (!alreadyExists) {
+            existing.push({ dayId: dayId, taskId: taskId });
+          }
+          localStorage.setItem("completedTasks", JSON.stringify(existing));
+        }
+
+        // 直接跳转回 dashboard，不弹任何提示
+        window.location.href = "dashboard-preview.html";
+      }
+
+      // 渲染主内容
+      function renderQuizContent() {
+        var container = document.getElementById("quiz-content");
+        if (!container) return;
+
+        if (quizState === "idle") {
+          container.innerHTML =
+            '<div class="quiz-idle-placeholder">' +
+            '<div class="quiz-idle-icon">📝</div>' +
+            '<h3 class="quiz-idle-title">完成学习后，来检验一下掌握程度吧！</h3>' +
+            '<p class="quiz-idle-desc">AI 将根据本知识点内容实时生成 10 道选择题，测试准确率达到 70% 即可通过。</p>' +
+            '<button class="quiz-start-btn" onclick="handleStartQuiz()">🚀 开始测试</button>' +
+            "</div>";
+          return;
+        }
+
+        if (quizState === "loading") {
+          container.innerHTML =
+            '<div class="quiz-loading-area">' +
+            '<div class="gen-loading">' +
+            '<div class="gen-loading-halo"></div>' +
+            '<div class="gen-loading-spinner"></div>' +
+            '<p class="gen-loading-title">AI 正在生成测试题目…</p>' +
+            '<p class="gen-loading-msg" id="quiz-loading-msg">分析知识点结构…</p>' +
+            "</div>" +
+            "</div>";
+          return;
+        }
+
+        // --- 核心渲染部分开始 ---
+        var round = currentRoundHistory[currentRoundIndex];
+        var questions = round.questions;
+        var total = questions.length;
+        var answeredCount = Object.keys(round.answers).length;
+        var allAnswered = answeredCount === total;
+
+        var html = "";
+
+        // 渲染测试轮次 Tab
+        html += '<div class="quiz-tabs">';
+        for (var i = 0; i < currentRoundHistory.length; i++) {
+          var r = currentRoundHistory[i];
+          var isActive = i === currentRoundIndex;
+          var isPassed = r.passed;
+          var tabClass =
+            "quiz-tab" +
+            (isActive ? " active" : "") +
+            (isPassed ? " passed" : "");
+
+          var scoreText =
+            r.state === "submitted" ? "准确率: " + r.accuracy + "%" : "进行中";
+
+          html +=
+            '<button class="' +
+            tabClass +
+            '" onclick="switchQuizRound(' +
+            i +
+            ')">';
+          html += '<span class="quiz-tab-title">测试 ' + (i + 1) + "</span>";
+          html += '<span class="quiz-tab-score">' + scoreText + "</span>";
+          html += "</button>";
+        }
+
+        // 「+ 新测验」Tab 按钮
+        var latestRound = currentRoundHistory[currentRoundHistory.length - 1];
+        var canGenNew = latestRound && latestRound.state === "submitted";
+        html +=
+          '<button class="quiz-tab-new"' +
+          (!canGenNew ? " disabled" : "") +
+          ' onclick="handleRetryQuiz()">' +
+          "➕ 生成新测试</button>";
+
+        html += "</div>";
+
+        if (quizState === "submitted" || round.state === "submitted") {
+          var isSubmittedView =
+            quizState === "submitted" || round.state === "submitted";
+
+          if (isSubmittedView && quizCurrentIndex === total) {
+            var correct = 0;
+            for (var i = 0; i < total; i++) {
+              if (round.answers[i] === questions[i].answer) correct++;
+            }
+            var wrong = total - correct;
+            var isRoundPassed = round.passed;
+            var panelClass = isRoundPassed ? "result-pass" : "result-fail";
+            var titleClass = isRoundPassed ? "pass" : "fail";
+            var icon = isRoundPassed ? "🎉" : "💪";
+            var title = isRoundPassed ? "恭喜通过！" : "还需努力";
+            var desc = isRoundPassed
+              ? "你已经很好地掌握了这个知识点，可以继续下一步学习了！"
+              : "建议先回顾知识点并查看错题后，<br>再点击上方「➕ 生成新测试」开启新一轮挑战。";
+
+            html +=
+              '<div class="quiz-result-panel ' +
+              panelClass +
+              '">' +
+              '<div class="quiz-result-icon">' +
+              icon +
+              "</div>" +
+              '<h3 class="quiz-result-title ' +
+              titleClass +
+              '">' +
+              title +
+              "</h3>" +
+              '<div class="quiz-result-stats">' +
+              '<div class="quiz-result-stat"><span class="quiz-result-stat-num green">' +
+              correct +
+              '</span><span class="quiz-result-stat-label">正确</span></div>' +
+              '<div class="quiz-result-stat"><span class="quiz-result-stat-num red">' +
+              wrong +
+              '</span><span class="quiz-result-stat-label">错误</span></div>' +
+              '<div class="quiz-result-stat"><span class="quiz-result-stat-num" style="color:var(--brown-dark)">' +
+              round.accuracy +
+              '%</span><span class="quiz-result-stat-label">准确率</span></div>' +
+              "</div>" +
+              '<p class="quiz-result-desc">' +
+              desc +
+              "</p>";
+
+            html +=
+              '<div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">';
+            html +=
+              '<button class="quiz-retry-btn" style="background:var(--white)af2;color:var(--brown-dark);border:2px solid var(--orange-lighter);box-shadow:2px 2px 5px rgba(var(--border-muted-rgb), 0.12)" onclick="quizCurrentIndex=0; renderQuizContent()">👀 查看答题详情</button>';
+            html += "</div>";
+
+            html += "</div>";
+            container.innerHTML = html;
+            return;
+          }
+        }
+
+        var isSubmittedView =
+          quizState === "submitted" || round.state === "submitted";
+
+        // testing 状态 或 历史查看状态
+        var q = questions[quizCurrentIndex];
+        var selected = round.answers[quizCurrentIndex] || null;
+        var correctAns = q.answer;
+        var isFav = !!round.favorited[quizCurrentIndex];
+
+        // 进度条
+        html +=
+          '<div class="quiz-progress-bar"><div class="quiz-progress-fill" style="width:' +
+          ((quizCurrentIndex + 1) / total) * 100 +
+          '%"></div></div>';
+
+        // 导航行 — 题号居中，收藏在右
+        html +=
+          '<div class="quiz-nav-row" style="display:flex;align-items:center;justify-content:center;position:relative;">';
+        html += '<div style="display:flex;align-items:center;gap:12px;">';
+        html +=
+          '<button class="quiz-nav-btn" onclick="quizPrev()" ' +
+          (quizCurrentIndex <= 0 ? "disabled" : "") +
+          ' title="上一题">‹</button>';
+        html +=
+          '<span class="quiz-counter">' +
+          (quizCurrentIndex + 1) +
+          " / " +
+          total +
+          "</span>";
+        html +=
+          '<button class="quiz-nav-btn" onclick="quizNext()" ' +
+          (quizCurrentIndex >= total - 1 ? "disabled" : "") +
+          ' title="下一题">›</button>';
+        html += "</div>";
+        html +=
+          '<button class="quiz-fav-btn' +
+          (isFav ? " favorited" : "") +
+          '" onclick="quizToggleFav()" title="' +
+          (isFav ? "取消收藏" : "加入收藏") +
+          '" style="position:absolute;right:0;">' +
+          (isFav ? "⭐" : "☆") +
+          "</button>";
+        html += "</div>";
+
+        // 题干
+        html += '<div class="quiz-stem">' + q.question + "</div>";
+
+        // 选项
+        html += '<div class="quiz-options">';
+        for (var oi = 0; oi < q.options.length; oi++) {
+          var opt = q.options[oi];
+          var isSel = selected === opt;
+          var isCor = opt === correctAns;
+
+          var cls = "quiz-option";
+          if (isSubmittedView) {
+            cls += " disabled";
+            if (isSel && isCor) {
+              cls += " correct";
+            } else if (isSel && !isCor) {
+              cls += " wrong";
+            } else if (!isSel && isCor) {
+              cls += " correct"; // 高亮正确答案
+            }
+          } else {
+            if (isSel) cls += " selected";
+          }
+
+          html +=
+            '<button class="' +
+            cls +
+            '" ' +
+            (isSubmittedView ? "" : 'onclick="quizSelectAnswer(' + oi + ')"') +
+            ">";
+          html +=
+            '<span class="option-label">' +
+            String.fromCharCode(65 + oi) +
+            "</span>";
+          html += '<span class="option-text">' + escapeHtml(opt) + "</span>";
+
+          if (isSubmittedView) {
+            if (isSel && isCor) {
+              html +=
+                '<span class="option-badge correct-badge" style="margin-left:auto;font-size:12px;padding:2px 8px;border-radius:12px;background:var(--success-bg);color:var(--success-text);">✅ 回答正确</span>';
+            } else if (isSel && !isCor) {
+              html +=
+                '<span class="option-badge wrong-badge" style="margin-left:auto;font-size:12px;padding:2px 8px;border-radius:12px;background:var(--danger-bg);color:var(--danger-text);">❌ 你的答案</span>';
+            } else if (!isSel && isCor) {
+              html +=
+                '<span class="option-badge correct-badge" style="margin-left:auto;font-size:12px;padding:2px 8px;border-radius:12px;background:var(--success-bg);color:var(--success-text);">💡 正确答案</span>';
+            }
+          }
+          html += "</button>";
+        }
+        html += "</div>";
+
+        // 底部操作区
+        html +=
+          '<div class="quiz-action-row" style="justify-content:center; gap: 16px;">';
+        if (isSubmittedView) {
+          html +=
+            '<button class="quiz-submit-btn" style="background:var(--bg-canvas); color:var(--brown-dark); border:2px solid var(--orange-lighter); box-shadow:none;" onclick="quizCurrentIndex=' +
+            total +
+            '; renderQuizContent()">⬅️ 返回成绩报告</button>';
+        } else {
+          html +=
+            '<button class="quiz-submit-btn" onclick="quizSubmit()" ' +
+            (!allAnswered ? "disabled" : "") +
+            ">" +
+            (allAnswered
+              ? "🚀 提交答案"
+              : "📝 还有 " + (total - answeredCount) + " 题未答") +
+            "</button>";
+        }
+        html += "</div>";
+
+        container.innerHTML = html;
+      }
+
+      // 警告弹窗（用于"已完成本知识点"未达标时）
+      function showFinishWarningModal(icon, title, desc, btnText) {
+        var existing = document.getElementById("finish-warn-overlay");
+        if (existing) existing.remove();
+        var overlay = document.createElement("div");
+        overlay.className = "quiz-confirm-overlay";
+        overlay.id = "finish-warn-overlay";
+        overlay.innerHTML =
+          '<div class="quiz-confirm-card">' +
+          '<div class="quiz-confirm-icon">' +
+          icon +
+          "</div>" +
+          '<h3 class="quiz-confirm-title">' +
+          title +
+          "</h3>" +
+          '<p class="quiz-confirm-desc">' +
+          desc +
+          "</p>" +
+          '<div class="quiz-confirm-actions">' +
+          '<button class="quiz-confirm-ok" onclick="closeFinishWarningModal()" style="background:linear-gradient(135deg, var(--orange-light), var(--orange));">' +
+          btnText +
+          "</button>" +
+          "</div>" +
+          "</div>";
+        document.body.appendChild(overlay);
+      }
+      function closeFinishWarningModal() {
+        var el = document.getElementById("finish-warn-overlay");
+        if (el) el.remove();
+      }
+
+      // === 完成学习：写入 localStorage 并跳转回 dashboard ===
+      function handleFinishLearning() {
+        // 1. 如果用户曾经跳过，允许完成
+        if (quizSkipped) {
+          submitCompletion();
+          return;
+        }
+
+        // 2. 检查是否有任何一轮测试达到了 70% (按历史最高准确率算)
+        var maxAccuracy = 0;
+        currentRoundHistory.forEach(function (r) {
+          if (r.state === "submitted" && r.accuracy > maxAccuracy) {
+            maxAccuracy = r.accuracy;
+          }
+        });
+
+        if (maxAccuracy >= 70) {
+          submitCompletion();
+          return;
+        }
+
+        // 3. 如果没达到 70%，分情况提示
+        if (quizState === "idle") {
+          showFinishWarningModal(
+            "⚠️",
+            "请先完成测试",
+            "请先完成下方的知识点测试，<br>达到 70% 准确率后即可标记完成。",
+            "去测试",
+          );
+        } else if (quizState === "testing") {
+          showFinishWarningModal(
+            "📝",
+            "测验还未提交",
+            "你正在进行测验，请先把它答完并提交吧！<br>只要其中有一次测验的正确率达到 70% 以上，<br>就代表你已经掌握了这个知识点。加油！",
+            "继续答题",
+          );
+        } else {
+          showFinishWarningModal(
+            "💪",
+            "掌握程度还不够",
+            "你目前表现最好的一轮测验正确率为 " +
+              maxAccuracy +
+              "%，<br>还没达到 70% 的通过要求。<br>建议先温习一下薄弱环节，<br>再点击「➕ 生成新测试」开启新一轮挑战！",
+            "继续努力",
+          );
+        }
+      }
+
+      // 封装统一的提交逻辑
+      function submitCompletion() {
+        var params = new URLSearchParams(window.location.search);
+        var dayId = parseInt(params.get("dayId"), 10);
+        var taskId = parseInt(params.get("taskId"), 10);
+
+        if (dayId && taskId) {
+          var existing = [];
+          try {
+            var raw = localStorage.getItem("completedTasks");
+            if (raw) existing = JSON.parse(raw);
+            if (!Array.isArray(existing)) existing = [];
+          } catch (e) {
+            existing = [];
+          }
+
+          var alreadyExists = existing.some(function (c) {
+            return c.dayId === dayId && c.taskId === taskId;
+          });
+          if (!alreadyExists) {
+            existing.push({ dayId: dayId, taskId: taskId });
+          }
+          localStorage.setItem("completedTasks", JSON.stringify(existing));
+        }
+        window.location.href = "dashboard-preview.html";
+      }
+
+      // === AI 生成视频 ===
+      function handleGenVideo() {
+        var btn = document.getElementById("btn-gen-video");
+        var area = document.getElementById("video-area");
+        var defaultContent = document.getElementById("video-default-content");
+
+        // 禁用按钮
+        btn.disabled = true;
+
+        // 隐藏默认内容
+        defaultContent.style.display = "none";
+
+        // 切换为加载背景
+        area.classList.add("is-loading");
+
+        // 插入加载动画
+        var loadingEl = document.createElement("div");
+        loadingEl.className = "gen-loading";
+        loadingEl.id = "video-loading";
+        loadingEl.innerHTML =
+          '<div class="gen-loading-halo"></div>' +
+          '<div class="gen-loading-spinner"></div>' +
+          '<p class="gen-loading-title">正在生成知识点视频…</p>' +
+          '<p class="gen-loading-msg" id="video-loading-msg">解析知识点语义结构…</p>';
+        area.appendChild(loadingEl);
+
+        // 模拟分步进度消息
+        var msgs = [
+          "解析知识点语义结构…",
+          "构建视频分镜脚本…",
+          "生成动画资产…",
+          "合成语音解说…",
+          "渲染最终视频…",
+          "优化输出质量…",
+        ];
+        var msgIdx = 0;
+        var msgTimer = setInterval(function () {
+          msgIdx++;
+          if (msgIdx < msgs.length) {
+            var msgEl = document.getElementById("video-loading-msg");
+            if (msgEl) msgEl.textContent = msgs[msgIdx];
+          }
+        }, 1200);
+
+        // 模拟生成完成 (约 6 秒)
+        setTimeout(function () {
+          clearInterval(msgTimer);
+
+          // 移除加载动画
+          var loadEl = document.getElementById("video-loading");
+          if (loadEl) loadEl.remove();
+
+          // 移除加载背景
+          area.classList.remove("is-loading");
+
+          // 显示视频
+          area.innerHTML =
+            '<video controls autoplay muted loop style="width:100%;height:100%;object-fit:contain;border-radius:16px;z-index:1;position:relative" class="gen-slide-up">' +
+            '<source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4">' +
+            "你的浏览器不支持该视频。</video>";
+
+          // 恢复按钮
+          btn.disabled = false;
+        }, 7000);
+      }
+
+      // === AI 生成 3D ===
+      function handleGen3D() {
+        var btn = document.getElementById("btn-gen-3d");
+        var area = document.getElementById("sandbox-area");
+        var defaultContent = document.getElementById("sandbox-default-content");
+
+        // 禁用按钮
+        btn.disabled = true;
+
+        // 隐藏默认内容
+        defaultContent.style.display = "none";
+
+        // 切换为加载背景
+        area.classList.add("is-loading");
+
+        // 插入加载动画
+        var loadingEl = document.createElement("div");
+        loadingEl.className = "gen-loading";
+        loadingEl.id = "sandbox-loading";
+        loadingEl.innerHTML =
+          '<div class="gen-loading-halo"></div>' +
+          '<div class="gen-loading-spinner"></div>' +
+          '<p class="gen-loading-title">正在渲染空间资产…</p>' +
+          '<p class="gen-loading-msg" id="sandbox-loading-msg">解析知识点语义…</p>';
+        area.appendChild(loadingEl);
+
+        // 模拟分步进度消息
+        var msgs = [
+          "解析知识点语义…",
+          "构建 3D 场景拓扑结构…",
+          "生成交互式空间资产…",
+          "渲染光照与材质…",
+          "注入物理模拟引擎…",
+          "最终合成与封装…",
+        ];
+        var msgIdx = 0;
+        var msgTimer = setInterval(function () {
+          msgIdx++;
+          if (msgIdx < msgs.length) {
+            var msgEl = document.getElementById("sandbox-loading-msg");
+            if (msgEl) msgEl.textContent = msgs[msgIdx];
+          }
+        }, 1000);
+
+        // 模拟生成完成 (约 6 秒)
+        setTimeout(function () {
+          clearInterval(msgTimer);
+
+          // 移除加载动画
+          var loadEl = document.getElementById("sandbox-loading");
+          if (loadEl) loadEl.remove();
+
+          // 移除加载背景
+          area.classList.remove("is-loading");
+
+          // 显示3D内容 (mock iframe)
+          area.innerHTML =
+            '<iframe title="3D Sandbox Result" class="gen-slide-up" srcdoc=\'<html><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#eaf8f3,var(--green-lighter));font-family:Inter,system-ui,sans-serif"><div style="text-align:center"><div style="font-size:72px;margin-bottom:16px">🧊</div><h2 style="color:#5c3d2e;font-size:24px">3D 模型: 变量与数据类型</h2><p style="color:#8b6347;margin-top:8px">交互式 3D 可视化已就绪</p></div></body></html>\' style="width:100%;height:100%;border:none;border-radius:16px;z-index:1;position:relative"></iframe>';
+
+          // 恢复按钮
+          btn.disabled = false;
+        }, 6000);
+      }
+    </script>
+  </body>
+</html>

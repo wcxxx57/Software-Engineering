@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RewardPopup — 奖励弹窗组件预览 · AI编程学习助手</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+
+    <link rel="stylesheet" href="variables.css" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: 'Inter', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        color: var(--text-primary);
+        background-color: var(--bg-canvas);
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+
+      /* ========== Animations ========== */
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(24px) scale(0.96); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+
+      @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(120px); }
+        to { opacity: 1; transform: translateX(0); }
+      }
+
+      @keyframes slideOutRight {
+        from { opacity: 1; transform: translateX(0); }
+        to { opacity: 0; transform: translateX(120px); }
+      }
+
+      @keyframes bounceNumber {
+        0% { transform: scale(0.3); opacity: 0; }
+        50% { transform: scale(1.15); }
+        70% { transform: scale(0.95); }
+        100% { transform: scale(1); opacity: 1; }
+      }
+
+      @keyframes iconPop {
+        0% { transform: scale(0) rotate(-20deg); }
+        60% { transform: scale(1.2) rotate(5deg); }
+        100% { transform: scale(1) rotate(0deg); }
+      }
+
+      @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+
+      @keyframes confetti-fall {
+        0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(60px) rotate(360deg); opacity: 0; }
+      }
+
+      @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(var(--yellow-rgb), 0.25); }
+        50% { box-shadow: 0 0 40px rgba(var(--yellow-rgb), 0.5); }
+      }
+
+      @keyframes float1 {
+        0%, 100% { transform: translate(0,0) scale(1); }
+        50% { transform: translate(-20px,15px) scale(1.05); }
+      }
+      @keyframes float2 {
+        0%, 100% { transform: translate(0,0) scale(1); }
+        50% { transform: translate(15px,-20px) scale(1.08); }
+      }
+      @keyframes float3 {
+        0%, 100% { transform: translate(0,0) scale(1); }
+        50% { transform: translate(-10px,-15px) scale(1.03); }
+      }
+
+      /* ========== Modal Overlay ========== */
+      .reward-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--surface-soft-rgb), 0.8);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        z-index: 9999;
+        animation: fadeIn 0.4s ease;
+        overflow: hidden;
+      }
+
+      /* ========== Modal Card ========== */
+      .reward-card {
+        position: relative;
+        width: min(460px, calc(100vw - 48px));
+        border-radius: 24px;
+        background: rgba(var(--white-rgb), 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: var(--shadow-soft);
+        overflow: hidden;
+        animation: fadeInUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.1s both;
+      }
+
+      .accent-bar {
+        height: 4px;
+        background: linear-gradient(90deg, var(--orange) 0%, var(--yellow) 50%, var(--blue-light) 100%);
+        width: 100%;
+      }
+
+      .card-content {
+        padding: 36px 36px 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+
+      /* Close button */
+      .close-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: var(--bg-canvas);
+        border: 1.5px solid rgba(var(--border-muted-rgb), 0.25);
+        border-radius: 50%;
+        width: 36px;
+        height: 36px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(var(--border-muted-rgb), 0.15);
+        transition: all 0.2s ease;
+        z-index: 10;
+      }
+      .close-btn:hover {
+        transform: rotate(90deg) scale(1.1);
+        border-color: var(--orange-light);
+        box-shadow: 0 4px 12px rgba(var(--orange-rgb), 0.25);
+      }
+
+      /* Brand Icon */
+      .modal-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        box-shadow: var(--shadow-soft);
+        animation: iconPop 0.6s cubic-bezier(0.34,1.56,0.64,1) 0.2s both, pulse-glow 3s ease-in-out infinite 0.8s;
+      }
+      .modal-icon.gold { background: linear-gradient(135deg, var(--yellow-lighter), var(--yellow)); }
+      .modal-icon.diamond { background: linear-gradient(135deg, var(--blue-mist), var(--blue-lighter)); }
+      .modal-icon.exp { background: linear-gradient(135deg, var(--green-mist), var(--green-lighter)); }
+      .modal-icon.mixed { background: linear-gradient(135deg, var(--yellow-lighter), var(--orange-light)); }
+
+      .modal-title {
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--brown-deep);
+        text-align: center;
+        letter-spacing: -0.3px;
+      }
+
+      .modal-subtitle {
+        font-size: 14px;
+        color: var(--brown-medium);
+        text-align: center;
+        font-weight: 500;
+        line-height: 1.5;
+        margin-top: -8px;
+      }
+
+      /* Rewards Grid */
+      .rewards-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        width: 100%;
+        padding: 4px 0;
+      }
+
+      .reward-chip {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 16px 24px;
+        border-radius: 18px;
+        min-width: 110px;
+        flex: 1;
+        max-width: 160px;
+        transition: transform 0.2s ease;
+      }
+      .reward-chip:hover { transform: translateY(-2px); }
+
+      .reward-chip.gold {
+        background: linear-gradient(135deg, var(--yellow-mist) 0%, var(--yellow-lighter) 100%);
+        border: 1.5px solid rgba(var(--yellow-rgb), 0.4);
+        box-shadow: 0 4px 12px rgba(var(--yellow-rgb), 0.2);
+      }
+      .reward-chip.diamond {
+        background: linear-gradient(135deg, var(--blue-mist) 0%, var(--blue-lighter) 100%);
+        border: 1.5px solid rgba(var(--blue-light-rgb), 0.3);
+        box-shadow: 0 4px 12px rgba(var(--blue-light-rgb), 0.2);
+      }
+      .reward-chip.exp {
+        background: linear-gradient(135deg, var(--green-mist) 0%, var(--green-lighter) 100%);
+        border: 1.5px solid rgba(var(--green-rgb), 0.3);
+        box-shadow: 0 4px 12px rgba(var(--green-rgb), 0.2);
+      }
+
+      .chip-icon { font-size: 28px; animation: bounceNumber 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.4s both; }
+      .chip-amount {
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: -0.5px;
+        animation: bounceNumber 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.55s both;
+      }
+      .chip-amount.gold-num { color: var(--gold-rich); }
+      .chip-amount.diamond-num { color: var(--blue); }
+      .chip-amount.exp-num { color: var(--green); }
+
+      .chip-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--brown-medium);
+        animation: bounceNumber 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.65s both;
+      }
+
+      /* Confirm Button */
+      .confirm-btn {
+        width: 100%;
+        height: 52px;
+        border: none;
+        border-radius: 9999px;
+        background: linear-gradient(135deg, var(--yellow) 0%, var(--orange) 100%);
+        color: var(--brown-dark);
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(var(--orange-rgb), 0.35);
+        transition: all 220ms ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .confirm-btn:hover {
+        background: linear-gradient(135deg, var(--orange-light) 0%, var(--orange) 100%);
+        box-shadow: 0 6px 24px rgba(var(--orange-rgb), 0.45);
+        transform: translateY(-1px);
+      }
+      .confirm-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 2px 8px rgba(var(--orange-rgb), 0.25);
+      }
+
+      /* Confetti Particles */
+      .confetti-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        overflow: hidden;
+        z-index: 0;
+      }
+      .confetti-piece {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        animation: confetti-fall 2s ease-out forwards;
+        opacity: 0.8;
+      }
+
+      /* ========== Demo Controls ========== */
+      .demo-controls {
+        max-width: 700px;
+        margin: 40px auto;
+        padding: 0 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+
+      .demo-section-title {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--brown-dark);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid rgba(var(--border-muted-rgb), 0.15);
+      }
+
+      .demo-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+      }
+
+      .demo-btn {
+        padding: 14px 20px;
+        border-radius: 16px;
+        border: 2px solid transparent;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.25s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: var(--shadow-soft);
+      }
+      .demo-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-hover);
+      }
+      .demo-btn:active { transform: translateY(0); }
+
+      .demo-btn.gold-btn {
+        background: linear-gradient(135deg, var(--yellow-mist), var(--yellow-lighter));
+        color: var(--brown-dark);
+        border-color: rgba(var(--yellow-rgb), 0.3);
+      }
+      .demo-btn.diamond-btn {
+        background: linear-gradient(135deg, var(--blue-mist), var(--blue-lighter));
+        color: var(--brown-dark);
+        border-color: rgba(var(--blue-light-rgb), 0.3);
+      }
+      .demo-btn.exp-btn {
+        background: linear-gradient(135deg, var(--green-mist), var(--green-lighter));
+        color: var(--brown-dark);
+        border-color: rgba(var(--green-rgb), 0.3);
+      }
+      .demo-btn.mixed-btn {
+        background: linear-gradient(135deg, var(--orange-mist), var(--orange-lighter));
+        color: var(--brown-dark);
+        border-color: rgba(var(--orange-rgb), 0.3);
+      }
+      .demo-btn.purple-btn {
+        background: linear-gradient(135deg, var(--purple-mist), var(--purple-lighter));
+        color: var(--brown-dark);
+        border-color: rgba(var(--purple-rgb), 0.3);
+      }
+
+      .demo-btn-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        background: rgba(var(--white-rgb), 0.6);
+        flex-shrink: 0;
+      }
+
+      .page-header {
+        text-align: center;
+        padding: 48px 24px 0;
+      }
+      .page-header h1 {
+        font-size: 32px;
+        font-weight: 900;
+        background: linear-gradient(135deg, var(--brown-dark) 0%, var(--accent-warm) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 8px;
+      }
+      .page-header p {
+        font-size: 15px;
+        color: var(--brown-medium);
+        font-weight: 500;
+      }
+
+      /* Level Up special */
+      .levelup-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 16px;
+        border-radius: 9999px;
+        font-size: 14px;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--yellow-lighter) 0%, var(--yellow) 100%);
+        color: var(--brown-dark);
+        box-shadow: 0 2px 8px rgba(var(--yellow-rgb), 0.3);
+        animation: bounceNumber 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.3s both;
+      }
+
+      .levelup-arrow {
+        font-size: 16px;
+        color: var(--orange);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ========== Modal Overlay (默认隐藏) ========== -->
+    <div class="reward-overlay" id="rewardOverlay" style="display:none">
+      <div class="reward-card" id="rewardCard">
+        <div class="accent-bar"></div>
+        <button class="close-btn" onclick="closeModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brown-dark)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+        <div class="card-content" id="modalContent">
+          <!-- JS 动态填充 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Page Content: Demo Controls ========== -->
+    <div class="page-header">
+      <h1>🎁 奖励弹窗组件预览</h1>
+      <p>RewardPopup — 通用的金币 / 钻石 / 经验获取通知组件</p>
+    </div>
+
+    <div class="demo-controls">
+      <div>
+        <h2 class="demo-section-title">🎉 奖励弹窗场景演示（点击触发）</h2>
+        <div class="demo-grid" style="margin-top:16px">
+          <button class="demo-btn gold-btn" onclick="showModal('single-gold')">
+            <span class="demo-btn-icon">🪙</span>
+            完成知识点 +5金币
+          </button>
+          <button class="demo-btn exp-btn" onclick="showModal('learn-exp')">
+            <span class="demo-btn-icon">🛡️</span>
+            学习奖励 +10EXP
+          </button>
+          <button class="demo-btn mixed-btn" onclick="showModal('checkin-daily')">
+            <span class="demo-btn-icon">📅</span>
+            每日签到 +4🪙 +5EXP
+          </button>
+          <button class="demo-btn gold-btn" onclick="showModal('daily-clear')">
+            <span class="demo-btn-icon">📋</span>
+            今日计划清空
+          </button>
+          <button class="demo-btn diamond-btn" onclick="showModal('bet-return')">
+            <span class="demo-btn-icon">💎</span>
+            完课对赌返还
+          </button>
+          <button class="demo-btn mixed-btn" onclick="showModal('checkin-full')">
+            <span class="demo-btn-icon">🎉</span>
+            满签周日奖励
+          </button>
+          <button class="demo-btn purple-btn" onclick="showModal('referral')">
+            <span class="demo-btn-icon">👥</span>
+            拉新裂变奖励
+          </button>
+          <button class="demo-btn exp-btn" onclick="showModal('levelup')">
+            <span class="demo-btn-icon">⬆️</span>
+            升级！Lv.2
+          </button>
+          <button class="demo-btn diamond-btn" onclick="showModal('diamond-spend')">
+            <span class="demo-btn-icon">🎬</span>
+            生成视频消耗 +50EXP
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      /* ========================================
+         Modal 奖励弹窗
+         ======================================== */
+      var modalScenarios = {
+        'daily-clear': {
+          icon: '🎯',
+          iconClass: 'mixed',
+          title: '今日计划全部完成！',
+          subtitle: '太棒了！保持这个势头继续前进吧',
+          rewards: [
+            { type: 'gold', icon: '🪙', amount: '+10', label: '清空奖励' },
+            { type: 'exp', icon: '🛡️', amount: '+50', label: '经验值' }
+          ]
+        },
+        'bet-return': {
+          icon: '💎',
+          iconClass: 'diamond',
+          title: '恭喜完课！钻石返还',
+          subtitle: '你已完成 7 天标准学习计划，返还 50% 钻石',
+          rewards: [
+            { type: 'diamond', icon: '💎', amount: '+20', label: '完课返还' },
+            { type: 'exp', icon: '🛡️', amount: '+100', label: '经验值' }
+          ]
+        },
+        'checkin-full': {
+          icon: '🎉',
+          iconClass: 'gold',
+          title: '满签周日大奖！',
+          subtitle: '连续签到 7 天，获得额外满签奖励',
+          rewards: [
+            { type: 'gold', icon: '🪙', amount: '+10', label: '签到金币' },
+            { type: 'gold', icon: '🪙', amount: '+10', label: '满签加赠' },
+            { type: 'exp', icon: '🛡️', amount: '+5', label: '经验值' }
+          ]
+        },
+        'referral': {
+          icon: '👥',
+          iconClass: 'mixed',
+          title: '拉新成功！',
+          subtitle: '你邀请的好友已完成课前测，奖励已发放',
+          rewards: [
+            { type: 'diamond', icon: '💎', amount: '+15', label: '拉新钻石' },
+            { type: 'exp', icon: '🛡️', amount: '+300', label: '经验值' }
+          ]
+        },
+        'levelup': {
+          icon: '⬆️',
+          iconClass: 'exp',
+          title: '等级提升！',
+          subtitle: '',
+          rewards: [
+            { type: 'exp', icon: '🛡️', amount: '500', label: '累计经验' }
+          ],
+          levelup: { from: 'Lv.1 脚本学徒', to: 'Lv.2 代码极客' }
+        },
+        'single-gold': {
+          icon: '🪙',
+          iconClass: 'gold',
+          title: '获得金币奖励',
+          subtitle: '完成单个知识点学习',
+          rewards: [
+            { type: 'gold', icon: '🪙', amount: '+5', label: '金币' }
+          ]
+        },
+        'learn-exp': {
+          icon: '🛡️',
+          iconClass: 'exp',
+          title: '学习奖励',
+          subtitle: '完成知识点学习，获得经验值',
+          rewards: [
+            { type: 'exp', icon: '🛡️', amount: '+10', label: '经验值' }
+          ]
+        },
+        'checkin-daily': {
+          icon: '📅',
+          iconClass: 'mixed',
+          title: '签到成功！',
+          subtitle: '连续签到第 4 天，继续保持！',
+          rewards: [
+            { type: 'gold', icon: '🪙', amount: '+4', label: '签到金币' },
+            { type: 'exp', icon: '🛡️', amount: '+5', label: '经验值' }
+          ]
+        },
+        'diamond-spend': {
+          icon: '🎬',
+          iconClass: 'diamond',
+          title: '视频生成完成',
+          subtitle: '消耗 18 钻石生成 K2V 视频，额外获得经验',
+          rewards: [
+            { type: 'exp', icon: '🛡️', amount: '+50', label: '算力经验' }
+          ]
+        }
+      };
+
+      function showModal(scenarioKey) {
+        var scenario = modalScenarios[scenarioKey];
+        if (!scenario) return;
+
+        var content = document.getElementById('modalContent');
+        var html = '';
+
+        // Icon
+        html += '<div class="modal-icon ' + scenario.iconClass + '">' + scenario.icon + '</div>';
+
+        // Title
+        html += '<div class="modal-title">' + scenario.title + '</div>';
+
+        // Subtitle
+        if (scenario.subtitle) {
+          html += '<div class="modal-subtitle">' + scenario.subtitle + '</div>';
+        }
+
+        // Level up badge
+        if (scenario.levelup) {
+          html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center">';
+          html += '<span class="levelup-badge">' + scenario.levelup.from + '</span>';
+          html += '<span class="levelup-arrow">➜</span>';
+          html += '<span class="levelup-badge" style="background:linear-gradient(135deg, var(--green-lighter) 0%, var(--green-light) 100%); box-shadow:0 2px 8px rgba(var(--green-rgb), 0.3)">' + scenario.levelup.to + '</span>';
+          html += '</div>';
+        }
+
+        // Rewards grid
+        html += '<div class="rewards-grid">';
+        for (var i = 0; i < scenario.rewards.length; i++) {
+          var r = scenario.rewards[i];
+          var numClass = r.type === 'gold' ? 'gold-num' : r.type === 'diamond' ? 'diamond-num' : 'exp-num';
+          html += '<div class="reward-chip ' + r.type + '">';
+          html += '<span class="chip-icon">' + r.icon + '</span>';
+          html += '<span class="chip-amount ' + numClass + '">' + r.amount + '</span>';
+          html += '<span class="chip-label">' + r.label + '</span>';
+          html += '</div>';
+        }
+        html += '</div>';
+
+        // Confirm button
+        html += '<button class="confirm-btn" onclick="closeModal()">🎁 太棒了！确认领取</button>';
+
+        content.innerHTML = html;
+
+        // Show overlay
+        var overlay = document.getElementById('rewardOverlay');
+        overlay.style.display = 'flex';
+
+        // Reset animation
+        var card = document.getElementById('rewardCard');
+        card.style.animation = 'none';
+        card.offsetHeight; // force reflow
+        card.style.animation = 'fadeInUp 0.5s cubic-bezier(0.16,1,0.3,1) 0.1s both';
+      }
+
+      function closeModal() {
+        document.getElementById('rewardOverlay').style.display = 'none';
+      }
+
+      // 点击遮罩关闭
+      document.getElementById('rewardOverlay').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+      });
+    </script>
+  </body>
+</html>
