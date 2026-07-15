@@ -240,6 +240,9 @@ pub async fn create_knowledge_video(
     Path(id): Path<i32>,
     Json(payload): Json<PromptRequest>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
+    if state.config.core_flow_only {
+        return Err(AppError::business(BusinessError::FeatureDisabled));
+    }
     let now = Utc::now();
     let cost = state.config.knowledge_video_diamond_cost;
     let tx = state.db.begin().await?;
@@ -327,6 +330,9 @@ pub async fn create_interactive_html(
     Path(id): Path<i32>,
     Json(payload): Json<PromptRequest>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
+    if state.config.core_flow_only {
+        return Err(AppError::business(BusinessError::FeatureDisabled));
+    }
     let now = Utc::now();
     let cost = state.config.interactive_html_gold_cost;
     let tx = state.db.begin().await?;

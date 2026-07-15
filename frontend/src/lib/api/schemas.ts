@@ -163,6 +163,13 @@ export type CreateKnowledgeVideoResponse = z.infer<
   typeof createKnowledgeVideoResponseSchema
 >;
 
+export const createKnowledgeExplanationResponseSchema = z.object({
+  knowledge_explanation_id: z.number().int(),
+});
+export type CreateKnowledgeExplanationResponse = z.infer<
+  typeof createKnowledgeExplanationResponseSchema
+>;
+
 export const createInteractiveHtmlResponseSchema = z.object({
   interactive_html_id: z.number().int(),
 });

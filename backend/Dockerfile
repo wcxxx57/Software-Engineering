@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # ---------- 1. plan: 用 cargo-chef 提取依赖图 ----------
 FROM rust:1-slim-bookworm AS chef
 WORKDIR /app

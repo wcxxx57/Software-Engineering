@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache";
 import { serverFetch } from "@/lib/api/client";
 import {
   createInteractiveHtmlResponseSchema,
+  createKnowledgeExplanationResponseSchema,
   createKnowledgeVideoResponseSchema,
   createStudyQuizResponseSchema,
   type CreateInteractiveHtmlResponse,
+  type CreateKnowledgeExplanationResponse,
   type CreateKnowledgeVideoResponse,
   type CreateStudyQuizResponse,
 } from "@/lib/api/schemas";
@@ -15,6 +17,8 @@ import { withApiError, type ActionResult } from "@/lib/server/action";
 
 export type CreateKnowledgeVideoActionResult =
   ActionResult<CreateKnowledgeVideoResponse>;
+export type CreateKnowledgeExplanationActionResult =
+  ActionResult<CreateKnowledgeExplanationResponse>;
 export type CreateInteractiveHtmlActionResult =
   ActionResult<CreateInteractiveHtmlResponse>;
 export type CreateStudyQuizActionResult = ActionResult<CreateStudyQuizResponse>;
@@ -34,6 +38,27 @@ export async function createKnowledgeVideoAction(
         method: "POST",
         body: {},
         schema: createKnowledgeVideoResponseSchema,
+      },
+    );
+    revalidatePath(`/tasks/${taskId}`);
+    return data;
+  });
+}
+
+export async function createKnowledgeExplanationAction(
+  taskId: number,
+): Promise<CreateKnowledgeExplanationActionResult> {
+  if (!Number.isInteger(taskId) || taskId <= 0) {
+    return { ok: false, message: "无效的任务" };
+  }
+
+  return withApiError(async () => {
+    const data = await serverFetch<CreateKnowledgeExplanationResponse>(
+      `/study-tasks/${taskId}/explanation`,
+      {
+        method: "POST",
+        body: {},
+        schema: createKnowledgeExplanationResponseSchema,
       },
     );
     revalidatePath(`/tasks/${taskId}`);

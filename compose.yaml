@@ -1,7 +1,8 @@
 name: zhiying
 
 # 单机生产/演示部署编排。
-# 业务镜像直接从本单仓库的三个源码目录构建；公网只通过 Nginx Proxy Manager 进入。
+# 业务镜像直接从本单仓库的 backend、core-generation、frontend 构建；
+# 公网只通过 Nginx Proxy Manager 进入。
 services:
   npm:
     image: jc21/nginx-proxy-manager:latest
@@ -53,7 +54,7 @@ services:
 
   backend:
     build:
-      context: ./zhiying-backend-main
+      context: ./backend
     image: zhiying/backend:local
     container_name: zhiying-backend
     restart: unless-stopped
@@ -70,21 +71,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_TTL_DAYS: ${JWT_TTL_DAYS:-30}
       CORS_ALLOW_ORIGIN: https://${PUBLIC_HOST}
+      CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-true}
       REGISTER_BONUS_DIAMONDS: ${REGISTER_BONUS_DIAMONDS:-80}
       CHECKIN_REWARD_SEQUENCE: ${CHECKIN_REWARD_SEQUENCE:-1,2,3,4,6,8,10}
       CHECKIN_MAKEUP_GOLD_COST_PER_DAY: ${CHECKIN_MAKEUP_GOLD_COST_PER_DAY:-50}
       CHECKIN_MAKEUP_DIAMOND_COST: ${CHECKIN_MAKEUP_DIAMOND_COST:-1}
-      KNOWLEDGE_VIDEO_DIAMOND_COST: ${KNOWLEDGE_VIDEO_DIAMOND_COST:-5}
-      CODE_VIDEO_DIAMOND_COST: ${CODE_VIDEO_DIAMOND_COST:-5}
-      INTERACTIVE_HTML_GOLD_COST: ${INTERACTIVE_HTML_GOLD_COST:-10}
       KNOWLEDGE_EXPLANATION_GOLD_COST: ${KNOWLEDGE_EXPLANATION_GOLD_COST:-10}
-      KNOWLEDGE_VIDEO_EXCHANGE: zhiying.knowledge_video
-      CODE_VIDEO_EXCHANGE: zhiying.code_video
-      INTERACTIVE_HTML_EXCHANGE: zhiying.interactive_html
       KNOWLEDGE_EXPLANATION_EXCHANGE: zhiying.knowledge_explanation
-      KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
-      CODE_VIDEO_API_KEY: ${CODE_VIDEO_API_KEY}
-      INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
       KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
       STUDY_SUBJECT_DIAMOND_COSTS: ${STUDY_SUBJECT_DIAMOND_COSTS:-3:10,7:20,15:40,30:80}
       PRETEST_EXCHANGE: zhiying.pretest
@@ -95,19 +88,12 @@ services:
       QUIZ_API_KEY: ${QUIZ_API_KEY}
       STUDY_QUIZ_FREE_LIMIT_PER_TASK: ${STUDY_QUIZ_FREE_LIMIT_PER_TASK:-3}
       STUDY_QUIZ_EXTRA_GOLD_COST: ${STUDY_QUIZ_EXTRA_GOLD_COST:-20}
-      RECHARGE_API_KEY: ${RECHARGE_API_KEY}
-      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
-      STORAGE_REGION: ${STORAGE_REGION}
-      STORAGE_BUCKET: ${STORAGE_BUCKET}
-      STORAGE_PUBLIC_BASE: ${STORAGE_PUBLIC_BASE}
 
-  mocks:
+  core-generation:
     build:
-      context: ./zhiying-mock-main
-    image: zhiying/mocks:local
-    container_name: zhiying-mocks
+      context: ./core-generation
+    image: zhiying/core-generation:local
+    container_name: zhiying-core-generation
     restart: unless-stopped
     depends_on:
       rabbitmq:
@@ -117,27 +103,34 @@ services:
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
       BACKEND_BASE_URL: http://backend:9000
-      MOCK_GENERATING_DELAY_MS: ${MOCK_GENERATING_DELAY_MS:-500}
-      MOCK_FINISHED_DELAY_MS: ${MOCK_FINISHED_DELAY_MS:-3000}
-      MOCK_FAILURE_RATE: ${MOCK_FAILURE_RATE:-0.0}
-      MOCK_PREFETCH: ${MOCK_PREFETCH:-16}
-      MOCK_VIDEO_OBJECT_KEY: ${MOCK_VIDEO_OBJECT_KEY:-knowledge-videos/mock-placeholder.mp4}
-      MOCK_CODE_VIDEO_OBJECT_KEY: ${MOCK_CODE_VIDEO_OBJECT_KEY:-code-videos/mock-placeholder.mp4}
-      MOCK_HTML_OBJECT_KEY: ${MOCK_HTML_OBJECT_KEY:-interactive-html/mock-placeholder/index.html}
-      MOCK_PRETEST_PROBLEM_COUNT: ${MOCK_PRETEST_PROBLEM_COUNT:-10}
-      MOCK_QUIZ_PROBLEM_COUNT: ${MOCK_QUIZ_PROBLEM_COUNT:-5}
-      MOCK_PLAN_TASKS_PER_STAGE: ${MOCK_PLAN_TASKS_PER_STAGE:-3}
-      KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
-      CODE_VIDEO_API_KEY: ${CODE_VIDEO_API_KEY}
-      INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
-      KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-120}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-3}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
+      PRETEST_PROBLEM_COUNT: ${PRETEST_PROBLEM_COUNT:-10}
+      QUIZ_PROBLEM_COUNT: ${QUIZ_PROBLEM_COUNT:-5}
+      PLAN_TASKS_PER_STAGE: ${PLAN_TASKS_PER_STAGE:-3}
+      WORKER_PREFETCH: ${WORKER_PREFETCH:-2}
       PRETEST_API_KEY: ${PRETEST_API_KEY}
       PLAN_API_KEY: ${PLAN_API_KEY}
       QUIZ_API_KEY: ${QUIZ_API_KEY}
+      KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9300/health', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   frontend:
     build:
-      context: ./zhiying-frontend-main
+      context: ./frontend
     image: zhiying/frontend:local
     container_name: zhiying-frontend
     restart: unless-stopped
@@ -146,6 +139,7 @@ services:
         condition: service_started
     environment:
       BACKEND_API_URL: http://backend:9000
+      CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-true}
 
 volumes:
   postgres-data:

@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-backend:${IMAGE_TAG:-latest}
+
+  frontend:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-frontend:${IMAGE_TAG:-latest}
+
+  core-generation:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-core-generation:${IMAGE_TAG:-latest}

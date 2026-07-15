@@ -5,9 +5,9 @@ default:
 config:
   docker compose --env-file .env config --quiet
 
-# 从当前单仓库源码构建并启动生产/演示栈
+# 启动唯一的真实四消费者版本
 up:
-  docker compose --env-file .env up -d --build
+  docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --build
 
 down:
   docker compose --env-file .env down
@@ -20,17 +20,17 @@ ps:
 
 # 本地开发中间件：PostgreSQL、RabbitMQ、MinIO
 dev-infra-up:
-  docker compose -f zhiying-infra-main/compose.yaml up -d
+  docker compose -f infra/compose.yaml up -d
 
 dev-infra-down:
-  docker compose -f zhiying-infra-main/compose.yaml down
+  docker compose -f infra/compose.yaml down
 
 backend-check:
-  cd zhiying-backend-main && cargo fmt --check && cargo check
+  cd backend && cargo fmt --check && cargo check
 
 frontend-check:
-  cd zhiying-frontend-main && pnpm exec tsc --noEmit && pnpm lint
+  cd frontend && pnpm exec tsc --noEmit && pnpm lint
 
-mock-check:
-  cd zhiying-mock-main && uv run python -m compileall -q src
+core-generation-check:
+  cd core-generation && uv run python -m unittest discover -s tests -v
 

@@ -55,6 +55,9 @@ pub async fn create(
     auth_user: AuthUser,
     Json(payload): Json<CreateRequest>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
+    if state.config.core_flow_only {
+        return Err(AppError::business(BusinessError::FeatureDisabled));
+    }
     let now = Utc::now();
     let cost = state.config.knowledge_video_diamond_cost;
     let tx = state.db.begin().await?;

@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # ---------- 1. deps ----------
 FROM node:22-alpine AS deps
 RUN apk add --no-cache libc6-compat

@@ -1,15 +1,12 @@
-import { BookOpen, Loader2 } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { redirect } from "next/navigation";
 
-import { ContentCard } from "@/components/learn/content-card";
+import { ExplanationGenerateCard } from "@/components/learn/explanation-generate-card";
 import { ExplanationViewer } from "@/components/learn/explanation-viewer";
-import { InteractiveHtmlViewer } from "@/components/learn/interactive-html-viewer";
 import { MarkmapCard } from "@/components/learn/markmap-card";
 import { QuizSection } from "@/components/learn/quiz-section";
-import { ResourceGenerateCard } from "@/components/learn/resource-generate-card";
 import { TaskCompleteCard } from "@/components/learn/task-complete-card";
 import { TaskSidebar } from "@/components/learn/task-sidebar";
-import { VideoViewer } from "@/components/learn/video-viewer";
 import { serverFetch } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { getPublicConfig } from "@/lib/api/public-config";
@@ -54,6 +51,7 @@ export default async function TaskPage({
   }
 
   const config = await getPublicConfig();
+  const coreFlowOnly = process.env.CORE_FLOW_ONLY === "true";
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-canvas">
@@ -80,28 +78,13 @@ export default async function TaskPage({
             <ExplanationViewer id={task.knowledge_explanation_id} />
           </>
         ) : (
-          <ExplanationPendingCard />
-        )}
-
-        {task.knowledge_video_id != null ? (
-          <VideoViewer source={{ kind: "task", taskId: task.id }} />
-        ) : (
-          <ResourceGenerateCard
+          <ExplanationGenerateCard
             taskId={task.id}
             taskStatus={task.status}
-            kind="knowledge-video"
           />
         )}
 
-        {task.interactive_html_id != null ? (
-          <InteractiveHtmlViewer source={{ kind: "task", taskId: task.id }} />
-        ) : (
-          <ResourceGenerateCard
-            taskId={task.id}
-            taskStatus={task.status}
-            kind="interactive-html"
-          />
-        )}
+        {!coreFlowOnly ? <ExtendedLearningResources task={task} /> : null}
 
         <QuizSection
           taskId={task.id}
@@ -126,20 +109,29 @@ export default async function TaskPage({
   );
 }
 
-function ExplanationPendingCard() {
+async function ExtendedLearningResources({ task }: { task: StudyTask }) {
+  const [
+    { InteractiveHtmlViewer },
+    { ResourceGenerateCard },
+    { VideoViewer },
+  ] = await Promise.all([
+    import("@/components/learn/interactive-html-viewer"),
+    import("@/components/learn/resource-generate-card"),
+    import("@/components/learn/video-viewer"),
+  ]);
+
   return (
-    <ContentCard
-      theme="purple"
-      icon={<Loader2 className="animate-spin" />}
-      title="深度解析"
-      subtitle="文字化讲解"
-    >
-      <div className="rounded-2xl border border-dashed border-[color-mix(in_oklch,var(--palette-purple)_30%,transparent)] bg-white/50 px-6 py-10 text-center">
-        <p className="text-sm font-bold text-brand-dark">讲稿正在生成中…</p>
-        <p className="mt-2 text-xs leading-relaxed text-brand-medium">
-          创建学习主题时已为本任务自动派发讲稿生成，请稍候片刻刷新查看。
-        </p>
-      </div>
-    </ContentCard>
+    <>
+      {task.knowledge_video_id != null ? (
+        <VideoViewer source={{ kind: "task", taskId: task.id }} />
+      ) : (
+        <ResourceGenerateCard taskId={task.id} taskStatus={task.status} kind="knowledge-video" />
+      )}
+      {task.interactive_html_id != null ? (
+        <InteractiveHtmlViewer source={{ kind: "task", taskId: task.id }} />
+      ) : (
+        <ResourceGenerateCard taskId={task.id} taskStatus={task.status} kind="interactive-html" />
+      )}
+    </>
   );
 }

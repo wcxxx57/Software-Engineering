@@ -589,7 +589,6 @@ async fn callback_study_subject(
                 };
 
                 let prompt = format!("{}\n\n{}", t.title, t.description);
-
                 let ke_record = knowledge_explanation::ActiveModel {
                     user_id: Set(subject.user_id),
                     status: Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing),
@@ -603,6 +602,7 @@ async fn callback_study_subject(
                 }
                 .insert(&tx)
                 .await?;
+                explanations_to_dispatch.push((ke_record.id, prompt));
 
                 study_task::ActiveModel {
                     study_stage_id: Set(stage_record.id),
@@ -620,7 +620,6 @@ async fn callback_study_subject(
                 .insert(&tx)
                 .await?;
 
-                explanations_to_dispatch.push((ke_record.id, prompt));
             }
         }
     }

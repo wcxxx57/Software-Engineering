@@ -1,0 +1,12 @@
+services:
+  backend:
+    ports:
+      - "127.0.0.1:9000:9000"
+
+  frontend:
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  rabbitmq:
+    ports:
+      - "127.0.0.1:15672:15672"
