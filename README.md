@@ -1,562 +1,376 @@
-# Knowledge2Video API 接入文档
+# Knowledge2Video
 
-> **编程知识点讲解视频自动生成服务** —— 传入编程知识点和用户信息，自动生成 Manim 动画讲解视频。
+Knowledge2Video 是一个面向计算机与编程知识点的个性化讲解视频生成服务。系统根据知识点、编程语言、难度和学习者背景生成教学大纲、连续旁白、Manim 动画与最终视频，并通过 FastAPI、Celery 和 Redis 提供异步 HTTP API。
 
----
+当前部署分支：[`knowledge2video`](https://github.com/wcxxx57/Software-Engineering/tree/knowledge2video)
 
-## 📌 基本信息
+## 当前能力
 
-| 项目 | 值 |
-|------|-----|
-| **Base URL** | `http://{server}:8080` |
-| **协议** | HTTP |
-| **数据格式** | JSON |
-| **认证方式** | 请求头 `X-API-Key` |
-| **API 文档** | `http://{server}:8080/docs`（Swagger UI） |
+- GPT 规划与代码生成，使用 OpenAI 兼容的 DMX 网关。
+- Vivo 蓝心 TTS，屏幕教学文字与自然旁白分离。
+- 语义分组旁白与整组高亮，不显示逐句字幕或底部字幕框。
+- 支持 `1080p30`、`4k30` 和 `4k60` 原生渲染，默认 `4k30`。
+- 支持连续视觉抽样、局部章节返工和已成功章节复用。
+- 最终文件使用 SHA-256 内容哈希命名，并保存生成元数据。
+- API 使用 SSE 返回实时进度；任务状态、视频下载和 Range 请求均有独立接口。
 
----
+## 系统结构
 
-## 🔑 认证
-
-所有 `/api/v1/*` 接口需要在请求头中携带 API Key：
-
-```
-X-API-Key: dev-api-key-12345
-```
-
-> 生产环境请联系后端获取正式 API Key。
-
----
-
-## 📋 接口总览
-
-| 接口 | 方法 | 认证 | 说明 |
-|------|------|:----:|------|
-| `/` | GET | ❌ | 服务信息（根路径） |
-| `/health` | GET | ❌ | 健康检查 |
-| `/docs` | GET | ❌ | Swagger API 文档 |
-| `/api/v1/generate-video` | POST | ✅ | 生成视频（**SSE 流式返回**） |
-| `/api/v1/tasks/{task_id}` | GET | ✅ | 查询任务状态 |
-| `/api/v1/files/{filename}` | GET | ✅ | 下载视频文件（支持断点续传） |
-| `/api/v1/files/{filename}` | HEAD | ✅ | 获取文件信息（不返回内容） |
-| `/api/v1/files/{filename}/metadata` | GET | ✅ | 获取视频元信息 |
-
----
-
-## 🎬 核心接口：生成视频
-
-### `POST /api/v1/generate-video`
-
-提交编程知识点和用户配置，服务端异步生成讲解视频，通过 **SSE（Server-Sent Events）** 流式返回进度和结果。
-
-### 请求格式
-
-**Content-Type**: `application/json`
-
-**请求体字段说明**：
-
-| 字段 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|:----:|--------|------|
-| `knowledge_point` | string | ✅ | - | 要生成视频的知识点（如"二分搜索"、"快速排序"、"递归"） |
-| `age` | int | ❌ | null | 用户年龄（1-120），影响讲解风格 |
-| `gender` | string | ❌ | null | 用户性别（"男"/"女"） |
-| `language` | string | ❌ | `"Python"` | 编程语言（Python/Java/C++/JavaScript 等） |
-| `duration` | int | ❌ | `5` | 视频时长，单位：分钟（1-30） |
-| `difficulty` | string | ❌ | `"medium"` | 内容难度：`"simple"` / `"medium"` / `"hard"` |
-| `extra_info` | string | ❌ | null | 用户补充信息（自然语言描述，如学习背景、目标等） |
-| `use_feedback` | bool | ❌ | `true` | 是否使用 MLLM 反馈优化视频质量 |
-| `use_assets` | bool | ❌ | `true` | 是否使用外部素材增强动画 |
-| `api_model` | string | ❌ | 服务端配置 | 指定 LLM 模型：`"claude"` / `"gpt-4o"` / `"gpt-41"` / `"gpt-5"` / `"Gemini"` |
-
-### 请求示例
-
-**完整 JSON 请求体**：
-
-```json
-{
-  "knowledge_point": "二分搜索",
-  "age": 20,
-  "gender": "男",
-  "language": "Python",
-  "duration": 5,
-  "difficulty": "medium",
-  "extra_info": "我是大学生，有一定编程基础，想深入理解算法"
-}
+```text
+客户端
+  │ POST /api/v1/generate-video（SSE）
+  ▼
+FastAPI ── Redis Pub/Sub ── Celery Worker
+                              │
+                              ├─ GPT：大纲、旁白与 Manim 代码
+                              ├─ Vivo TTS：旁白音频
+                              ├─ Manim / FFmpeg：预览、质检与最终渲染
+                              └─ data/outputs：视频和元数据
 ```
 
-**curl 命令**（完整请求）：
+Docker Compose 默认启动三个服务：
+
+| 服务 | 作用 | 默认端口 |
+|---|---|---:|
+| `api` | FastAPI、SSE、任务查询和文件下载 | `8080` |
+| `worker` | Celery 视频生成 Worker，默认一次执行一个任务 | 无宿主机端口 |
+| `redis` | Celery Broker、结果存储和 SSE Pub/Sub | `6379` |
+
+## 部署要求
+
+- Docker 20.10+。
+- Docker Compose 2.x，命令为 `docker compose`。
+- 能访问 DMX LLM 网关与 `api-ai.vivo.com.cn`。
+- 最低建议 4 核 CPU、8 GB 内存、20 GB 可用磁盘。
+- 生成 4K 长视频时，建议 8 核以上、16 GB 以上内存，并预留更多临时磁盘空间。
+- 首次构建需要安装 FFmpeg、中文字体和完整 LaTeX 依赖，镜像构建时间较长。
+
+当前 Compose 是单机部署方案。API 与 Worker 通过宿主机的 `./data/outputs` 共享最终文件；如果拆成多台机器，必须改为共享文件系统或对象存储。
+
+## 快速部署
+
+### 1. 获取指定分支
 
 ```bash
-curl -N -X POST http://localhost:8080/api/v1/generate-video \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: dev-api-key-12345" \
-  -d '{
-    "knowledge_point": "二分搜索",
-    "age": 20,
-    "gender": "男",
-    "language": "Python",
-    "duration": 5,
-    "difficulty": "medium",
-    "extra_info": "我是大学生，有一定编程基础，想深入理解算法"
-  }'
+git clone --branch knowledge2video --single-branch \
+  git@github.com:wcxxx57/Software-Engineering.git
+cd Software-Engineering
 ```
 
-**curl 命令**（最简请求，仅必填字段）：
+如果已经克隆仓库：
 
 ```bash
-curl -N -X POST http://localhost:8080/api/v1/generate-video \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: dev-api-key-12345" \
-  -d '{
-    "knowledge_point": "冒泡排序"
-  }'
+git fetch origin
+git switch knowledge2video
+git pull --ff-only
 ```
 
-### SSE 响应格式
-
-响应为 `text/event-stream`，前端需要使用 EventSource 或 fetch + ReadableStream 来处理。
-
-**SSE 事件类型**：
-
-| 事件类型 | 说明 |
-|----------|------|
-| `running` | 任务进行中（可能有多条） |
-| `finished` | 某个子步骤完成 |
-| `failed` | 任务失败 |
-| `result` | **最终结果**（包含视频文件名） |
-
-**响应流示例**：
-
-```
-event: running
-data: {"task_id":"uuid-xxx","message":"正在解析用户画像。"}
-
-event: finished
-data: {"task_id":"uuid-xxx","message":"用户画像解析成功。"}
-
-event: running
-data: {"task_id":"uuid-xxx","message":"正在生成视频大纲..."}
-
-event: finished
-data: {"task_id":"uuid-xxx","message":"大纲生成成功。"}
-
-event: running
-data: {"task_id":"uuid-xxx","message":"正在生成 Manim 代码..."}
-
-event: running
-data: {"task_id":"uuid-xxx","message":"正在渲染视频..."}
-
-event: result
-data: {"message":"视频生成成功。","data":{"video_file":"a1b2c3d4e5f6...sha256.mp4"}}
-```
-
-**失败响应**：
-
-```
-event: failed
-data: {"task_id":"uuid-xxx","message":"视频渲染失败: 内存不足"}
-```
-
-> **重要**：收到 `result` 或 `failed` 事件后，SSE 连接会自动关闭。`data` 中的 `video_file` 字段是视频文件名，用于后续下载。
-
-### 响应头
-
-| Header | 说明 |
-|--------|------|
-| `X-Task-ID` | Celery 任务 ID（可用于断线重连后查询状态） |
-
----
-
-## 🔍 查询任务状态
-
-### `GET /api/v1/tasks/{task_id}`
-
-用于 SSE 断线重连后查询任务的最终状态。`task_id` 从生成视频接口的响应头 `X-Task-ID` 获取。
-
-**请求示例**：
+### 2. 配置环境变量
 
 ```bash
-curl -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8080/api/v1/tasks/{task_id}
+cp .env.example .env
 ```
 
-**响应示例**：
+部署前必须修改 `.env` 中的占位值：
 
-```json
-{
-  "task_id": "abc123-def456-...",
-  "status": "SUCCESS",
-  "result": {
-    "video_file": "a1b2c3d4e5f6...sha256.mp4"
-  },
-  "error": null
-}
+```dotenv
+# 客户端调用 API 时使用。生产环境禁止使用默认开发密钥。
+API_KEYS=replace-with-a-long-random-key
+
+# GPT / OpenAI 兼容网关
+DEFAULT_API=gpt-5
+DMX_BASE_URL=https://your-openai-compatible-gateway.example/v1
+DMX_API_KEY=replace-with-real-key
+LOGIC_MODEL=gpt-5.6-terra
+CODE_MODEL=gpt-5.6-sol
+
+# Vivo 蓝心 TTS
+TTS_PROVIDER=vivo
+VIVO_TTS_APP_ID=replace-with-real-app-id
+VIVO_TTS_APP_KEY=replace-with-real-app-key
+VIVO_TTS_BASE_URL=wss://api-ai.vivo.com.cn
+VIVO_TTS_ENGINE_ID=tts_humanoid_lam
+VIVO_TTS_VOICE=F245_natural
+VIVO_TTS_SPEED=50
+VIVO_TTS_VOLUME=50
+
+# 服务与任务配置
+API_PORT=8080
+REDIS_PORT=6379
+K2V_RENDER_WORKERS=1
+MANIM_RENDER_TIMEOUT_SECONDS=21600
+VIDEO_TASK_TIME_LIMIT_SECONDS=43200
+VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS=41400
+DEBUG=false
 ```
 
-**任务状态**：
+说明：
 
-| 状态 | 说明 |
-|------|------|
-| `PENDING` | 等待执行 |
-| `STARTED` | 正在执行 |
-| `SUCCESS` | 执行成功（`result` 字段有值） |
-| `FAILURE` | 执行失败（`error` 字段有值） |
+- `LOGIC_MODEL` 负责大纲、教学逻辑和旁白规划。
+- `CODE_MODEL` 负责 Manim 场景代码生成与视觉返工。
+- `F245_natural` 是当前教学视频推荐音色。
+- `VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS` 必须小于 `VIDEO_TASK_TIME_LIMIT_SECONDS`。
+- `.env` 已被 Git 忽略，禁止将真实密钥写入 `.env.example` 或提交到仓库。
 
----
-
-## 📥 下载视频文件
-
-### `GET /api/v1/files/{filename}`
-
-下载生成的视频文件。`filename` 从生成视频接口的 `result` 事件中获取。
-
-支持 **Range 请求**（断点续传）。
-
-**请求示例**：
+### 3. 构建并启动
 
 ```bash
-# 下载完整文件
-curl -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8080/api/v1/files/a1b2c3...sha256.mp4 \
-  -o video.mp4
-
-# 断点续传（Range 请求）
-curl -H "X-API-Key: dev-api-key-12345" \
-  -H "Range: bytes=0-1048575" \
-  http://localhost:8080/api/v1/files/a1b2c3...sha256.mp4 \
-  -o video_part.mp4
+docker compose up -d --build
 ```
 
-**响应状态码**：
-
-| 状态码 | 说明 |
-|--------|------|
-| 200 | 完整文件 |
-| 206 | 部分内容（Range 请求） |
-| 404 | 文件不存在 |
-| 416 | Range 范围无效 |
-
----
-
-## 📄 获取文件信息
-
-### `HEAD /api/v1/files/{filename}`
-
-检查文件是否存在、获取文件大小。不返回文件内容。
+查看状态：
 
 ```bash
-curl -I -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8080/api/v1/files/a1b2c3...sha256.mp4
+docker compose ps
+docker compose logs --tail=100 api worker redis
 ```
 
-**响应头**：
-
-```
-HTTP/1.1 200 OK
-Content-Type: video/mp4
-Content-Length: 12345678
-Accept-Ranges: bytes
-```
-
----
-
-## 📊 获取视频元信息
-
-### `GET /api/v1/files/{filename}/metadata`
-
-获取视频的生成参数、Token 使用量等元信息。
-
-```bash
-curl -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8080/api/v1/files/a1b2c3...sha256.mp4/metadata
-```
-
-**响应示例**：
-
-```json
-{
-  "knowledge_point": "二分搜索",
-  "language": "Python",
-  "duration": 5,
-  "token_usage": {
-    "prompt_tokens": 10000,
-    "completion_tokens": 5000,
-    "total_tokens": 15000
-  },
-  "created_at": "2024-01-01T12:00:00"
-}
-```
-
----
-
-## ❤️ 健康检查
-
-### `GET /health`
-
-无需认证。用于监控服务是否正常运行。
+### 4. 验证 API、Redis 和 Worker
 
 ```bash
 curl http://localhost:8080/health
 ```
 
-**响应示例**：
+正常响应示例：
 
 ```json
 {
   "status": "ok",
   "redis": "connected",
-  "workers": 4,
+  "workers": 16,
   "version": "1.0.0"
 }
 ```
 
----
-
-## 🖥️ 前端接入指南
-
-### 完整调用流程
-
-```
-┌──────────┐                           ┌──────────────┐
-│  前端     │                           │  Knowledge2Video  │
-│          │   POST /generate-video     │    API       │
-│          │ ─────────────────────────> │              │
-│          │                           │              │
-│          │   SSE: event: running      │              │
-│          │ <───────────────────────── │  正在解析...  │
-│          │                           │              │
-│          │   SSE: event: finished     │              │
-│          │ <───────────────────────── │  大纲完成     │
-│          │                           │              │
-│          │   SSE: event: running      │              │
-│          │ <───────────────────────── │  渲染中...    │
-│          │                           │              │
-│          │   SSE: event: result       │              │
-│          │ <───────────────────────── │  视频完成!    │
-│          │                           │              │
-│          │   GET /files/{filename}    │              │
-│          │ ─────────────────────────> │              │
-│          │                           │              │
-│          │   video/mp4 文件           │              │
-│          │ <───────────────────────── │              │
-└──────────┘                           └──────────────┘
-```
-
-### 断线重连处理
-
-如果 SSE 连接中断，可以通过 `X-Task-ID`（响应头获取）查询任务状态：
-
-```javascript
-async function checkTaskStatus(taskId) {
-  const response = await fetch(`http://localhost:8080/api/v1/tasks/${taskId}`, {
-    headers: { 'X-API-Key': 'dev-api-key-12345' },
-  });
-  const result = await response.json();
-  
-  if (result.status === 'SUCCESS') {
-    // 任务已完成，直接下载
-    downloadVideo(result.result.video_file);
-  } else if (result.status === 'FAILURE') {
-    console.error('任务失败:', result.error);
-  } else {
-    // 任务还在执行中，轮询等待
-    setTimeout(() => checkTaskStatus(taskId), 5000);
-  }
-}
-```
-
----
-
-## ⚠️ 注意事项
-
-1. **视频生成耗时较长**：一个 5 分钟的讲解视频通常需要 3-10 分钟生成，请在 UI 上做好进度展示
-2. **SSE 连接保活**：服务端会定期发送心跳（`: heartbeat`），前端无需处理
-3. **SSE 超时**：连接超过 1 小时未完成会自动断开
-4. **文件有效期**：生成的视频文件会保存在服务端，建议前端在用户下载后不再依赖服务端存储
-5. **并发限制**：单个 Worker 同一时间只处理 1 个视频生成任务，多个请求会排队
-
----
-
-## 🔧 后端部署参考
-
-> 以下内容供需要自行部署后端服务的人员参考。
-
-### 前置要求
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- 至少 4GB 内存（Manim 渲染需要）
-- 至少 10GB 磁盘空间（LaTeX 和字体包较大）
-
-### 快速启动
+`workers` 当前表示服务根据 CPU 推算的并行数量，不表示在线 Celery Worker 数量。部署验收时还必须执行：
 
 ```bash
-# 1. 克隆项目
-git clone https://github.com/dxy831/code2video.git
-cd code2video
-
-# 2. 配置 LLM API 密钥
-#    编辑 src/api_config.json，填入你的 API 密钥
-
-# 3. 配置环境变量（可选）
-cp .env.example .env
-# 编辑 .env 修改配置
-
-# 4. 构建并启动
-docker-compose up -d --build
-
-# 5. 验证服务
-curl http://localhost:8080/health
+docker compose exec worker \
+  python -m celery -A src.api.tasks.celery_app inspect ping --timeout=10
 ```
 
-### LLM API 密钥配置
+看到 `pong` 才能确认 Worker 已连通。
 
-编辑 `src/api_config.json` 文件，填入你的 API 密钥：
+Swagger 文档：`http://localhost:8080/docs`
 
-```json
-{
-  "api_key": "sk-xxxxx",
-  "claude": {
-    "base_url": "https://api.anthropic.com/v1",
-    "api_version": "",
-    "model": "claude-opus-4-5-20251101-cc"
-  },
-  "gpt4o": {
-    "base_url": "https://api.openai.com/v1",
-    "api_version": "2024-03-01-preview",
-    "model": "gpt-4o"
-  },
-  "gpt-41": {
-    "base_url": "https://api.openai.com/v1",
-    "api_version": "2024-03-01-preview",
-    "model": "gpt-4o"
-  },
-  "gpt5": {
-    "base_url": "https://api.openai.com/v1",
-    "api_version": "",
-    "model": "gpt-5.4"
-  },
-  "gemini": {
-    "base_url": "https://generativelanguage.googleapis.com/v1",
-    "api_version": "",
-    "model": "gemini-3.1-pro-preview"
-  },
-  "iconfinder": {
-    "api_key": "YOUR_ICONFINDER_KEY"
-  }
-}
+## API 认证
+
+除 `/`、`/health` 和 `/docs` 外，`/api/v1/*` 接口需要请求头：
+
+```text
+X-API-Key: <API_KEYS 中配置的某一个密钥>
 ```
 
-**支持的 LLM 模型**：
+## 生成视频
 
-| 配置名 | 说明 |
-|--------|------|
-| `claude` | Claude 模型（默认） |
-| `gpt4o` | GPT-4o 模型 |
-| `gpt-41` | GPT-4 系列模型 |
-| `gpt5` | GPT-5 模型 |
-| `gemini` | Google Gemini 模型 |
+### `POST /api/v1/generate-video`
 
-> **注意**：`src/api_config.json` 会被打包进 Docker 镜像。如果需要在部署后修改密钥而不重新构建镜像，可以取消 `docker-compose.yml` 中的 Volume 挂载注释。
+接口返回 `text/event-stream`，连接中会持续发送生成进度。
 
-### 环境变量
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|---|---|:---:|---|---|
+| `knowledge_point` | string | 是 | - | 计算机或编程知识点 |
+| `language` | string | 否 | `Python` | 示例代码使用的语言 |
+| `difficulty` | string | 否 | `medium` | `simple`、`medium`、`hard` |
+| `duration` | integer/null | 否 | `null` | 目标分钟数，范围 `5–12`；为空时由 AI 选择 |
+| `render_profile` | string | 否 | `4k30` | `1080p30`、`4k30`、`4k60` |
+| `age` | integer/null | 否 | `null` | 学习者年龄，范围 `1–120` |
+| `gender` | string/null | 否 | `null` | 可选用户信息 |
+| `extra_info` | string/null | 否 | `null` | 学习背景、专业、目标和已有知识 |
+| `use_feedback` | boolean | 否 | `true` | 是否启用视觉反馈和局部返工 |
+| `use_assets` | boolean | 否 | `true` | 是否允许使用外部素材 |
+| `api_model` | string/null | 否 | 环境变量 | 通常不传，使用服务端 GPT 配置 |
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `API_KEYS` | API 认证密钥（多个用逗号分隔） | `dev-api-key-12345` |
-| `DEFAULT_API` | 默认 LLM 模型（claude/gpt4o/gpt-41/gpt5/gemini） | `claude` |
-| `API_PORT` | API 服务端口 | `8080` |
-| `REDIS_PORT` | Redis 宿主机映射端口 | `6379` |
-| `MAX_WORKERS` | 最大并行工作进程数（留空自动检测） | - |
-| `DEBUG` | 调试模式 | `false` |
-
-### 架构
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Docker Compose                        │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
-│  │     API      │  │    Worker    │  │    Redis     │   │
-│  │  (FastAPI)   │  │   (Celery)   │  │   (队列)     │   │
-│  │   :8080      │  │              │  │   :6379      │   │
-│  └──────┬───────┘  └──────┬───────┘  └──────────────┘   │
-│         │                 │                              │
-│         └────────┬────────┘                              │
-│                  │                                       │
-│         ┌───────────────┐                               │
-│         │  video_data   │  (共享 Volume)                │
-│         │  /app/data/   │                               │
-│         └───────────────┘                               │
-└─────────────────────────────────────────────────────────┘
-```
-
-| 服务 | 说明 | 端口 |
-|------|------|------|
-| **api** | FastAPI 服务，处理 HTTP 请求 | 8080 |
-| **worker** | Celery Worker，执行视频生成任务 | - |
-| **redis** | 消息队列 + 任务结果存储 | 6379 |
-
-### 运维命令
+推荐请求示例：
 
 ```bash
-# 查看服务状态
-docker-compose ps
+curl -N -X POST http://localhost:8080/api/v1/generate-video \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: replace-with-your-api-key" \
+  -d '{
+    "knowledge_point": "优先队列与二叉堆",
+    "language": "Python",
+    "difficulty": "medium",
+    "duration": 10,
+    "render_profile": "4k30",
+    "extra_info": "我是经济管理专业学生，没有系统的计算机基础，希望结合电商订单优先级和任务调度理解这个知识点。",
+    "use_feedback": true,
+    "use_assets": true
+  }'
+```
+
+首次部署建议先用 `render_profile: "1080p30"` 做契约验证，确认 LLM、TTS、渲染和下载链路全部成功后，再运行 4K 长视频任务。
+
+### SSE 事件
+
+| 事件 | 说明 |
+|---|---|
+| `running` | 当前步骤正在执行 |
+| `finished` | 某个子步骤完成 |
+| `failed` | 任务失败 |
+| `result` | 最终成功结果，包含 `video_file` |
+
+示例：
+
+```text
+event: running
+data: {"task_id":"...","message":"正在生成视频大纲..."}
+
+event: result
+data: {"message":"视频生成成功。","data":{"video_file":"<sha256>.mp4"}}
+```
+
+响应头 `X-Task-ID` 是 Celery 任务 ID。SSE 中断后可用它查询最终状态。
+
+当前 SSE 最长保持 6 小时；Celery 任务硬超时默认 12 小时。如果 SSE 因超时或网络中断关闭，后台任务可能仍在继续，应查询任务状态，不要立刻重复提交。
+
+## 查询任务状态
+
+### `GET /api/v1/tasks/{task_id}`
+
+```bash
+curl -H "X-API-Key: replace-with-your-api-key" \
+  http://localhost:8080/api/v1/tasks/<task_id>
+```
+
+Celery 状态通常为：
+
+- `PENDING`：等待执行，或任务 ID 不存在。
+- `STARTED`：正在执行。
+- `SUCCESS`：成功，`result.video_file` 可用于下载。
+- `FAILURE`：失败，查看 `error` 和 Worker 日志。
+
+## 下载视频和元数据
+
+```bash
+# 下载完整视频
+curl -H "X-API-Key: replace-with-your-api-key" \
+  http://localhost:8080/api/v1/files/<sha256>.mp4 \
+  -o video.mp4
+
+# 获取文件响应头
+curl -I -H "X-API-Key: replace-with-your-api-key" \
+  http://localhost:8080/api/v1/files/<sha256>.mp4
+
+# 获取生成元数据
+curl -H "X-API-Key: replace-with-your-api-key" \
+  http://localhost:8080/api/v1/files/<sha256>.mp4/metadata
+```
+
+视频下载接口支持 HTTP Range 请求，可用于断点续传和播放器拖动。
+
+输出文件保存在：
+
+```text
+data/outputs/videos/<sha256>.mp4
+data/outputs/metadata/<sha256>.json
+```
+
+## 部署验收
+
+交给调用方之前至少完成以下检查：
+
+1. `docker compose config --quiet` 无错误。
+2. `docker compose ps` 中 API 与 Redis 为 `healthy`，Worker 为 `Up`。
+3. `/health` 返回 `redis: connected`。
+4. Celery `inspect ping` 返回 `pong`。
+5. 使用无效 `X-API-Key` 调用受保护接口时被拒绝。
+6. 提交一次 `1080p30` 冒烟任务，SSE 能收到 `result`。
+7. 可以通过返回的哈希文件名下载 MP4 和元数据。
+8. 使用 `ffprobe` 校验物理分辨率、帧率、音视频轨和时长。
+
+项目测试必须在 Docker 中运行：
+
+Linux/macOS：
+
+```bash
+docker compose run --rm --no-deps \
+  -v "$PWD:/workspace" -w /workspace \
+  -e PYTHONPATH=/workspace \
+  api python -m pytest -q tests
+```
+
+PowerShell：
+
+```powershell
+docker compose run --rm --no-deps `
+  -v "${PWD}:/workspace" -w /workspace `
+  -e PYTHONPATH=/workspace `
+  api python -m pytest -q tests
+```
+
+## 更新与运维
+
+```bash
+# 更新 knowledge2video 分支
+git fetch origin
+git switch knowledge2video
+git pull --ff-only
+docker compose up -d --build
 
 # 查看日志
-docker-compose logs -f          # 全部
-docker-compose logs -f api      # 仅 API
-docker-compose logs -f worker   # 仅 Worker
+docker compose logs -f api
+docker compose logs -f worker
 
-# 重启
-docker-compose restart
+# 重启服务
+docker compose restart api worker
 
-# 停止
-docker-compose down
-
-# 清理所有数据（会删除已生成的视频！）
-docker-compose down -v
-
-# 更新部署
-git pull && docker-compose up -d --build
+# 停止服务但保留 Redis Volume 和输出文件
+docker compose down
 ```
 
----
+危险操作：
 
-## ⚠️ 常见问题
+```bash
+# 会删除 Redis Volume；执行前确认没有仍需查询的任务状态。
+docker compose down -v
+```
 
-### 1. 镜像构建很慢
+`data/outputs` 是宿主机目录，不会因普通 `docker compose down` 被删除，但仍需自行制定备份和清理策略。
 
-首次构建需要下载 LaTeX 包（约 2GB），请耐心等待。后续构建会使用缓存。
+## 生产环境注意事项
 
-### 2. 内存不足
+当前代码可以用于单机部署和预发布联调。正式对公网提供服务前，还需要完成以下部署侧配置：
 
-Manim 渲染需要较多内存，建议至少 4GB。如果遇到 OOM，可以：
-- 增加服务器内存
-- 减少 Worker 并发数（`--concurrency=1`）
+1. 将 `API_KEYS` 替换为随机强密钥，禁止保留 `dev-api-key-12345`。
+2. 不要将 Redis `6379` 直接暴露到公网；使用防火墙、仅本机绑定或移除宿主机端口映射。
+3. 在 API 前配置 HTTPS 反向代理，并关闭 SSE 缓冲、延长读取超时。
+4. 限制请求频率和队列长度，防止昂贵的 4K 任务被无限提交。
+5. 为 `data/outputs` 配置容量监控、保留周期、备份或对象存储迁移。
+6. 监控 API、Redis、Celery Worker、磁盘、内存、任务失败率和外部 LLM/TTS 错误率。
+7. 当前固定为单 Worker、`--pool=solo --concurrency=1`；扩容前必须同时评估 CPU、内存、临时磁盘和共享存储。
+8. `health.workers` 不是 Celery 在线数量，监控系统应额外执行 Celery ping 或增加专用 Worker 健康检查。
 
-### 3. 中文显示乱码
+## 常见问题
 
-确保 Docker 镜像中安装了 `fonts-noto-cjk` 字体包（Dockerfile 中已包含）。
+### 首次构建很慢
 
-### 4. LaTeX 渲染失败
+镜像需要安装 LaTeX、FFmpeg 和字体包，第一次构建可能下载数 GB 依赖。后续构建会使用 Docker 缓存。
 
-检查 Dockerfile 中是否安装了完整的 texlive 包：
-- `texlive-latex-base`
-- `texlive-latex-extra`
-- `texlive-fonts-recommended`
-- `texlive-science`
+### 中文字体或公式渲染失败
 
-### 5. 视频文件无法下载
+确认使用仓库提供的 Dockerfile，不要直接在宿主机运行 Manim。镜像已安装 `fonts-noto-cjk`、Tex Live 和 `dvisvgm`。
 
-检查 `video_data` Volume 是否正确挂载，API 和 Worker 需要共享同一个 Volume。
+### SSE 没有进度
 
----
+依次检查 Redis 健康状态、Worker `inspect ping`、API/Worker 日志和反向代理是否启用了响应缓冲。Nginx 需要关闭 `proxy_buffering`。
 
-## 📝 生产环境建议
+### 任务成功但下载不到文件
 
-1. **修改 API_KEYS**：使用强密码，不要用默认值
-2. **配置 HTTPS**：在前面加 Nginx 反向代理
-3. **日志收集**：配置日志输出到文件或日志服务
-4. **监控告警**：监控 `/health` 端点
-5. **定期清理**：定期清理旧的视频文件
+确认 API 与 Worker 都挂载了同一个 `./data/outputs:/app/data/outputs`，并检查宿主机目录权限和剩余空间。
+
+### TTS 请求失败
+
+检查 Vivo AppID/AppKey、服务器时间、网络出口以及 `NO_PROXY/no_proxy` 是否包含 `api-ai.vivo.com.cn`。
+
+### LLM 请求失败
+
+检查 `DMX_BASE_URL` 是否包含正确的 `/v1` 路径、API Key、模型名称和服务器对网关的网络连通性。
+
+## 已知边界
+
+- 首版面向计算机与编程知识点，不保证其他学科的可视化效果。
+- 当前输出存储是单机文件系统，不是多节点对象存储方案。
+- 视频生成依赖外部 GPT 和 Vivo TTS，外部接口限流或不可用会导致任务失败。
+- 4K 长视频属于高耗时任务；调用方必须支持排队、SSE 断线和任务状态查询。
+- 视觉反馈会优先复用已生成章节，但仍可能增加调用成本和总耗时。
