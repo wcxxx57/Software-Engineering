@@ -4,6 +4,8 @@ Knowledge2Video 是一个面向计算机与编程知识点的个性化讲解视�
 
 当前部署分支：[`knowledge2video`](https://github.com/wcxxx57/Software-Engineering/tree/knowledge2video)
 
+文档版本：2026-07-16（适用于 Docker Compose V2、GPT/DMX 和 Vivo TTS 配置）
+
 ## 当前能力
 
 - GPT 规划与代码生成，使用 OpenAI 兼容的 DMX 网关。
@@ -113,6 +115,8 @@ DEBUG=false
 - `.env` 已被 Git 忽略，禁止将真实密钥写入 `.env.example` 或提交到仓库。
 
 ### 3. 构建并启动
+
+> 必须使用 Docker Compose V2 命令 `docker compose`。旧命令 `docker-compose` 已停止在本文档中使用。
 
 ```bash
 docker compose up -d --build
