@@ -40,12 +40,6 @@ export async function getVisualization(id: string): Promise<StoredVisualizationR
   return response.json() as Promise<StoredVisualizationResponse>;
 }
 
-export async function createDemo(): Promise<StoredVisualizationResponse> {
-  const response = await fetch("/api/visualizations/demo", { method: "POST" });
-  if (!response.ok) throw new Error(await errorMessage(response));
-  return response.json() as Promise<StoredVisualizationResponse>;
-}
-
 async function readSse(response: Response, onEvent: (event: AgentEvent) => void): Promise<void> {
   if (!response.ok) throw new Error(await errorMessage(response));
   if (!response.body) throw new Error("服务器没有返回事件流");

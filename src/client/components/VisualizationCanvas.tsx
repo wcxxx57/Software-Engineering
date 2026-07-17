@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { computeLayout, connectorPoint, type ElementBox } from "../layout.js";
 import { COMPONENT_CLASS_MAP, DESIGN_TOKEN_HASH, DESIGN_TOKENS, SEMANTIC_STATE_CLASS_MAP, STYLE_CONTRACT_HASH } from "../designTokens.js";
 import { materializeVisualization } from "../../shared/runtime.js";
@@ -9,6 +9,14 @@ interface VisualizationCanvasProps {
   step: number;
   highlightedIds?: string[];
   focusedIds?: string[];
+}
+
+const MIN_ZOOM = 0.75;
+const MAX_ZOOM = 2.5;
+const ZOOM_STEP = 0.25;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function stateClass(state: SemanticState, highlighted: boolean): string {
@@ -279,8 +287,73 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
   }, [boxes, materialized.elements, visibleRelations]);
   const viewBox = useMemo(() => contentViewBox(boxes, relationGeometries.map((geometry) => geometry.contentBox)), [boxes, relationGeometries]);
 
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ pointerId: number; clientX: number; clientY: number; panX: number; panY: number } | null>(null);
+  useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }); }, [spec]);
+
+  const viewport = useMemo(() => {
+    const width = viewBox.width / zoom;
+    const height = viewBox.height / zoom;
+    const maxPanX = Math.max(0, (viewBox.width - width) / 2);
+    const maxPanY = Math.max(0, (viewBox.height - height) / 2);
+    const x = viewBox.x + (viewBox.width - width) / 2 + clamp(pan.x, -maxPanX, maxPanX);
+    const y = viewBox.y + (viewBox.height - height) / 2 + clamp(pan.y, -maxPanY, maxPanY);
+    return { x, y, width, height, maxPanX, maxPanY };
+  }, [pan.x, pan.y, viewBox.height, viewBox.width, viewBox.x, viewBox.y, zoom]);
+
+  const changeZoom = (nextZoom: number) => {
+    const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+    const nextWidth = viewBox.width / clampedZoom;
+    const nextHeight = viewBox.height / clampedZoom;
+    const nextMaxPanX = Math.max(0, (viewBox.width - nextWidth) / 2);
+    const nextMaxPanY = Math.max(0, (viewBox.height - nextHeight) / 2);
+    setZoom(clampedZoom);
+    setPan((current) => ({
+      x: clamp(current.x, -nextMaxPanX, nextMaxPanX),
+      y: clamp(current.y, -nextMaxPanY, nextMaxPanY),
+    }));
+  };
+  const fitCanvas = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
+  const beginPan = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (zoom <= 1 || event.button !== 0) return;
+    drag.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, panX: pan.x, panY: pan.y };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const movePan = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const dx = (event.clientX - drag.current.clientX) * viewport.width / Math.max(1, bounds.width);
+    const dy = (event.clientY - drag.current.clientY) * viewport.height / Math.max(1, bounds.height);
+    setPan({
+      x: clamp(drag.current.panX - dx, -viewport.maxPanX, viewport.maxPanX),
+      y: clamp(drag.current.panY - dy, -viewport.maxPanY, viewport.maxPanY),
+    });
+  };
+  const endPan = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   return <div className="canvas-shell" data-theme-version={DESIGN_TOKENS.version} data-theme-token-hash={DESIGN_TOKEN_HASH} data-style-contract-hash={STYLE_CONTRACT_HASH}>
-    <svg className="visualization-canvas" role="img" aria-label={spec.title} viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`} preserveAspectRatio="xMidYMid meet">
+    <div className="canvas-toolbar" role="group" aria-label="画布缩放">
+      <button type="button" aria-label="缩小画布" title="缩小画布" onClick={() => changeZoom(zoom - ZOOM_STEP)} disabled={zoom <= MIN_ZOOM}>−</button>
+      <button type="button" className="zoom-value" aria-label="适应画布" title="适应画布" onClick={fitCanvas}>{Math.round(zoom * 100)}%</button>
+      <button type="button" aria-label="放大画布" title="放大画布" onClick={() => changeZoom(zoom + ZOOM_STEP)} disabled={zoom >= MAX_ZOOM}>＋</button>
+    </div>
+    <svg
+      className={`visualization-canvas${zoom > 1 ? " is-zoomed" : ""}`}
+      role="img"
+      aria-label={spec.title}
+      data-zoom={zoom}
+      viewBox={`${viewport.x} ${viewport.y} ${viewport.width} ${viewport.height}`}
+      preserveAspectRatio="xMidYMid meet"
+      onPointerDown={beginPan}
+      onPointerMove={movePan}
+      onPointerUp={endPan}
+      onPointerCancel={endPan}
+    >
       <defs>
         <marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" /></marker>
         <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="160%">
@@ -289,7 +362,7 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
         </filter>
         <pattern id="canvas-dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill={DESIGN_TOKENS.colors.border} opacity="0.16" /></pattern>
       </defs>
-      <rect className="canvas-backdrop" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#canvas-dots)" />
+      <rect className="canvas-backdrop" x={viewport.x} y={viewport.y} width={viewport.width} height={viewport.height} fill="url(#canvas-dots)" />
       <g className="relations-layer">
         {relationGeometries.map(({ relation, path, labelX, labelY, labelWidth }) => {
           const unfocused = focused.size > 0 && !focused.has(relation.id) && !focused.has(relation.from) && !focused.has(relation.to);

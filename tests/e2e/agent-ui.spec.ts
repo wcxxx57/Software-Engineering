@@ -84,10 +84,12 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await page.getByRole("button", { name: "生成交互图" }).click();
     await expect(page).toHaveURL(/\/viewer\/[0-9a-f-]+$/i);
     await expect(page.locator(".visualization-canvas")).toBeVisible();
+    const visualizationId = new URL(page.url()).pathname.split("/").at(-1)!;
+    const readVersion = async () => (await store.getCurrent(visualizationId)).version.versionId;
 
     const themeHash = await page.locator(".canvas-shell").getAttribute("data-theme-token-hash");
     const styleHash = await page.locator(".canvas-shell").getAttribute("data-style-contract-hash");
-    const initialVersion = await page.locator(".version-chip").textContent();
+    const initialVersion = await readVersion();
     await page.getByRole("button", { name: "下一步" }).click();
     await expect(page.locator(".playback-bar > span")).toHaveText("1/3");
 
@@ -111,14 +113,14 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await expect(page.locator(".agent-messages")).not.toContainText("completed");
     await expect(page.locator(".agent-messages")).not.toContainText("正在应用图形修改");
     await page.screenshot({ path: testInfo.outputPath("agent-progress-chinese.png"), fullPage: true });
-    const editedVersion = await page.locator(".version-chip").textContent();
+    const editedVersion = await readVersion();
     expect(editedVersion).not.toBe(initialVersion);
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-theme-token-hash", themeHash ?? "");
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-style-contract-hash", styleHash ?? "");
 
-    await page.getByRole("button", { name: "撤销" }).click();
+    await page.getByRole("button", { name: "上一版" }).click();
     await expect(page.locator(".viewer-header h1")).toHaveText("冒泡排序");
-    await page.getByRole("button", { name: "重做" }).click();
+    await page.getByRole("button", { name: "下一版" }).click();
     await expect(page.locator(".viewer-header h1")).toHaveText("浏览器 Agent 编辑版");
     await page.reload();
     await expect(page.locator(".viewer-header h1")).toHaveText("浏览器 Agent 编辑版");
@@ -132,7 +134,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await page.locator(".agent-input textarea").fill("把配色改成红色，字体改成宋体");
     await page.locator(".agent-input button").click();
     await expect(page.getByText("配色、字体和阴影属于锁定样式，当前图保持不变。")).toBeVisible();
-    await expect(page.locator(".version-chip")).toHaveText(editedVersion ?? "");
+    expect(await readVersion()).toBe(editedVersion);
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-style-contract-hash", styleHash ?? "");
 
     modelQueue.push(new FakeToolCallingModel({ toolCalls: [
@@ -142,7 +144,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await page.locator(".agent-input textarea").fill("帮我写一封请假邮件");
     await page.locator(".agent-input button").click();
     await expect(page.getByText("这个请求与当前二维可视化无关。")).toBeVisible();
-    await expect(page.locator(".version-chip")).toHaveText(editedVersion ?? "");
+    expect(await readVersion()).toBe(editedVersion);
 
     modelQueue.push(new FakeToolCallingModel({ toolCalls: [
       [{ name: "inspect_visualization", args: {}, id: "inspect-focus" }],
@@ -154,10 +156,10 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await expect(page.getByText("已临时聚焦数组。")).toBeVisible();
     await expect(page.locator("[data-element-id='array']")).not.toHaveClass(/is-unfocused/);
     await expect(page.locator("[data-element-id='left']")).toHaveClass(/is-unfocused/);
-    await expect(page.locator(".version-chip")).toHaveText(editedVersion ?? "");
+    expect(await readVersion()).toBe(editedVersion);
     await page.reload();
     await expect(page.locator(".viz-element.is-unfocused")).toHaveCount(0);
-    await expect(page.locator(".version-chip")).toHaveText(editedVersion ?? "");
+    expect(await readVersion()).toBe(editedVersion);
 
     await page.getByRole("button", { name: "探索边界情况" }).click();
     await expect(page.locator(".agent-input textarea")).toHaveValue("探索边界情况");
@@ -168,7 +170,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     ] }));
     await page.locator(".agent-input button").click();
     await expect(page.getByText(/你想先看哪一种/)).toBeVisible();
-    await expect(page.locator(".version-chip")).toHaveText(editedVersion ?? "");
+    expect(await readVersion()).toBe(editedVersion);
 
     modelQueue.push(new FakeToolCallingModel({ toolCalls: [
       [{ name: "inspect_visualization", args: {}, id: "inspect-replace-tree" }],
@@ -197,7 +199,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await expect(page.locator("[data-element-id='rightChild']")).toBeVisible();
     await expect(page.locator("[data-relation-id='cf']")).toBeVisible();
     await expect(page.locator(".playback-bar > span")).toHaveText("0/3");
-    const treeEditedVersion = await page.locator(".version-chip").textContent();
+    const treeEditedVersion = await readVersion();
 
     modelQueue.push(new FakeToolCallingModel({ toolCalls: [
       [{ name: "inspect_visualization", args: {}, id: "inspect-explain-tree" }],
@@ -207,7 +209,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await page.locator(".agent-input textarea").fill("这张图为什么先访问 A，再访问左边？");
     await page.locator(".agent-input button").click();
     await expect(page.getByText(/前序遍历会先访问根节点/)).toBeVisible();
-    await expect(page.locator(".version-chip")).toHaveText(treeEditedVersion ?? "");
+    expect(await readVersion()).toBe(treeEditedVersion);
 
     modelQueue.push(new FakeToolCallingModel({ toolCalls: [
       [{ name: "inspect_visualization", args: {}, id: "inspect-replace-graph" }],
@@ -233,7 +235,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await expect(page.locator("[data-element-id='nodeE']")).toHaveClass(/state-success/);
     await expect(page.locator("[data-element-id='nodeE']")).toContainText("目标节点");
     await expect(page.locator("[data-relation-id='edgeAB']")).toHaveCount(0);
-    const graphEditedVersion = await page.locator(".version-chip").textContent();
+    const graphEditedVersion = await readVersion();
 
     modelQueue.push(new FakeToolCallingModel({ toolCalls: [
       [{ name: "inspect_visualization", args: {}, id: "inspect-natural-undo" }],
@@ -253,7 +255,7 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await page.locator(".agent-input textarea").fill("再恢复刚才的修改");
     await page.locator(".agent-input button").click();
     await expect(page.locator("[data-relation-id='edgeAB']")).toHaveCount(0);
-    await expect(page.locator(".version-chip")).toHaveText(graphEditedVersion ?? "");
+    expect(await readVersion()).toBe(graphEditedVersion);
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-theme-token-hash", themeHash ?? "");
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-style-contract-hash", styleHash ?? "");
 
@@ -265,14 +267,14 @@ test("natural-language Agent operations stay consistent through the browser, SSE
     await page.getByRole("button", { name: "换种演示方式" }).click();
     await page.locator(".agent-input button").click();
     await expect(page.locator(".viewer-header h1")).toHaveText("冒泡排序：比较流水线");
-    await expect(page.locator("[data-element-id='invariant']")).toContainText("每轮结束：未排序区的最大值会进入右侧有序区");
+    await expect(page.locator("[data-element-id='invariant']")).toHaveCount(0);
+    await expect(page.locator("[data-element-id='earlyStop']")).toHaveCount(0);
     await expectNoCanvasCollisionOrClipping(page);
     for (let step = 0; step < densePipelineFixture.steps.length; step += 1) {
       await page.getByRole("button", { name: "下一步" }).click();
       await expectNoCanvasCollisionOrClipping(page);
     }
-    await expect(page.locator("[data-element-id='invariant']")).toContainText("这条完整说明在播放过程中也不能被截断");
-    await expect(page.locator("[data-element-id='earlyStop']")).toContainText("可以直接结束排序");
+    await expect(page.locator(".step-card p")).toContainText("可以直接结束排序");
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-theme-token-hash", themeHash ?? "");
     await expect(page.locator(".canvas-shell")).toHaveAttribute("data-style-contract-hash", styleHash ?? "");
     await page.screenshot({ path: testInfo.outputPath("agent-dense-pipeline-final.png"), fullPage: true });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { fitTextLines, VisualizationCanvas } from "../src/client/components/VisualizationCanvas.js";
 import { DESIGN_TOKEN_HASH, DESIGN_TOKENS } from "../src/client/designTokens.js";
@@ -41,5 +41,21 @@ describe("fixed SVG renderer", () => {
     expect(lines.length).toBeGreaterThan(2);
     expect(lines.join("")).toBe("未排序区间：索引零到索引十二");
     expect(lines.join("")).not.toContain("…");
+  });
+
+  it("lets the user zoom the canvas and return to the fitted view", () => {
+    const { container } = render(<VisualizationCanvas spec={bubbleSortFixture} step={0} />);
+    const canvasControls = within(container);
+    const canvas = container.querySelector(".visualization-canvas");
+    expect(canvas).toHaveAttribute("data-zoom", "1");
+
+    fireEvent.click(canvasControls.getByRole("button", { name: "放大画布" }));
+    expect(canvas).toHaveAttribute("data-zoom", "1.25");
+    expect(canvasControls.getByRole("button", { name: "适应画布" })).toHaveTextContent("125%");
+
+    fireEvent.click(canvasControls.getByRole("button", { name: "缩小画布" }));
+    expect(canvas).toHaveAttribute("data-zoom", "1");
+    fireEvent.click(canvasControls.getByRole("button", { name: "适应画布" }));
+    expect(canvas).toHaveAttribute("data-zoom", "1");
   });
 });

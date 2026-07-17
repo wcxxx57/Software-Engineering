@@ -27,7 +27,7 @@ export const bubbleSortFixture: VisualizationSpec = {
     ],
   },
   steps: [
-    { id: "compare", title: "比较 5 和 2", description: "检查第一对相邻元素。", codeLine: 2, operations: [{ type: "setState", targetId: "array", state: "active" }, { type: "focus", targetIds: ["array", "left", "right"] }] },
+    { id: "compare", title: "比较 5 和 2", description: "检查第一对相邻元素。", codeLine: 2, operations: [{ type: "setState", targetId: "array", state: "active" }, { type: "focus", targetIds: ["array", "left", "right", "note"] }] },
     { id: "swap", title: "交换", description: "5 大于 2，交换两者。", codeLine: 3, operations: [{ type: "setValue", targetId: "array", value: [2, 5, 4, 1, 3] }, { type: "setState", targetId: "array", state: "success" }] },
     { id: "advance", title: "指针右移", description: "继续比较下一对相邻元素。", codeLine: 1, operations: [{ type: "setValue", targetId: "left", value: 1 }, { type: "setValue", targetId: "right", value: 2 }] },
   ],
@@ -169,12 +169,8 @@ export const densePipelineFixture: VisualizationSpec = {
     { id: "inputArray", kind: "array", label: "当前数组", value: [3, 2, 1], state: "normal", visible: true, layout: { row: 0, column: 0, width: 480, height: 82 } },
     { id: "pair", kind: "array", label: "当前相邻对", value: [3, 2], state: "active", visible: true, layout: { row: 1, column: 0, width: 210, height: 82 } },
     { id: "compare", kind: "diamond", label: "左边 > 右边？", value: "3 > 2", state: "active", visible: true, layout: { row: 1, column: 1, width: 180, height: 100 } },
-    { id: "swap", kind: "node", label: "交换并让较大值右移", value: "是：交换", state: "normal", visible: true, layout: { row: 1, column: 2, width: 210, height: 82 } },
-    { id: "fixed", kind: "array", label: "右侧已固定", value: [], state: "muted", visible: true, layout: { row: 1, column: 3, width: 180, height: 82 } },
-    { id: "roundInfo", kind: "annotation", label: "轮次进度", value: "第 1 轮，第 1 次比较", state: "normal", visible: true, layout: { row: 2, column: 0, width: 260, height: 72 } },
-    { id: "movement", kind: "annotation", label: "元素移动", value: "3 从索引 0 向右移动", state: "active", visible: true, layout: { row: 2, column: 1, width: 300, height: 72 } },
-    { id: "invariant", kind: "annotation", label: "不变式", value: "每轮结束：未排序区的最大值会进入右侧有序区", state: "success", visible: true, layout: { row: 2, column: 2, width: 360, height: 72 } },
-    { id: "earlyStop", kind: "annotation", label: "提前结束", value: "一整轮没有交换，说明数组已经有序", state: "normal", visible: true, layout: { row: 3, column: 1, width: 360, height: 72 } },
+    { id: "swap", kind: "node", label: "交换并让较大值右移", value: "是：交换", state: "normal", visible: true, layout: { row: 2, column: 1, width: 210, height: 82 } },
+    { id: "fixed", kind: "array", label: "右侧已固定", value: [], state: "muted", visible: true, layout: { row: 2, column: 2, width: 180, height: 82 } },
   ],
   relations: [
     { id: "rInputPair", kind: "flow", from: "inputArray", to: "pair", label: "取相邻元素", state: "normal", directed: true, visible: true },
@@ -184,21 +180,14 @@ export const densePipelineFixture: VisualizationSpec = {
   ],
   parameters: [], variants: [],
   steps: [
-    { id: "compareFirst", title: "比较第一对", description: "比较 3 和 2。", operations: [
-      { type: "setValue", targetId: "roundInfo", value: "第 1 轮，第 1 次比较" },
-      { type: "setValue", targetId: "movement", value: "3 从索引 0 向右移动" },
+    { id: "compareFirst", title: "比较第一对", description: "第 1 轮第 1 次比较 3 和 2；3 从索引 0 向右移动。", operations: [
       { type: "setState", targetId: "compare", state: "active" },
     ] },
-    { id: "finishRound", title: "完成第一轮", description: "最大值进入右侧有序区。", operations: [
+    { id: "finishRound", title: "完成第一轮", description: "每轮结束时，未排序区的最大值会进入右侧有序区。", operations: [
       { type: "setValue", targetId: "inputArray", value: [2, 1, 3] },
       { type: "setValue", targetId: "fixed", value: [3] },
-      { type: "setValue", targetId: "invariant", value: "每轮结束：未排序区的最大值会进入右侧有序区，这条完整说明在播放过程中也不能被截断" },
-      { type: "setState", targetId: "invariant", state: "success" },
     ] },
-    { id: "earlyStopCheck", title: "检查提前结束", description: "检查本轮是否发生交换。", operations: [
-      { type: "setValue", targetId: "earlyStop", value: "如果一整轮都没有交换，说明数组已经有序，可以直接结束排序" },
-      { type: "setState", targetId: "earlyStop", state: "active" },
-    ] },
+    { id: "earlyStopCheck", title: "检查提前结束", description: "如果一整轮都没有交换，说明数组已经有序，可以直接结束排序。", operations: [{ type: "setState", targetId: "compare", state: "success" }] },
   ],
 };
 

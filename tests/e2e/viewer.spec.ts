@@ -165,10 +165,39 @@ async function assertCanvasGeometry(page: Page, spec: VisualizationSpec): Promis
 
 test("home uses the unified Zhiying brand language and stays responsive", async ({ page }, testInfo: TestInfo) => {
   const browserErrors = collectBrowserErrors(page);
+  await page.setViewportSize({ width: 2048, height: 1056 });
   await page.goto("/");
   await expect(page.getByRole("link", { name: "智映通学" })).toBeVisible();
   await expect(page.getByRole("heading", { name: /把计算机知识点变成/ })).toBeVisible();
   await expect(page.getByText("二维交互可视化 · 智能体驱动")).toBeVisible();
+  await expect(page.getByRole("button", { name: "打开内置演示" })).toHaveCount(0);
+  const conceptInput = page.locator(".concept-form textarea");
+  await expect(conceptInput).toHaveValue("");
+  await expect(conceptInput).toHaveAttribute("placeholder", "例如：二叉搜索树查找、图的广度优先搜索、哈希表冲突与链地址法");
+  const wideLayout = await page.evaluate(() => {
+    const background = document.querySelector<HTMLElement>(".home-background")!.getBoundingClientRect();
+    const introduction = document.querySelector<HTMLElement>(".hero-card > p")!;
+    return {
+      backgroundWidth: background.width,
+      clientWidth: document.documentElement.clientWidth,
+      introductionHeight: introduction.getBoundingClientRect().height,
+      introductionLineHeight: Number.parseFloat(getComputedStyle(introduction).lineHeight),
+    };
+  });
+  expect(Math.abs(wideLayout.backgroundWidth - wideLayout.clientWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(wideLayout.introductionHeight - wideLayout.introductionLineHeight)).toBeLessThanOrEqual(1);
+  const language = page.getByRole("combobox", { name: "编程语言" });
+  await language.click();
+  await expect(page.getByRole("listbox", { name: "编程语言" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Python" })).toHaveAttribute("aria-selected", "true");
+  for (const option of ["Python", "Java", "C++", "Go", "Rust"]) await expect(page.getByRole("option", { name: option })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(language).toContainText("Java");
+  const difficulty = page.getByRole("combobox", { name: "难度" });
+  await difficulty.click();
+  for (const option of ["入门", "进阶", "高级"]) await expect(page.getByRole("option", { name: option })).toBeVisible();
+  await page.keyboard.press("Escape");
   const palette = await page.evaluate(() => ["--theme-primary", "--theme-active", "--theme-success", "--theme-visited", "--theme-accent"].map((name) => getComputedStyle(document.documentElement).getPropertyValue(name)));
   expect(new Set(palette).size).toBe(palette.length);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -232,12 +261,16 @@ test("dense content stays complete and collision-free at all supported viewer wi
 
 test("playback is transient, bounded and resets after refresh", async ({ page }, testInfo: TestInfo) => {
   const browserErrors = collectBrowserErrors(page);
-  await openFixture(page, "array");
+  const { visualizationId } = await openFixture(page, "array");
   const codeOverflow = await page.locator(".code-card pre").evaluate((node) => node.scrollWidth - node.clientWidth);
   expect(codeOverflow).toBeLessThanOrEqual(1);
   const defaultVerticalOverflow = await page.locator(".code-card pre").evaluate((node) => node.scrollHeight - node.clientHeight);
   expect(defaultVerticalOverflow).toBeLessThanOrEqual(1);
-  const version = await page.locator(".version-chip").textContent();
+  const readVersion = async () => {
+    const response = await page.request.get(`/api/visualizations/${visualizationId}`);
+    return (await response.json() as { version: { versionId: string } }).version.versionId;
+  };
+  const version = await readVersion();
   await expect(page.getByText("准备就绪")).toBeVisible();
   await page.getByRole("button", { name: "下一步" }).click();
   await expect(page.getByText("比较 5 和 2")).toBeVisible();
@@ -250,7 +283,7 @@ test("playback is transient, bounded and resets after refresh", async ({ page },
   await expect(page.getByRole("button", { name: "暂停" })).toBeVisible();
   await page.waitForTimeout(1050);
   await page.getByRole("button", { name: "暂停" }).click();
-  await expect(page.locator(".version-chip")).toHaveText(version ?? "");
+  expect(await readVersion()).toBe(version);
   await page.reload();
   await expect(page.getByText("准备就绪")).toBeVisible();
   await expect(page.locator(".playback-bar > span")).toHaveText("0/3");
@@ -267,6 +300,22 @@ test("viewer stays usable without horizontal overflow on a narrow viewport", asy
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("gallery-narrow.png"), fullPage: true });
   expect(browserErrors).toEqual([]);
+});
+
+test("canvas zoom controls enlarge details and restore the fitted view", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openFixture(page, "tree");
+  const canvas = page.locator(".visualization-canvas");
+  const initialWidth = await canvas.evaluate((element) => element.viewBox.baseVal.width);
+
+  await page.getByRole("button", { name: "放大画布" }).click();
+  await expect(page.getByRole("button", { name: "适应画布" })).toHaveText("125%");
+  expect(await canvas.evaluate((element) => element.viewBox.baseVal.width)).toBeLessThan(initialWidth);
+  await expect(canvas).toHaveClass(/is-zoomed/);
+
+  await page.getByRole("button", { name: "适应画布" }).click();
+  await expect(page.getByRole("button", { name: "适应画布" })).toHaveText("100%");
+  expect(await canvas.evaluate((element) => element.viewBox.baseVal.width)).toBeCloseTo(initialWidth, 5);
 });
 
 test("viewer keeps the main visualization and Agent controls usable across product breakpoints", async ({ page }, testInfo: TestInfo) => {

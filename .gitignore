@@ -3,6 +3,8 @@ dist/
 data/
 test-results/
 playwright-report/
+.playwright-cli/
+output/
 .env
 .env.local
 *.log

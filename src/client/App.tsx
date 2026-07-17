@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { VisualizationCanvas } from "./components/VisualizationCanvas.js";
+import { SelectDropdown } from "./components/SelectDropdown.js";
 import {
-  createDemo,
   generateVisualization,
   getVisualization,
   navigateHistory,
@@ -24,13 +24,20 @@ const QUICK_AGENT_PROMPTS = [
   "探索边界情况",
 ];
 
+const LANGUAGE_OPTIONS = ["Python", "Java", "C++", "Go", "Rust"].map((value) => ({ value, label: value }));
+const DIFFICULTY_OPTIONS = [
+  { value: "beginner", label: "入门" },
+  { value: "intermediate", label: "进阶" },
+  { value: "advanced", label: "高级" },
+];
+
 function navigate(path: string): void {
   window.history.pushState({}, "", path);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 function Home() {
-  const [concept, setConcept] = useState("冒泡排序");
+  const [concept, setConcept] = useState("");
   const [language, setLanguage] = useState("Python");
   const [difficulty, setDifficulty] = useState<"beginner" | "intermediate" | "advanced">("beginner");
   const [status, setStatus] = useState("");
@@ -51,12 +58,8 @@ function Home() {
       setStatus(error instanceof Error ? error.message : "生成失败");
     } finally { setLoading(false); }
   };
-  const demo = async () => {
-    setLoading(true); setStatus("载入固定样式演示…");
-    try { finish(await createDemo()); } catch (error) { setStatus(error instanceof Error ? error.message : "载入失败"); } finally { setLoading(false); }
-  };
-
   return <main className="home-page" data-theme-token-hash={DESIGN_TOKEN_HASH}>
+    <div className="home-background" aria-hidden="true" />
     <header className="home-nav"><a className="back-link" href={PLATFORM_HOME_URL}>← 返回智映通学</a></header>
     <section className="hero-card">
       <div className="brand-badge">二维交互可视化 · 智能体驱动</div>
@@ -64,15 +67,15 @@ function Home() {
       <p>智能助手理解你的修改要求，固定的二维组件负责稳定呈现。内容可以持续调整，画面风格始终一致。</p>
       <div className="concept-form">
         <label>想可视化什么知识点？</label>
-        <textarea value={concept} onChange={(event) => setConcept(event.target.value)} placeholder="例如：红黑树插入、TCP 三次握手、CPU 流水线…" rows={3} />
+        <textarea value={concept} onChange={(event) => setConcept(event.target.value)} placeholder="例如：二叉搜索树查找、图的广度优先搜索、哈希表冲突与链地址法" rows={3} />
         <div className="form-row">
-          <select value={language} onChange={(event) => setLanguage(event.target.value)} aria-label="编程语言"><option>Python</option><option>C++</option><option>Java</option><option>Go</option><option>JavaScript</option></select>
-          <select value={difficulty} onChange={(event) => setDifficulty(event.target.value as typeof difficulty)} aria-label="难度"><option value="beginner">入门</option><option value="intermediate">进阶</option><option value="advanced">高级</option></select>
+          <SelectDropdown value={language} options={LANGUAGE_OPTIONS} ariaLabel="编程语言" onChange={setLanguage} />
+          <SelectDropdown value={difficulty} options={DIFFICULTY_OPTIONS} ariaLabel="难度" onChange={(value) => setDifficulty(value as typeof difficulty)} />
         </div>
-        <div className="action-row"><button className="primary-button" onClick={create} disabled={loading}>生成交互图</button><button className="secondary-button" onClick={demo} disabled={loading}>打开内置演示</button></div>
+        <div className="action-row"><button className="primary-button" onClick={create} disabled={loading}>生成交互图</button></div>
         {status && <div className="status-line">{loading && <span className="spinner" />}{status}</div>}
       </div>
-      <div className="invariant-strip"><span>样式始终一致</span><span>自然语言修改</span><span>逐步播放</span><span>随时撤销</span></div>
+      <div className="invariant-strip"><span>样式始终一致</span><span>自然语言修改</span><span>逐步播放</span><span>版本可回退</span></div>
     </section>
   </main>;
 }
@@ -134,7 +137,7 @@ function Viewer({ visualizationId }: { visualizationId: string }) {
   if (!stored || !spec) return <main className="loading-page"><span className="spinner" />正在载入二维可视化…</main>;
 
   return <main className="viewer-page" data-theme-version={DESIGN_TOKENS.version}>
-    <header className="viewer-header"><div className="brand-lockup"><a className="platform-brand" href={PLATFORM_HOME_URL}>智映通学</a><button className="product-button" onClick={() => navigate("/")}>图形化学习</button></div><div><h1>{spec.title}</h1><p>{spec.concept}</p></div><div className="header-actions"><button onClick={() => history("undo")} disabled={stored.index.undoStack.length === 0}>撤销</button><button onClick={() => history("redo")} disabled={stored.index.redoStack.length === 0}>重做</button><span className="version-chip">版本 {stored.version.versionId.slice(0, 7)}</span></div></header>
+    <header className="viewer-header"><div className="brand-lockup"><a className="platform-brand" href={PLATFORM_HOME_URL}>智映通学</a><button className="product-button" onClick={() => navigate("/")}>图形化学习</button></div><div><h1>{spec.title}</h1><p>{spec.concept}</p></div><div className="header-actions"><button onClick={() => history("undo")} disabled={stored.index.undoStack.length === 0}>上一版</button><button onClick={() => history("redo")} disabled={stored.index.redoStack.length === 0}>下一版</button></div></header>
     <div className="viewer-grid">
       <section className="visual-panel"><VisualizationCanvas spec={spec} step={runtime.step} highlightedIds={runtime.highlightedIds} focusedIds={runtime.focusedIds} /><div className="playback-bar"><button onClick={() => dispatchRuntime({ type: "reset" })}>重置</button><button onClick={() => dispatchRuntime({ type: "previous" })}>上一步</button><button className="play-button" onClick={() => dispatchRuntime({ type: runtime.playing ? "pause" : "play" })}>{runtime.playing ? "暂停" : "播放"}</button><button onClick={() => dispatchRuntime({ type: "next" })}>下一步</button><div className="progress-track"><div className="progress-fill" style={{ width: `${spec.steps.length ? (runtime.step / spec.steps.length) * 100 : 0}%` }} /></div><span>{runtime.step}/{spec.steps.length}</span></div></section>
       <aside className={`detail-panel${spec.code ? "" : " without-code"}`}><section className="step-card"><div className="section-label">当前步骤</div><h2>{currentStep?.title ?? "准备就绪"}</h2><p>{currentStep?.description ?? spec.description ?? "使用播放控件或自然语言助手操作这张图。"}</p></section>{spec.code && <section className="code-card"><div className="section-label">{spec.code.title}</div><pre>{spec.code.lines.map((line, index) => <code key={index} className={currentStep?.codeLine === index ? "active-code-line" : ""}><span className="code-line-number">{index + 1}</span><span className="code-line-text">{line}</span></code>)}</pre></section>}</aside>

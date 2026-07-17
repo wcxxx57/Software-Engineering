@@ -13,7 +13,7 @@ import {
 } from "../../shared/schema.js";
 import { applyPatchSet } from "../../shared/patch.js";
 import { normalizeRuntimeState, type RuntimeState } from "../../shared/runtime.js";
-import { validateVisualizationSpec, VisualizationValidationError } from "../../shared/validation.js";
+import { validateAgentCanvasBudget, VisualizationValidationError } from "../../shared/validation.js";
 import { AgentConfigurationError } from "../errors.js";
 import type { StoredVisualization, VersionStore } from "./versionStore.js";
 import { AuditLogger } from "./auditLogger.js";
@@ -142,7 +142,7 @@ export class AgentService {
           return JSON.stringify({ ok: false, attempt: submitAttempts, attemptsRemaining: Math.max(0, 3 - submitAttempts), issues: lastSubmitIssues, instruction: "先检查固定组件目录，再重新提交完整 Spec。" });
         }
         try {
-          acceptedSpec = validateVisualizationSpec(spec);
+          acceptedSpec = validateAgentCanvasBudget(spec);
           lastSubmitIssues = [];
           return JSON.stringify({ ok: true, message: "Spec 校验通过。停止继续修改并给出简短完成说明。" });
         } catch (error) {
@@ -187,6 +187,8 @@ export class AgentService {
 Spec 顶层必须是 schemaVersion=1，并包含 title、concept、layout、elements、relations、parameters、variants、steps；ID 使用稳定英文标识。
 优先使用 tree、row、column、grid 等自动布局且不要填写元素 x/y；pipeline 或 grid 中有多个层次时要明确设置不同的 row/column。仅在确需 manual 布局时填写坐标，并主动分散元素位置。
 任何标签和值都必须完整保留，不能用省略号代替内容，也不能依赖裁切隐藏文字。元素之间不得重叠；关系标签不得压住元素；连线不得穿过无关元素。渲染器会做最终自动扩容与碰撞消解，但你仍应提供清晰的结构和合理的布局意图。
+画布只承载知识结构、数据、状态、指针和关系。不要创建“小结”“总结”“代码思路”“代码说明”“当前操作”“当前观察”“最终结果”等与右侧区域重复的卡片；说明和结论写入 description 或步骤说明，代码只写入顶层 code，由界面专用区域展示。
+先确定本知识点最需要被操控和观察的核心结构。只有需要连接、逐步改变、聚焦或比较的内容才能成为画布元素；定义、阶段释义、公式规则、复杂度、静态提示和最终结论写入 description 或对应步骤说明。默认目标不超过 12 个可见元素；树和图可因拓扑节点增加，但总数不得超过 20，node/circle 之外的辅助组件最多 8 个。画布最多保留 1 个 annotation，且它必须在步骤中发生变化或被聚焦。不要同时用总览组件和一组元素重复表达同一结构。grid/pipeline 不得把全部组件挤在过宽的单行中；结合约 1100:640 的画布比例组织两行或多行，让默认 100% 下文字清楚可读。
 所有 relation.from/to、layout.rootId 和 step.operations 目标必须引用本次提交中真实存在的 ID；codeLine 从 0 开始且不得越过 code.lines。
 步骤要体现肉眼可见且可逆的知识状态变化，引用必须存在。面向用户使用中文说明。`,
       middleware: [
@@ -254,7 +256,7 @@ Spec 顶层必须是 schemaVersion=1，并包含 title、concept、layout、elem
         if (!visualizationInspected) return JSON.stringify({ ok: false, error: "修改前必须先调用 inspect_visualization。" });
         if (mutationUsed) return JSON.stringify({ ok: false, error: "一次请求只允许一个持久化修改工具，请结束本轮。" });
         try {
-          const spec = applyPatchSet(current.version.spec, patch);
+          const spec = validateAgentCanvasBudget(applyPatchSet(current.version.spec, patch));
           current = await this.store.commit({ visualizationId, baseVersionId: current.index.currentVersionId, sourceRequestId: requestId, summary: patch.summary, spec });
           mutationUsed = true; userFacingEventSent = true; emit({ type: "version", ...current }); emit({ type: "message", message: patch.summary });
           return JSON.stringify({ ok: true, versionId: current.version.versionId, message: "修改已原子提交且可撤销。" });
@@ -270,7 +272,7 @@ Spec 顶层必须是 schemaVersion=1，并包含 title、concept、layout、elem
         if (!visualizationInspected) return JSON.stringify({ ok: false, error: "重构前必须先调用 inspect_visualization。" });
         if (mutationUsed) return JSON.stringify({ ok: false, error: "一次请求只允许一个持久化修改工具，请结束本轮。" });
         try {
-          const validated = validateVisualizationSpec(spec);
+          const validated = validateAgentCanvasBudget(spec);
           current = await this.store.commit({ visualizationId, baseVersionId: current.index.currentVersionId, sourceRequestId: requestId, summary, spec: validated });
           mutationUsed = true; userFacingEventSent = true; emit({ type: "version", ...current }); emit({ type: "message", message: summary });
           return JSON.stringify({ ok: true, versionId: current.version.versionId, message: "整图已使用固定组件重构，样式未改变且可撤销。" });
@@ -333,6 +335,8 @@ Spec 顶层必须是 schemaVersion=1，并包含 title、concept、layout、elem
 任何相关请求必须先调用 inspect_visualization。然后只选择最合适的一个执行工具；复杂修改合并为一个 PatchSet。
 样式是不可变系统约束：不能修改颜色、字体、CSS、className、style、HTML、SVG 或 JavaScript。用户要求换样式时调用 explain_visualization(status=unsupported)，说明可改内容与结构但样式锁定。
 修改布局或新增元素时，要让不同元素使用不同的 row/column 或合理坐标；不得要求元素互相覆盖。用户提供的标签和值必须完整保留，不得用省略号缩短，也不得依赖裁切隐藏文字。固定渲染器会自动扩容并消解意外坐标冲突。
+画布只保留知识结构、数据、状态、指针和关系，不得新增“小结”“总结”“代码思路”“代码说明”“当前操作”“当前观察”“最终结果”等与右侧区域重复的卡片；说明和结论应修改 description 或步骤说明，代码应修改顶层 code。
+编辑时也必须遵守画布信息预算：默认目标不超过 12 个可见元素，最多 20 个；node/circle 之外的辅助组件最多 8 个；annotation 最多 1 个且必须参与步骤变化。静态定义、公式、复杂度、阶段释义和结论放入 description 或步骤说明。删除与右侧区域重复的信息，不要同时用总览组件和多个子元素重复表达同一结构。grid/pipeline 要按约 1100:640 的画布比例平衡行列，不能把全部组件排成导致文字缩小的超宽单行。
 局部结构/数据/布局/步骤修改用 edit_visualization；整图重构用 replace_visualization；播放和临时高亮用 control_timeline；撤销重做用 navigate_history。
 用户要求展示边界状态或特殊情况时，先根据当前图判断是否存在多种含义明显不同的候选项。如果有多种，不要擅自修改；调用 explain_visualization(status=related) 简洁列出候选项并询问用户要演示哪一种。只有候选项唯一，或用户已经明确选择后，才执行修改。
 如果请求无关，直接调用 explain_visualization(status=out_of_scope)，不要调用 inspect 或修改工具。

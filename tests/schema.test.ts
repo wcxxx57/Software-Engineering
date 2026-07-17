@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bubbleSortFixture, FIXTURES } from "../src/shared/fixtures.js";
 import { applyPatchSet } from "../src/shared/patch.js";
-import { validateVisualizationSpec, VisualizationValidationError } from "../src/shared/validation.js";
+import { validateAgentCanvasBudget, validateVisualizationSpec, VisualizationValidationError } from "../src/shared/validation.js";
 
 describe("VisualizationSpec validation", () => {
   it("accepts the fixed-component fixture", () => {
@@ -31,6 +31,50 @@ describe("VisualizationSpec validation", () => {
     invalid.elements[0]!.parentId = "note";
     invalid.elements.find((element) => element.id === "note")!.parentId = "array";
     expect(() => validateVisualizationSpec(invalid)).toThrow(/重复|循环/);
+  });
+
+  it.each(["本节小结", "算法总结", "代码思路", "Python 代码说明", "当前操作", "当前观察", "最终结果", "关键结论"])("rejects redundant canvas card %s", (label) => {
+    const invalid = structuredClone(bubbleSortFixture);
+    invalid.elements.push({ id: "redundant-card", kind: "annotation", label, value: "重复内容", state: "normal", visible: true });
+    expect(() => validateVisualizationSpec(invalid)).toThrow(/与右侧区域重复的说明卡片/);
+  });
+
+  it("keeps Agent canvases focused on dynamic, controllable information", () => {
+    expect(validateAgentCanvasBudget(bubbleSortFixture).elements.length).toBeGreaterThan(0);
+
+    const staticNote = structuredClone(bubbleSortFixture);
+    const focus = staticNote.steps[0]!.operations.find((operation) => operation.type === "focus");
+    if (focus?.type === "focus") focus.targetIds = focus.targetIds.filter((id) => id !== "note");
+    expect(() => validateAgentCanvasBudget(staticNote)).toThrow(/静态说明不应占用画布/);
+
+    const extraNote = structuredClone(bubbleSortFixture);
+    extraNote.elements.push({ id: "second-note", kind: "annotation", label: "动态状态", value: "等待变化", state: "normal", visible: true });
+    extraNote.steps[0]!.operations.push({ type: "setState", targetId: "second-note", state: "active" });
+    expect(() => validateAgentCanvasBudget(extraNote)).toThrow(/最多保留 1 个/);
+  });
+
+  it("limits supporting widgets while allowing topology nodes", () => {
+    const crowded = structuredClone(bubbleSortFixture);
+    crowded.elements = crowded.elements.filter((element) => element.kind !== "annotation");
+    crowded.steps[0]!.operations = crowded.steps[0]!.operations.filter((operation) => operation.type !== "focus");
+    crowded.elements.push(...Array.from({ length: 9 }, (_, index) => ({
+      id: `support-${index}`,
+      kind: "rect" as const,
+      value: index,
+      state: "normal" as const,
+      visible: true,
+    })));
+    expect(() => validateAgentCanvasBudget(crowded)).toThrow(/辅助组件过多/);
+  });
+
+  it("rejects an ultra-wide pipeline that would shrink text at the fitted view", () => {
+    const tooWide = structuredClone(bubbleSortFixture);
+    tooWide.layout = { type: "pipeline", direction: "left-to-right", gap: 28 };
+    tooWide.elements = tooWide.elements.map((element, index) => ({ ...element, layout: { row: 0, column: index, width: element.layout?.width } }));
+    expect(() => validateAgentCanvasBudget(tooWide)).toThrow(/布局过宽/);
+
+    tooWide.elements = tooWide.elements.map((element, index) => ({ ...element, layout: { row: index === 0 ? 0 : index === 3 ? 2 : 1, column: index === 2 ? 1 : 0, width: element.layout?.width } }));
+    expect(validateAgentCanvasBudget(tooWide).elements).toHaveLength(bubbleSortFixture.elements.length);
   });
 
   it("applies a PatchSet atomically", () => {

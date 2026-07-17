@@ -44,6 +44,15 @@ function findParentCycle(spec: VisualizationSpec): string[] | null {
   return null;
 }
 
+function isRedundantCanvasSummary(label: string | undefined): boolean {
+  if (!label) return false;
+  const normalized = label.replace(/\s+/g, "");
+  return /小结|总结/.test(normalized)
+    || /代码(?:思路|说明|实现|示例|摘要)/.test(normalized)
+    || /(?:思路|说明).*代码/.test(normalized)
+    || /^(?:当前操作|当前观察|操作说明|步骤说明|最终结果|关键结论)$/.test(normalized);
+}
+
 export function validateVisualizationSpec(input: unknown): VisualizationSpec {
   const parsed = visualizationSpecSchema.safeParse(input);
   if (!parsed.success) {
@@ -68,6 +77,9 @@ export function validateVisualizationSpec(input: unknown): VisualizationSpec {
       issues.push(`元素 ${element.id} 的父元素不存在: ${element.parentId}`);
     }
     if (element.parentId === element.id) issues.push(`元素 ${element.id} 不能以自身为父元素`);
+    if (isRedundantCanvasSummary(element.label)) {
+      issues.push(`元素 ${element.id} 是与右侧区域重复的说明卡片，请将说明移入 description 或步骤说明、代码放在专用代码区`);
+    }
 
     const defaultSize = ELEMENT_DEFAULT_SIZE[element.kind];
     const width = element.layout?.width ?? defaultSize.width;
@@ -135,6 +147,52 @@ export function validateVisualizationSpec(input: unknown): VisualizationSpec {
         if (!elementIds.has(targetId) && !relationIds.has(targetId)) {
           issues.push(`步骤 ${step.id} 引用了不存在的目标: ${targetId}`);
         }
+      }
+    }
+  }
+
+  if (issues.length > 0) throw new VisualizationValidationError(issues);
+  return spec;
+}
+
+export function validateAgentCanvasBudget(input: unknown): VisualizationSpec {
+  const spec = validateVisualizationSpec(input);
+  const visibleElements = spec.elements.filter((element) => element.visible);
+  const annotationElements = visibleElements.filter((element) => element.kind === "annotation");
+  const stepTargets = new Set(spec.steps.flatMap((step) => step.operations.flatMap((operation) => operation.type === "focus" ? operation.targetIds : [operation.targetId])));
+  const staticAnnotations = annotationElements.filter((element) => !stepTargets.has(element.id));
+  const supportingElements = visibleElements.filter((element) => element.kind !== "node" && element.kind !== "circle");
+  const issues: string[] = [];
+
+  if (annotationElements.length > 1) {
+    issues.push(`画布最多保留 1 个随步骤变化的动态说明，当前有 ${annotationElements.length} 个；其余说明应移入 description 或步骤说明`);
+  }
+  if (staticAnnotations.length > 0) {
+    issues.push(`静态说明不应占用画布: ${staticAnnotations.map((element) => element.id).join(", ")}；请移入 description 或步骤说明`);
+  }
+  if (supportingElements.length > 8) {
+    issues.push(`画布辅助组件过多: ${supportingElements.length} 个，最多 8 个；请只保留需要观察、连接或逐步改变的组件`);
+  }
+  if (visibleElements.length > 20) {
+    issues.push(`画布可见元素过多: ${visibleElements.length} 个，最多 20 个；请缩小示例规模或拆分为步骤`);
+  }
+  if (spec.layout.type === "grid" || spec.layout.type === "pipeline") {
+    const positioned = visibleElements.filter((element) => !element.parentId && element.layout?.row !== undefined && element.layout?.column !== undefined);
+    if (positioned.length >= 2) {
+      const columnWidths = new Map<number, number>();
+      const rowHeights = new Map<number, number>();
+      for (const element of positioned) {
+        const column = element.layout!.column!;
+        const row = element.layout!.row!;
+        const size = ELEMENT_DEFAULT_SIZE[element.kind];
+        columnWidths.set(column, Math.max(columnWidths.get(column) ?? 0, element.layout?.width ?? size.width));
+        rowHeights.set(row, Math.max(rowHeights.get(row) ?? 0, element.layout?.height ?? size.height));
+      }
+      const gap = spec.layout.gap ?? 48;
+      const estimatedWidth = [...columnWidths.values()].reduce((sum, width) => sum + width, 0) + Math.max(0, columnWidths.size - 1) * gap + 150;
+      const estimatedHeight = [...rowHeights.values()].reduce((sum, height) => sum + height, 0) + Math.max(0, rowHeights.size - 1) * gap + 150;
+      if (estimatedWidth / estimatedHeight > 2.8) {
+        issues.push(`布局过宽，默认适配后文字会过小；请增加有意义的行并减少同一行列数，使内容接近画布比例`);
       }
     }
   }
