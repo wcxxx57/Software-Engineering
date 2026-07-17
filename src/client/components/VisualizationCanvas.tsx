@@ -360,6 +360,11 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
           <feDropShadow dx={DESIGN_TOKENS.svgShadow.dark.dx} dy={DESIGN_TOKENS.svgShadow.dark.dy} stdDeviation={DESIGN_TOKENS.svgShadow.dark.stdDeviation} floodColor={DESIGN_TOKENS.svgShadow.dark.floodColor} floodOpacity={DESIGN_TOKENS.svgShadow.dark.floodOpacity} />
           <feDropShadow dx={DESIGN_TOKENS.svgShadow.light.dx} dy={DESIGN_TOKENS.svgShadow.light.dy} stdDeviation={DESIGN_TOKENS.svgShadow.light.stdDeviation} floodColor={DESIGN_TOKENS.svgShadow.light.floodColor} floodOpacity={DESIGN_TOKENS.svgShadow.light.floodOpacity} />
         </filter>
+        <filter id="active-glow" x="-35%" y="-35%" width="170%" height="170%">
+          <feDropShadow dx={DESIGN_TOKENS.svgShadow.dark.dx} dy={DESIGN_TOKENS.svgShadow.dark.dy} stdDeviation={DESIGN_TOKENS.svgShadow.dark.stdDeviation} floodColor={DESIGN_TOKENS.svgShadow.dark.floodColor} floodOpacity={DESIGN_TOKENS.svgShadow.dark.floodOpacity} />
+          <feDropShadow dx={DESIGN_TOKENS.svgShadow.light.dx} dy={DESIGN_TOKENS.svgShadow.light.dy} stdDeviation={DESIGN_TOKENS.svgShadow.light.stdDeviation} floodColor={DESIGN_TOKENS.svgShadow.light.floodColor} floodOpacity={DESIGN_TOKENS.svgShadow.light.floodOpacity} />
+          <feDropShadow dx={DESIGN_TOKENS.svgShadow.active.dx} dy={DESIGN_TOKENS.svgShadow.active.dy} stdDeviation={DESIGN_TOKENS.svgShadow.active.stdDeviation} floodColor={DESIGN_TOKENS.svgShadow.active.floodColor} floodOpacity={DESIGN_TOKENS.svgShadow.active.floodOpacity} />
+        </filter>
         <pattern id="canvas-dots" width="28" height="28" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill={DESIGN_TOKENS.colors.border} opacity="0.16" /></pattern>
       </defs>
       <rect className="canvas-backdrop" x={viewport.x} y={viewport.y} width={viewport.width} height={viewport.height} fill="url(#canvas-dots)" />

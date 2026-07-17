@@ -1,7 +1,7 @@
 import type { ElementKind, SemanticState } from "../shared/schema.js";
 
 export const DESIGN_TOKENS = Object.freeze({
-  version: "n2w-education2d-v10",
+  version: "n2w-education2d-v11",
   colors: {
     background: "#fffdf4",
     surface: "#fffdf4",
@@ -11,7 +11,8 @@ export const DESIGN_TOKENS = Object.freeze({
     border: "#c4a882",
     primary: "#be8944",
     yellow: "#d4a017",
-    active: "#8fc9e3",
+    structure: "#8fc9e3",
+    active: "#a8753b",
     visited: "#d1c1e0",
     success: "#9fd8c8",
     error: "#ef3f46",
@@ -19,7 +20,8 @@ export const DESIGN_TOKENS = Object.freeze({
     accent: "#fdbc97",
     primarySurface: "#fff6db",
     yellowSurface: "#fff6db",
-    activeSurface: "#eaf7ff",
+    structureSurface: "#eaf7ff",
+    activeSurface: "#fffaf2",
     visitedSurface: "#f6f2fa",
     successSurface: "#eaf8f3",
     errorSurface: "#fff0f1",
@@ -51,6 +53,7 @@ export const DESIGN_TOKENS = Object.freeze({
   svgShadow: {
     dark: { dx: 5, dy: 5, stdDeviation: 5, floodColor: "#d8c4a5", floodOpacity: 0.28 },
     light: { dx: -4, dy: -4, stdDeviation: 5, floodColor: "#ffffff", floodOpacity: 0.82 },
+    active: { dx: 0, dy: 0, stdDeviation: 4, floodColor: "#be8944", floodOpacity: 0.42 },
   },
 });
 
@@ -115,6 +118,7 @@ export const DESIGN_CSS_VARIABLES: Readonly<Record<string, string>> = Object.fre
   "--theme-border": DESIGN_TOKENS.colors.border,
   "--theme-primary": DESIGN_TOKENS.colors.primary,
   "--theme-yellow": DESIGN_TOKENS.colors.yellow,
+  "--theme-structure": DESIGN_TOKENS.colors.structure,
   "--theme-active": DESIGN_TOKENS.colors.active,
   "--theme-visited": DESIGN_TOKENS.colors.visited,
   "--theme-success": DESIGN_TOKENS.colors.success,
@@ -123,6 +127,7 @@ export const DESIGN_CSS_VARIABLES: Readonly<Record<string, string>> = Object.fre
   "--theme-accent": DESIGN_TOKENS.colors.accent,
   "--theme-primary-surface": DESIGN_TOKENS.colors.primarySurface,
   "--theme-yellow-surface": DESIGN_TOKENS.colors.yellowSurface,
+  "--theme-structure-surface": DESIGN_TOKENS.colors.structureSurface,
   "--theme-active-surface": DESIGN_TOKENS.colors.activeSurface,
   "--theme-visited-surface": DESIGN_TOKENS.colors.visitedSurface,
   "--theme-success-surface": DESIGN_TOKENS.colors.successSurface,

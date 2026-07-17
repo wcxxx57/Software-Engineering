@@ -55,7 +55,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .invariant-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 .invariant-strip span { padding: 8px 13px; border: 1px solid var(--theme-panel-border); border-radius: 999px; color: var(--theme-text-muted); box-shadow: var(--shadow-canvas); font-size: 12px; font-weight: 700; }
 .invariant-strip span:nth-child(1) { background: var(--theme-primary-surface); }
-.invariant-strip span:nth-child(2) { background: var(--theme-active-surface); }
+.invariant-strip span:nth-child(2) { background: var(--theme-structure-surface); }
 .invariant-strip span:nth-child(3) { background: var(--theme-accent-surface); }
 .invariant-strip span:nth-child(4) { background: var(--theme-visited-surface); }
 
@@ -73,7 +73,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .canvas-shell { position: relative; flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--theme-panel-border); border-radius: var(--radius-lg); background: var(--theme-surface); box-shadow: var(--shadow-canvas); }
 .canvas-toolbar { position: absolute; top: 12px; right: 12px; z-index: 4; display: flex; align-items: center; padding: 4px; border: 1px solid var(--theme-panel-border); border-radius: 999px; background: var(--theme-header-surface); box-shadow: var(--shadow-canvas); backdrop-filter: blur(10px); }
 .canvas-toolbar button { min-width: 34px; height: 32px; padding: 0 9px; border: 0; border-radius: 999px; color: var(--theme-text); background: transparent; font-size: 16px; font-weight: 800; line-height: 1; }
-.canvas-toolbar button:hover:not(:disabled), .canvas-toolbar button:focus-visible { color: var(--theme-brand-text); background: var(--theme-active-surface); outline: none; }
+.canvas-toolbar button:hover:not(:disabled), .canvas-toolbar button:focus-visible { color: var(--theme-brand-text); background: var(--theme-structure-surface); outline: none; }
 .canvas-toolbar .zoom-value { min-width: 58px; color: var(--theme-text-muted); font-family: var(--font-code); font-size: 12px; }
 .visualization-canvas { display: block; width: 100%; height: 100%; min-height: 420px; background: linear-gradient(145deg, var(--theme-surface) 0%, var(--theme-message-surface) 100%); }
 .visualization-canvas.is-zoomed { cursor: grab; touch-action: none; }
@@ -113,7 +113,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .agent-suggestions { padding: 16px 14px 14px; border-top: 1px solid var(--theme-border); background: var(--theme-surface); }
 .agent-suggestions > span { color: var(--theme-text-muted); font-size: 11px; font-weight: 800; letter-spacing: 0.06em; }
 .agent-suggestions > div { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 10px; }
-.agent-suggestions button { padding: 7px 10px; border: 1px solid var(--theme-panel-border); border-radius: 999px; color: var(--theme-text); background: var(--theme-active-surface); font-size: 11px; font-weight: 700; transition: transform var(--motion-fast), border-color var(--motion-fast); }
+.agent-suggestions button { padding: 7px 10px; border: 1px solid var(--theme-panel-border); border-radius: 999px; color: var(--theme-text); background: var(--theme-structure-surface); font-size: 11px; font-weight: 700; transition: transform var(--motion-fast), border-color var(--motion-fast); }
 .agent-suggestions button:nth-child(2) { background: var(--theme-success-surface); }
 .agent-suggestions button:nth-child(3) { border-color: var(--theme-yellow); background: var(--theme-yellow-surface); }
 .agent-suggestions button:nth-child(4) { background: var(--theme-visited-surface); }
@@ -139,35 +139,40 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .viz-element .sequence-cell { fill: var(--theme-surface-muted); stroke: var(--theme-border); stroke-width: var(--stroke-cell); transition: fill var(--motion-normal), stroke var(--motion-normal); }
 .viz-element.kind-array .element-shape { fill: var(--theme-yellow-surface); stroke: var(--theme-yellow); }
 .viz-element.kind-array .sequence-cell { fill: var(--theme-surface); stroke: var(--theme-yellow); }
-.viz-element.kind-node .element-shape, .viz-element.kind-circle .element-shape, .viz-element.kind-rect .element-shape { fill: var(--theme-active-surface); stroke: var(--theme-active); }
+.viz-element.kind-node .element-shape, .viz-element.kind-circle .element-shape, .viz-element.kind-rect .element-shape { fill: var(--theme-structure-surface); stroke: var(--theme-structure); }
 .viz-element.kind-pointer .element-shape { fill: var(--theme-success-surface); stroke: var(--theme-success); }
 .viz-element.kind-pointer .pointer-indicator { fill: none; stroke: var(--theme-success); stroke-width: var(--stroke-normal); stroke-linecap: round; stroke-linejoin: round; }
 .viz-element.kind-diamond .element-shape { fill: var(--theme-accent-surface); stroke: var(--theme-accent); }
 .viz-element.kind-stack .element-shape, .viz-element.kind-stack .sequence-cell, .viz-element.kind-queue .element-shape, .viz-element.kind-queue .sequence-cell, .viz-element.kind-callStack .element-shape, .viz-element.kind-callStack .sequence-cell { fill: var(--theme-success-surface); stroke: var(--theme-success); }
 .viz-element.kind-memoryGrid .element-shape, .viz-element.kind-memoryGrid .sequence-cell, .viz-element.kind-pipeline .element-shape, .viz-element.kind-pipeline .sequence-cell { fill: var(--theme-visited-surface); stroke: var(--theme-visited); }
-.viz-element.kind-timeline .element-shape, .viz-element.kind-timeline .sequence-cell { fill: var(--theme-active-surface); stroke: var(--theme-active); }
+.viz-element.kind-timeline .element-shape, .viz-element.kind-timeline .sequence-cell { fill: var(--theme-structure-surface); stroke: var(--theme-structure); }
 .viz-element.kind-group .element-shape { fill: var(--theme-yellow-surface); stroke: var(--theme-yellow); stroke-dasharray: 8 6; filter: none; }
 .viz-element.kind-annotation .element-shape { fill: var(--theme-visited-surface); stroke: var(--theme-visited); }
 .viz-element.kind-annotation .annotation-accent { fill: var(--theme-visited); }
-.viz-element.state-active .element-shape, .viz-element.state-active .sequence-cell { fill: var(--theme-active-surface); stroke: var(--theme-active); stroke-width: var(--stroke-normal); }
+.viz-element.state-active .element-shape { stroke: color-mix(in srgb, var(--theme-primary) 78%, var(--theme-text)); stroke-width: var(--stroke-emphasis); filter: url(#active-glow); }
+.viz-element.state-active .sequence-cell { stroke: color-mix(in srgb, var(--theme-primary) 78%, var(--theme-text)); stroke-width: var(--stroke-normal); }
+.viz-element.kind-array.state-active .element-shape, .viz-element.kind-array.state-active .sequence-cell, .viz-element.kind-group.state-active .element-shape { stroke: color-mix(in srgb, var(--theme-yellow) 78%, var(--theme-text)); }
+.viz-element.kind-node.state-active .element-shape, .viz-element.kind-circle.state-active .element-shape, .viz-element.kind-rect.state-active .element-shape, .viz-element.kind-timeline.state-active .element-shape, .viz-element.kind-timeline.state-active .sequence-cell { stroke: color-mix(in srgb, var(--theme-structure) 78%, var(--theme-text)); }
+.viz-element.kind-pointer.state-active .element-shape, .viz-element.kind-stack.state-active .element-shape, .viz-element.kind-stack.state-active .sequence-cell, .viz-element.kind-queue.state-active .element-shape, .viz-element.kind-queue.state-active .sequence-cell, .viz-element.kind-callStack.state-active .element-shape, .viz-element.kind-callStack.state-active .sequence-cell { stroke: color-mix(in srgb, var(--theme-success) 78%, var(--theme-text)); }
+.viz-element.kind-memoryGrid.state-active .element-shape, .viz-element.kind-memoryGrid.state-active .sequence-cell, .viz-element.kind-pipeline.state-active .element-shape, .viz-element.kind-pipeline.state-active .sequence-cell, .viz-element.kind-annotation.state-active .element-shape { stroke: color-mix(in srgb, var(--theme-visited) 78%, var(--theme-text)); }
+.viz-element.kind-diamond.state-active .element-shape { stroke: color-mix(in srgb, var(--theme-accent) 78%, var(--theme-text)); }
 .viz-element.state-visited .element-shape, .viz-element.state-visited .sequence-cell { fill: var(--theme-visited-surface); stroke: var(--theme-visited); }
 .viz-element.state-success .element-shape, .viz-element.state-success .sequence-cell { fill: var(--theme-success-surface); stroke: var(--theme-success); }
 .viz-element.state-error .element-shape, .viz-element.state-error .sequence-cell { fill: var(--theme-error-surface); stroke: var(--theme-error); }
 .viz-element.state-muted .element-shape, .viz-element.state-muted .sequence-cell { fill: var(--theme-surface-muted); stroke: var(--theme-border); stroke-width: var(--stroke-normal); }
 .viz-element.state-muted .element-label { fill: var(--theme-text-muted); }
 .viz-element.state-muted .element-value { fill: var(--theme-text); }
-.viz-element.state-active .pointer-indicator { stroke: var(--theme-active); stroke-width: var(--stroke-normal); }
+.viz-element.state-active .pointer-indicator { stroke: color-mix(in srgb, var(--theme-success) 78%, var(--theme-text)); stroke-width: var(--stroke-emphasis); }
 .viz-element.state-visited .pointer-indicator { stroke: var(--theme-visited); }
 .viz-element.state-success .pointer-indicator { stroke: var(--theme-success); }
 .viz-element.state-error .pointer-indicator { stroke: var(--theme-error); }
 .viz-element.state-muted .pointer-indicator { stroke: var(--theme-border); }
-.viz-element.state-active .annotation-accent { fill: var(--theme-active); }
 .viz-element.state-visited .annotation-accent { fill: var(--theme-visited); }
 .viz-element.state-success .annotation-accent { fill: var(--theme-success); }
 .viz-element.state-error .annotation-accent { fill: var(--theme-error); }
 .viz-element.state-muted .annotation-accent { fill: var(--theme-border); }
 .viz-relation.state-muted .relation-path { stroke: var(--theme-border); }
-.viz-relation.state-active .relation-path { stroke: var(--theme-active); stroke-width: var(--stroke-relation); }
+.viz-relation.state-active .relation-path { stroke: color-mix(in srgb, var(--theme-primary) 78%, var(--theme-text)); stroke-width: var(--stroke-relation-emphasis); }
 .viz-relation.state-visited .relation-path { stroke: var(--theme-visited); }
 .viz-relation.state-success .relation-path { stroke: var(--theme-success); }
 .viz-relation.state-error .relation-path { stroke: var(--theme-error); }
