@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { FIXTURES } from "../shared/fixtures.js";
-import { userProfileSchema } from "../shared/schema.js";
+import { runtimeStateSchema, userProfileSchema } from "../shared/schema.js";
 import { AgentConfigurationError, NotFoundError, VersionConflictError } from "./errors.js";
 import { SseWriter } from "./sse.js";
 import type { AgentService } from "./services/agentService.js";
@@ -25,6 +25,7 @@ const agentRequestSchema = z.strictObject({
   message: z.string().trim().min(1).max(4000),
   baseVersionId: z.string().regex(/^[a-f0-9]{64}$/),
   requestId: z.string().uuid(),
+  runtime: runtimeStateSchema.optional(),
 });
 const historyRequestSchema = z.strictObject({
   direction: z.enum(["undo", "redo"]),
@@ -43,7 +44,7 @@ function sseError(writer: SseWriter, error: unknown): void {
   } else if (error instanceof z.ZodError) {
     writer.send({ type: "error", code: "INVALID_REQUEST", message: error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("；") });
   } else {
-    writer.send({ type: "error", code: "AGENT_FAILED", message: error instanceof Error ? error.message : "Agent 执行失败" });
+    writer.send({ type: "error", code: "AGENT_FAILED", message: error instanceof Error ? error.message : "智能助手执行失败" });
   }
 }
 
@@ -63,10 +64,10 @@ export function createApp({ store, agents }: AppDependencies) {
   }));
 
   app.post("/api/visualizations/generate", asyncRoute(async (request, response) => {
+    const input = generateRequestSchema.parse(request.body);
     const writer = new SseWriter(response);
     response.on("close", () => writer.end());
     try {
-      const input = generateRequestSchema.parse(request.body);
       const stored = await agents.author(input.concept, input.profile, input.requestId, (event) => writer.send(event));
       writer.send({ type: "complete", ...stored });
     } catch (error) {
@@ -94,11 +95,15 @@ export function createApp({ store, agents }: AppDependencies) {
 
   app.post("/api/visualizations/:id/agent", asyncRoute(async (request, response) => {
     const visualizationId = idSchema.parse(request.params.id);
+    const input = agentRequestSchema.parse(request.body);
+    const current = await store.getCurrent(visualizationId);
+    if (current.index.currentVersionId !== input.baseVersionId) {
+      throw new VersionConflictError(current.index.currentVersionId);
+    }
     const writer = new SseWriter(response);
     response.on("close", () => writer.end());
     try {
-      const input = agentRequestSchema.parse(request.body);
-      const stored = await agents.edit(visualizationId, input.baseVersionId, input.requestId, input.message, (event) => writer.send(event));
+      const stored = await agents.edit(visualizationId, input.baseVersionId, input.requestId, input.message, (event) => writer.send(event), input.runtime);
       writer.send({ type: "complete", ...stored });
     } catch (error) {
       sseError(writer, error);

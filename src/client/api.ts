@@ -1,4 +1,5 @@
 import type { RuntimeCommand, UserProfile } from "../shared/schema.js";
+import type { RuntimeState } from "../shared/runtime.js";
 
 export interface StoredVisualizationResponse {
   index: {
@@ -82,12 +83,13 @@ export async function runVisualizationAgent(
   visualizationId: string,
   baseVersionId: string,
   message: string,
+  runtime: RuntimeState,
   onEvent: (event: AgentEvent) => void,
 ): Promise<void> {
   const response = await fetch(`/api/visualizations/${visualizationId}/agent`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, baseVersionId, requestId: crypto.randomUUID() }),
+    body: JSON.stringify({ message, baseVersionId, requestId: crypto.randomUUID(), runtime }),
   });
   await readSse(response, onEvent);
 }

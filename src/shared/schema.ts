@@ -203,7 +203,15 @@ export const runtimeCommandSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("seek"), step: z.number().int().min(0).max(300) }),
   z.strictObject({ type: z.literal("highlight"), targetIds: z.array(z.string().min(1).max(64)).min(1).max(30) }),
   z.strictObject({ type: z.literal("clearHighlight") }),
+  z.strictObject({ type: z.literal("focus"), targetIds: z.array(z.string().min(1).max(64)).min(1).max(30) }),
 ]);
+
+export const runtimeStateSchema = z.strictObject({
+  step: z.number().int().min(0).max(300),
+  playing: z.boolean(),
+  highlightedIds: z.array(z.string().min(1).max(64)).max(30),
+  focusedIds: z.array(z.string().min(1).max(64)).max(30),
+});
 
 export const userProfileSchema = z.strictObject({
   age: z.number().int().min(6).max(120).optional(),

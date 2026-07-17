@@ -25,6 +25,14 @@ describe("VisualizationSpec validation", () => {
     expect(() => validateVisualizationSpec(invalid)).toThrow(/不存在/);
   });
 
+  it("rejects duplicate IDs and parent cycles", () => {
+    const invalid = structuredClone(bubbleSortFixture);
+    invalid.elements.push({ id: "array", kind: "node", state: "normal", visible: true });
+    invalid.elements[0]!.parentId = "note";
+    invalid.elements.find((element) => element.id === "note")!.parentId = "array";
+    expect(() => validateVisualizationSpec(invalid)).toThrow(/重复|循环/);
+  });
+
   it("applies a PatchSet atomically", () => {
     const original = structuredClone(bubbleSortFixture);
     const changed = applyPatchSet(original, {
@@ -42,8 +50,30 @@ describe("VisualizationSpec validation", () => {
     const original = structuredClone(bubbleSortFixture);
     expect(() => applyPatchSet(original, {
       summary: "非法关系",
-      operations: [{ op: "addRelation", relation: { id: "bad", kind: "edge", from: "array", to: "missing", state: "normal", directed: true, visible: true } }],
+      operations: [
+        { op: "addElement", element: { id: "temporary", kind: "node", value: 1, state: "normal", visible: true } },
+        { op: "addRelation", relation: { id: "bad", kind: "edge", from: "temporary", to: "missing", state: "normal", directed: true, visible: true } },
+      ],
     })).toThrow();
     expect(original.relations).toHaveLength(0);
+    expect(original.elements.some((element) => element.id === "temporary")).toBe(false);
+  });
+
+  it("rejects manual element boxes that extend beyond the fixed canvas", () => {
+    const invalid = structuredClone(bubbleSortFixture);
+    invalid.elements[0]!.layout = { x: 30, y: 250, width: 300, height: 110 };
+    expect(() => validateVisualizationSpec(invalid)).toThrow(/超出画布/);
+  });
+
+  it("rolls back an out-of-bounds layout patch atomically", () => {
+    const original = structuredClone(bubbleSortFixture);
+    expect(() => applyPatchSet(original, {
+      summary: "越界移动",
+      operations: [
+        { op: "setTitle", title: "不应保留" },
+        { op: "updateElement", id: "array", changes: { layout: { x: 10000, y: 250, width: 560 } } },
+      ],
+    })).toThrow(/超出画布/);
+    expect(original.title).toBe("冒泡排序");
   });
 });

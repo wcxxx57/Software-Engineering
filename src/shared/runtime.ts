@@ -15,13 +15,25 @@ export interface RuntimeState {
   step: number;
   playing: boolean;
   highlightedIds: string[];
+  focusedIds: string[];
 }
 
 export const INITIAL_RUNTIME_STATE: RuntimeState = {
   step: 0,
   playing: false,
   highlightedIds: [],
+  focusedIds: [],
 };
+
+export function normalizeRuntimeState(spec: VisualizationSpec, state: RuntimeState = INITIAL_RUNTIME_STATE): RuntimeState {
+  const knownIds = new Set([...spec.elements.map((element) => element.id), ...spec.relations.map((relation) => relation.id)]);
+  return {
+    step: Math.max(0, Math.min(spec.steps.length, state.step)),
+    playing: state.playing,
+    highlightedIds: [...new Set(state.highlightedIds.filter((id) => knownIds.has(id)))],
+    focusedIds: [...new Set(state.focusedIds.filter((id) => knownIds.has(id)))],
+  };
+}
 
 export function materializeVisualization(spec: VisualizationSpec, step: number): MaterializedVisualization {
   const elements = structuredClone(spec.elements);
@@ -58,5 +70,6 @@ export function applyRuntimeCommand(state: RuntimeState, command: RuntimeCommand
     case "seek": return { ...state, playing: false, step: Math.max(0, Math.min(totalSteps, command.step)) };
     case "highlight": return { ...state, highlightedIds: command.targetIds };
     case "clearHighlight": return { ...state, highlightedIds: [] };
+    case "focus": return { ...state, focusedIds: command.targetIds };
   }
 }

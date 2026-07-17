@@ -45,4 +45,26 @@ describe("VersionStore", () => {
     expect(branched.index.redoStack).toEqual([]);
     expect(await store.listVersions(created.index.visualizationId)).toHaveLength(3);
   });
+
+  it("serializes concurrent commits so exactly one stale writer is rejected", async () => {
+    const created = await store.create(bubbleSortFixture, crypto.randomUUID(), "initial");
+    const results = await Promise.allSettled([
+      store.commit({ visualizationId: created.index.visualizationId, baseVersionId: created.version.versionId, sourceRequestId: crypto.randomUUID(), summary: "writer A", spec: { ...created.version.spec, title: "writer A" } }),
+      store.commit({ visualizationId: created.index.visualizationId, baseVersionId: created.version.versionId, sourceRequestId: crypto.randomUUID(), summary: "writer B", spec: { ...created.version.spec, title: "writer B" } }),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejection = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejection?.reason).toBeInstanceOf(VersionConflictError);
+    expect((await store.listVersions(created.index.visualizationId))).toHaveLength(2);
+  });
+
+  it("keeps historical version files immutable after undo and branch edits", async () => {
+    const created = await store.create(bubbleSortFixture, crypto.randomUUID(), "initial");
+    const originalPath = path.join(dataDir, "visualizations", created.index.visualizationId, "versions", `${created.version.versionId}.json`);
+    const originalContent = await fs.promises.readFile(originalPath, "utf8");
+    const committed = await store.commit({ visualizationId: created.index.visualizationId, baseVersionId: created.version.versionId, sourceRequestId: crypto.randomUUID(), summary: "rename", spec: { ...created.version.spec, title: "changed" } });
+    const undone = await store.navigate(created.index.visualizationId, "undo", committed.version.versionId);
+    await store.commit({ visualizationId: created.index.visualizationId, baseVersionId: undone.version.versionId, sourceRequestId: crypto.randomUUID(), summary: "branch", spec: { ...undone.version.spec, title: "branch" } });
+    expect(await fs.promises.readFile(originalPath, "utf8")).toBe(originalContent);
+  });
 });

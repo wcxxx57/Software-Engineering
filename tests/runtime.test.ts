@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { bubbleSortFixture } from "../src/shared/fixtures.js";
-import { applyRuntimeCommand, INITIAL_RUNTIME_STATE, materializeVisualization } from "../src/shared/runtime.js";
+import { applyRuntimeCommand, INITIAL_RUNTIME_STATE, materializeVisualization, normalizeRuntimeState } from "../src/shared/runtime.js";
 
 describe("runtime state", () => {
+  it("normalizes the runtime snapshot exposed to inspect_visualization", () => {
+    expect(normalizeRuntimeState(bubbleSortFixture, {
+      step: 99,
+      playing: true,
+      highlightedIds: ["array", "missing", "array"],
+      focusedIds: ["left", "missing"],
+    })).toEqual({
+      step: bubbleSortFixture.steps.length,
+      playing: true,
+      highlightedIds: ["array"],
+      focusedIds: ["left"],
+    });
+  });
+
   it("materializes steps without mutating the stored spec", () => {
     const materialized = materializeVisualization(bubbleSortFixture, 2);
     expect(materialized.elements.find((element) => element.id === "array")?.value).toEqual([2, 5, 4, 1, 3]);
@@ -15,5 +29,22 @@ describe("runtime state", () => {
     state = applyRuntimeCommand(state, { type: "seek", step: 99 }, 3);
     expect(state).toMatchObject({ step: 3, playing: false });
     expect(applyRuntimeCommand(state, { type: "reset" }, 3)).toEqual(INITIAL_RUNTIME_STATE);
+  });
+
+  it("supports every transient timeline command including focus", () => {
+    let state = { ...INITIAL_RUNTIME_STATE };
+    state = applyRuntimeCommand(state, { type: "next" }, 3);
+    expect(state.step).toBe(1);
+    state = applyRuntimeCommand(state, { type: "previous" }, 3);
+    expect(state.step).toBe(0);
+    state = applyRuntimeCommand(state, { type: "highlight", targetIds: ["array"] }, 3);
+    expect(state.highlightedIds).toEqual(["array"]);
+    state = applyRuntimeCommand(state, { type: "focus", targetIds: ["array", "left"] }, 3);
+    expect(state.focusedIds).toEqual(["array", "left"]);
+    state = applyRuntimeCommand(state, { type: "clearHighlight" }, 3);
+    expect(state.highlightedIds).toEqual([]);
+    expect(state.focusedIds).toEqual(["array", "left"]);
+    state = applyRuntimeCommand(state, { type: "pause" }, 3);
+    expect(state.playing).toBe(false);
   });
 });

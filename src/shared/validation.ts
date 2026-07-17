@@ -3,6 +3,7 @@ import {
   visualizationSpecSchema,
   type VisualizationSpec,
 } from "./schema.js";
+import { ELEMENT_DEFAULT_SIZE, VISUALIZATION_VIEWBOX } from "./geometry.js";
 
 export class VisualizationValidationError extends Error {
   readonly issues: string[];
@@ -67,6 +68,19 @@ export function validateVisualizationSpec(input: unknown): VisualizationSpec {
       issues.push(`元素 ${element.id} 的父元素不存在: ${element.parentId}`);
     }
     if (element.parentId === element.id) issues.push(`元素 ${element.id} 不能以自身为父元素`);
+
+    const defaultSize = ELEMENT_DEFAULT_SIZE[element.kind];
+    const width = element.layout?.width ?? defaultSize.width;
+    const height = element.layout?.height ?? defaultSize.height;
+    const { padding, width: canvasWidth, height: canvasHeight } = VISUALIZATION_VIEWBOX;
+    if (width > canvasWidth - padding * 2) issues.push(`元素 ${element.id} 的宽度超出画布`);
+    if (height > canvasHeight - padding * 2) issues.push(`元素 ${element.id} 的高度超出画布`);
+    if (element.layout?.x !== undefined && (element.layout.x - width / 2 < padding || element.layout.x + width / 2 > canvasWidth - padding)) {
+      issues.push(`元素 ${element.id} 的横向布局超出画布`);
+    }
+    if (element.layout?.y !== undefined && (element.layout.y - height / 2 < padding || element.layout.y + height / 2 > canvasHeight - padding)) {
+      issues.push(`元素 ${element.id} 的纵向布局超出画布`);
+    }
   }
 
   const cycle = findParentCycle(spec);

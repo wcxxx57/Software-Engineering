@@ -8,7 +8,7 @@ export const bubbleSortFixture: VisualizationSpec = {
   language: "Python",
   layout: { type: "manual", direction: "left-to-right", gap: 28 },
   elements: [
-    { id: "array", kind: "array", label: "待排序数组", value: [5, 2, 4, 1, 3], state: "normal", visible: true, layout: { x: 180, y: 250, width: 720 } },
+    { id: "array", kind: "array", label: "待排序数组", value: [5, 2, 4, 1, 3], state: "normal", visible: true, layout: { x: 550, y: 250, width: 720 } },
     { id: "left", kind: "pointer", label: "i", value: 0, state: "active", visible: true, layout: { x: 250, y: 390 } },
     { id: "right", kind: "pointer", label: "j", value: 1, state: "active", visible: true, layout: { x: 370, y: 390 } },
     { id: "note", kind: "annotation", label: "比较相邻元素", value: "若左值大于右值，则交换", state: "normal", visible: true, layout: { x: 360, y: 90, width: 480 } },
@@ -158,6 +158,149 @@ export const pipelineFixture: VisualizationSpec = {
   ],
 };
 
+export const densePipelineFixture: VisualizationSpec = {
+  schemaVersion: 1,
+  title: "冒泡排序：比较流水线",
+  concept: "把相邻元素送入比较、判断、交换和固定流水线",
+  description: "重现多行、多宽度流水线元素的布局回归。",
+  language: "Python",
+  layout: { type: "pipeline", direction: "left-to-right", gap: 36 },
+  elements: [
+    { id: "inputArray", kind: "array", label: "当前数组", value: [3, 2, 1], state: "normal", visible: true, layout: { row: 0, column: 0, width: 480, height: 82 } },
+    { id: "pair", kind: "array", label: "当前相邻对", value: [3, 2], state: "active", visible: true, layout: { row: 1, column: 0, width: 210, height: 82 } },
+    { id: "compare", kind: "diamond", label: "左边 > 右边？", value: "3 > 2", state: "active", visible: true, layout: { row: 1, column: 1, width: 180, height: 100 } },
+    { id: "swap", kind: "node", label: "交换并让较大值右移", value: "是：交换", state: "normal", visible: true, layout: { row: 1, column: 2, width: 210, height: 82 } },
+    { id: "fixed", kind: "array", label: "右侧已固定", value: [], state: "muted", visible: true, layout: { row: 1, column: 3, width: 180, height: 82 } },
+    { id: "roundInfo", kind: "annotation", label: "轮次进度", value: "第 1 轮，第 1 次比较", state: "normal", visible: true, layout: { row: 2, column: 0, width: 260, height: 72 } },
+    { id: "movement", kind: "annotation", label: "元素移动", value: "3 从索引 0 向右移动", state: "active", visible: true, layout: { row: 2, column: 1, width: 300, height: 72 } },
+    { id: "invariant", kind: "annotation", label: "不变式", value: "每轮结束：未排序区的最大值会进入右侧有序区", state: "success", visible: true, layout: { row: 2, column: 2, width: 360, height: 72 } },
+    { id: "earlyStop", kind: "annotation", label: "提前结束", value: "一整轮没有交换，说明数组已经有序", state: "normal", visible: true, layout: { row: 3, column: 1, width: 360, height: 72 } },
+  ],
+  relations: [
+    { id: "rInputPair", kind: "flow", from: "inputArray", to: "pair", label: "取相邻元素", state: "normal", directed: true, visible: true },
+    { id: "rPairCompare", kind: "flow", from: "pair", to: "compare", label: "比较", state: "active", directed: true, visible: true },
+    { id: "rYes", kind: "flow", from: "compare", to: "swap", label: "是", state: "normal", directed: true, visible: true },
+    { id: "rSwapFixed", kind: "flow", from: "swap", to: "fixed", label: "轮末固定", state: "normal", directed: true, visible: true },
+  ],
+  parameters: [], variants: [],
+  steps: [
+    { id: "compareFirst", title: "比较第一对", description: "比较 3 和 2。", operations: [
+      { type: "setValue", targetId: "roundInfo", value: "第 1 轮，第 1 次比较" },
+      { type: "setValue", targetId: "movement", value: "3 从索引 0 向右移动" },
+      { type: "setState", targetId: "compare", state: "active" },
+    ] },
+    { id: "finishRound", title: "完成第一轮", description: "最大值进入右侧有序区。", operations: [
+      { type: "setValue", targetId: "inputArray", value: [2, 1, 3] },
+      { type: "setValue", targetId: "fixed", value: [3] },
+      { type: "setValue", targetId: "invariant", value: "每轮结束：未排序区的最大值会进入右侧有序区，这条完整说明在播放过程中也不能被截断" },
+      { type: "setState", targetId: "invariant", state: "success" },
+    ] },
+    { id: "earlyStopCheck", title: "检查提前结束", description: "检查本轮是否发生交换。", operations: [
+      { type: "setValue", targetId: "earlyStop", value: "如果一整轮都没有交换，说明数组已经有序，可以直接结束排序" },
+      { type: "setState", targetId: "earlyStop", state: "active" },
+    ] },
+  ],
+};
+
+export const blockedRelationFixture: VisualizationSpec = {
+  schemaVersion: 1,
+  title: "连线自动绕开节点",
+  concept: "关系路径不能穿过无关元素",
+  description: "起点与终点之间存在多个障碍节点，连线应自动绕行。",
+  layout: { type: "manual", direction: "left-to-right", gap: 28 },
+  elements: [
+    { id: "source", kind: "node", label: "起点", value: "A", state: "normal", visible: true, layout: { x: 130, y: 320, width: 120, height: 90 } },
+    { id: "blocker", kind: "annotation", label: "中间节点", value: "连线不能从这里穿过", state: "visited", visible: true, layout: { x: 550, y: 320, width: 280, height: 120 } },
+    { id: "upper", kind: "rect", label: "上方障碍", value: "B", state: "normal", visible: true, layout: { x: 550, y: 190, width: 180, height: 90 } },
+    { id: "target", kind: "node", label: "终点", value: "C", state: "success", visible: true, layout: { x: 970, y: 320, width: 120, height: 90 } },
+  ],
+  relations: [{ id: "route", kind: "flow", from: "source", to: "target", label: "自动绕行", state: "active", directed: true, visible: true }],
+  parameters: [], variants: [], steps: [],
+};
+
+export const collisionStressFixture: VisualizationSpec = {
+  schemaVersion: 1,
+  title: "同坐标碰撞消解",
+  concept: "多个元素坐标冲突时自动重新排布",
+  description: "模拟 Agent 给多个不同尺寸元素生成相同坐标。",
+  layout: { type: "manual", direction: "left-to-right", gap: 24 },
+  elements: [
+    { id: "stressArray", kind: "array", label: "数组", value: [8, 3, 5], state: "normal", visible: true, layout: { x: 550, y: 320, width: 420, height: 100 } },
+    { id: "stressNode", kind: "node", label: "节点", value: "A", state: "active", visible: true, layout: { x: 550, y: 320, width: 150, height: 90 } },
+    { id: "stressDecision", kind: "diamond", label: "条件", value: "x > 0", state: "normal", visible: true, layout: { x: 550, y: 320, width: 170, height: 110 } },
+    { id: "stressNote", kind: "annotation", label: "长说明", value: "这些元素最初位于完全相同的位置", state: "visited", visible: true, layout: { x: 550, y: 320, width: 340, height: 100 } },
+    { id: "stressPointer", kind: "pointer", label: "指针", value: 0, state: "normal", visible: true, layout: { x: 550, y: 320, width: 110, height: 70 } },
+    { id: "stressQueue", kind: "queue", label: "队列", value: [1, 2, 3], state: "success", visible: true, layout: { x: 550, y: 320, width: 420, height: 100 } },
+  ],
+  relations: [], parameters: [], variants: [], steps: [],
+};
+
+export const denseGroupFixture: VisualizationSpec = {
+  schemaVersion: 1,
+  title: "分组内部碰撞消解",
+  concept: "分组中的子元素不能互相覆盖或跑出容器",
+  description: "模拟 Agent 在同一分组内连续添加多个同坐标元素。",
+  layout: { type: "manual", direction: "left-to-right", gap: 20 },
+  elements: [
+    { id: "denseGroup", kind: "group", label: "边界情况分组", value: "自动扩展容器并重新排列子元素", state: "normal", visible: true, layout: { x: 550, y: 320, width: 420, height: 320 } },
+    ...(["node", "rect", "diamond", "pointer", "annotation", "circle", "node", "rect"] as const).map((kind, index) => ({
+      id: `groupChild${index}`,
+      kind,
+      label: `子元素 ${index + 1}`,
+      value: index,
+      state: "normal" as const,
+      parentId: "denseGroup",
+      visible: true,
+      layout: { x: 550, y: 320, width: kind === "annotation" ? 210 : 120 + (index % 2) * 30, height: kind === "diamond" ? 100 : 80 },
+    })),
+  ],
+  relations: [], parameters: [], variants: [], steps: [],
+};
+
+export const componentGalleryFixture: VisualizationSpec = {
+  schemaVersion: 1,
+  title: "固定组件画廊",
+  concept: "分组、几何形状、注释与内存网格",
+  description: "用于验证固定组件的层级、连线和边界。",
+  layout: { type: "manual", direction: "left-to-right", gap: 36 },
+  elements: [
+    { id: "shapeGroup", kind: "group", label: "控制流分组", value: "固定容器", state: "normal", visible: true, layout: { x: 240, y: 250, width: 400, height: 350 } },
+    { id: "startRect", kind: "rect", label: "开始", value: "输入", state: "normal", parentId: "shapeGroup", visible: true, layout: { x: 130, y: 260, width: 120, height: 80 } },
+    { id: "decision", kind: "diamond", label: "条件", value: "x > 0", state: "active", parentId: "shapeGroup", visible: true, layout: { x: 240, y: 260, width: 120, height: 100 } },
+    { id: "endCircle", kind: "circle", label: "结束", value: "输出", state: "success", parentId: "shapeGroup", visible: true, layout: { x: 350, y: 260, width: 90, height: 90 } },
+    { id: "guide", kind: "annotation", label: "说明", value: "智能助手只能组合固定组件", state: "normal", visible: true, layout: { x: 800, y: 170, width: 400, height: 120 } },
+    { id: "memory", kind: "memoryGrid", label: "内存网格", value: ["0x00", 7, "0x01", 9, "0x02", 11], state: "visited", visible: true, layout: { x: 800, y: 430, width: 400, height: 220 } },
+  ],
+  relations: [
+    { id: "startToDecision", kind: "flow", from: "startRect", to: "decision", label: "判断", state: "normal", directed: true, visible: true },
+    { id: "decisionToEnd", kind: "flow", from: "decision", to: "endCircle", label: "是", state: "success", directed: true, visible: true },
+    { id: "guideToMemory", kind: "dependency", from: "guide", to: "memory", label: "解释", state: "normal", directed: true, visible: true },
+  ],
+  parameters: [],
+  variants: [],
+  steps: [
+    { id: "focusDecision", title: "聚焦条件", description: "突出条件节点并弱化其他内容。", operations: [{ type: "focus", targetIds: ["decision"] }] },
+  ],
+};
+
+export const denseLabelFixture: VisualizationSpec = {
+  schemaVersion: 1,
+  title: "长标签与边界回归",
+  concept: "验证多行说明、静默状态和画布边界",
+  description: "模拟数组算法中较长的状态说明。",
+  layout: { type: "grid", direction: "left-to-right", columns: 3, gap: 28 },
+  elements: [
+    { id: "cell0", kind: "rect", label: "索引 0", value: 3, state: "normal", visible: true, layout: { row: 0, column: 0, width: 150, height: 90 } },
+    { id: "cell1", kind: "rect", label: "索引 1", value: 2, state: "normal", visible: true, layout: { row: 0, column: 1, width: 150, height: 90 } },
+    { id: "cell2", kind: "rect", label: "索引 2", value: 1, state: "normal", visible: true, layout: { row: 0, column: 2, width: 150, height: 90 } },
+    { id: "pass", kind: "annotation", label: "当前轮次", value: "第 2 轮：i = 1，j = 0", state: "normal", visible: true, layout: { row: 2, column: 0, width: 250, height: 80 } },
+    { id: "comparison", kind: "annotation", label: "比较结果与未排序区间", value: "未排序区间：索引 0 到索引 12", state: "normal", visible: true, layout: { row: 2, column: 1, width: 300, height: 80 } },
+    { id: "flag", kind: "annotation", label: "本轮是否发生交换", value: false, state: "muted", visible: true, layout: { row: 2, column: 2, width: 200, height: 80 } },
+    { id: "sorted", kind: "annotation", label: "已经确定位置的有序区域", value: "右侧有序后缀：[3]", state: "normal", visible: true, layout: { row: 3, column: 1, width: 300, height: 80 } },
+  ],
+  relations: [], parameters: [], variants: [], steps: [],
+};
+
 export const FIXTURES = {
   array: bubbleSortFixture,
   tree: treeTraversalFixture,
@@ -166,4 +309,10 @@ export const FIXTURES = {
   callStack: callStackFixture,
   timeline: timelineFixture,
   pipeline: pipelineFixture,
+  densePipeline: densePipelineFixture,
+  blockedRelation: blockedRelationFixture,
+  collisionStress: collisionStressFixture,
+  denseGroup: denseGroupFixture,
+  gallery: componentGalleryFixture,
+  denseLabels: denseLabelFixture,
 } as const;
