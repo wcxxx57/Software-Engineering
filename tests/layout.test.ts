@@ -166,4 +166,25 @@ describe("collision-safe visualization layout", () => {
       }
     }
   });
+
+  it("keeps single binary-tree children in their left or right slots", () => {
+    const elements = ["root", "left", "leftRight", "right", "rightRight", "rightRightLeft"].map((id, index) => ({
+      ...element(id, "node", index),
+      value: [8, 3, 6, 10, 14, 13][index]!,
+    }));
+    const relations: VisualizationSpec["relations"] = [
+      { id: "rootLeft", kind: "edge", from: "root", to: "left", label: "左：更小", state: "normal", directed: true, visible: true },
+      { id: "rootRight", kind: "edge", from: "root", to: "right", label: "右：更大", state: "normal", directed: true, visible: true },
+      { id: "leftOnlyRight", kind: "edge", from: "left", to: "leftRight", label: "右", state: "normal", directed: true, visible: true },
+      { id: "rightOnlyRight", kind: "edge", from: "right", to: "rightRight", label: "右", state: "normal", directed: true, visible: true },
+      { id: "rightRightOnlyLeft", kind: "edge", from: "rightRight", to: "rightRightLeft", label: "左", state: "normal", directed: true, visible: true },
+    ];
+    const boxes = computeLayout(baseSpec({ type: "tree", direction: "top-to-bottom", rootId: "root", gap: 48 }, elements, relations));
+    const centerX = (id: string): number => boxes.get(id)!.x + boxes.get(id)!.width / 2;
+    expect(centerX("left")).toBeLessThan(centerX("root"));
+    expect(centerX("right")).toBeGreaterThan(centerX("root"));
+    expect(centerX("leftRight")).toBeGreaterThan(centerX("left"));
+    expect(centerX("rightRight")).toBeGreaterThan(centerX("right"));
+    expect(centerX("rightRightLeft")).toBeLessThan(centerX("rightRight"));
+  });
 });

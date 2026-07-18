@@ -24,10 +24,16 @@ function applyOperation(spec: VisualizationSpec, operation: PatchOperation): voi
     case "removeElement":
       if (!spec.elements.some((element) => element.id === operation.id)) missing("元素", operation.id);
       spec.elements = spec.elements.filter((element) => element.id !== operation.id && element.parentId !== operation.id);
+      for (const element of spec.elements) {
+        if (element.targetId !== operation.id) continue;
+        delete element.targetId;
+        delete element.targetIndex;
+      }
       spec.relations = spec.relations.filter((relation) => relation.from !== operation.id && relation.to !== operation.id);
       for (const step of spec.steps) {
         step.operations = step.operations.filter((stepOperation) => {
           if (stepOperation.type === "focus") return !stepOperation.targetIds.includes(operation.id);
+          if (stepOperation.type === "setPointerTarget" && stepOperation.pointsToId === operation.id) return false;
           return stepOperation.targetId !== operation.id;
         });
       }

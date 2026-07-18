@@ -77,6 +77,16 @@ export function validateVisualizationSpec(input: unknown): VisualizationSpec {
       issues.push(`元素 ${element.id} 的父元素不存在: ${element.parentId}`);
     }
     if (element.parentId === element.id) issues.push(`元素 ${element.id} 不能以自身为父元素`);
+    if ((element.targetId !== undefined || element.targetIndex !== undefined) && element.kind !== "pointer") {
+      issues.push(`只有 pointer 元素可以设置 targetId 或 targetIndex: ${element.id}`);
+    }
+    if (element.targetId && !elementIds.has(element.targetId)) {
+      issues.push(`指针 ${element.id} 的目标元素不存在: ${element.targetId}`);
+    }
+    if (element.targetId === element.id) issues.push(`指针 ${element.id} 不能指向自身`);
+    if (element.targetIndex !== undefined && !element.targetId) {
+      issues.push(`指针 ${element.id} 设置 targetIndex 时必须同时设置 targetId`);
+    }
     if (isRedundantCanvasSummary(element.label)) {
       issues.push(`元素 ${element.id} 是与右侧区域重复的说明卡片，请将说明移入 description 或步骤说明、代码放在专用代码区`);
     }
@@ -146,6 +156,21 @@ export function validateVisualizationSpec(input: unknown): VisualizationSpec {
       for (const targetId of targets) {
         if (!elementIds.has(targetId) && !relationIds.has(targetId)) {
           issues.push(`步骤 ${step.id} 引用了不存在的目标: ${targetId}`);
+        }
+      }
+      if (operation.type === "setPointerTarget") {
+        const pointer = spec.elements.find((element) => element.id === operation.targetId);
+        if (pointer?.kind !== "pointer") {
+          issues.push(`步骤 ${step.id} 的 setPointerTarget 目标必须是 pointer 元素: ${operation.targetId}`);
+        }
+        if (operation.pointsToId && !elementIds.has(operation.pointsToId)) {
+          issues.push(`步骤 ${step.id} 的指针目标不存在: ${operation.pointsToId}`);
+        }
+        if (operation.pointsToId === operation.targetId) {
+          issues.push(`步骤 ${step.id} 的指针不能指向自身: ${operation.targetId}`);
+        }
+        if (operation.targetIndex !== undefined && !operation.pointsToId) {
+          issues.push(`步骤 ${step.id} 设置 targetIndex 时必须同时设置 pointsToId`);
         }
       }
     }

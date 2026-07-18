@@ -9,7 +9,7 @@ export interface ComponentCatalogEntry {
 export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
   { kind: "array", purpose: "数组、序列、排序条带", valueShape: "标量数组" },
   { kind: "node", purpose: "树节点、图节点、状态节点", valueShape: "标量" },
-  { kind: "pointer", purpose: "索引、游标、head/tail/current 指针", valueShape: "标签或目标说明" },
+  { kind: "pointer", purpose: "索引、游标、head/tail/current 指针；用 targetId 指向元素，可用 targetIndex 指向序列单元", valueShape: "简短状态文本，真实指向不得只写在 value 中" },
   { kind: "stack", purpose: "栈、辅助栈", valueShape: "标量数组，末项为栈顶" },
   { kind: "queue", purpose: "队列、BFS 辅助队列", valueShape: "标量数组，首项为队头" },
   { kind: "callStack", purpose: "递归与函数调用帧", valueShape: "调用帧字符串数组" },

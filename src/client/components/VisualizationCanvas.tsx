@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { computeLayout, connectorPoint, type ElementBox } from "../layout.js";
 import { COMPONENT_CLASS_MAP, DESIGN_TOKEN_HASH, DESIGN_TOKENS, SEMANTIC_STATE_CLASS_MAP, STYLE_CONTRACT_HASH } from "../designTokens.js";
 import { materializeVisualization } from "../../shared/runtime.js";
-import type { SemanticState, VisualizationElement, VisualizationSpec } from "../../shared/schema.js";
+import type { SemanticState, VisualizationElement, VisualizationRelation, VisualizationSpec } from "../../shared/schema.js";
 
 interface VisualizationCanvasProps {
   spec: VisualizationSpec;
@@ -79,13 +79,23 @@ function CardText({ element, box }: { element: VisualizationElement; box: Elemen
   </>;
 }
 
-function PointerText({ element, box }: { element: VisualizationElement; box: ElementBox }) {
+function pointerDisplayValue(pointer: VisualizationElement, target: VisualizationElement | undefined): VisualizationElement["value"] {
+  if (!target) return pointer.value;
+  if (pointer.targetIndex !== undefined && Array.isArray(target.value)) return target.value[pointer.targetIndex] ?? null;
+  if (Array.isArray(target.value)) return target.label ?? target.id;
+  return target.value ?? null;
+}
+
+function PointerText({ element, box, target }: { element: VisualizationElement; box: ElementBox; target?: VisualizationElement }) {
+  const bound = target !== undefined;
   const centerX = box.x + box.width / 2;
   const label = element.label ? fitTextLines(element.label, Math.max(4, (box.width - 18) / 15), 1) : [];
-  const value = element.value !== undefined ? fitTextLines(textValue(element.value), Math.max(3, (box.width - 18) / 18), 1) : [];
+  const displayValue = pointerDisplayValue(element, target);
+  const displayText = displayValue === null ? "∅ / None" : textValue(displayValue);
+  const value = displayValue !== undefined ? fitTextLines(displayText, Math.max(3, (box.width - 18) / 18), 1) : [];
   return <>
-    {label.length > 0 && <TextLines lines={label} x={centerX} firstBaseline={box.y + 36} lineHeight={18} className="element-label" />}
-    {value.length > 0 && <TextLines lines={value} x={centerX} firstBaseline={box.y + 54} lineHeight={21} className="element-value" />}
+    {label.length > 0 && <TextLines lines={label} x={centerX} firstBaseline={box.y + (bound ? 22 : 36)} lineHeight={18} className="element-label" />}
+    {value.length > 0 && <TextLines lines={value} x={centerX} firstBaseline={box.y + (bound ? 43 : 54)} lineHeight={21} className="element-value" />}
   </>;
 }
 
@@ -136,7 +146,8 @@ function GridElement({ element, box }: { element: VisualizationElement; box: Ele
   </g>;
 }
 
-function ElementGlyph({ element, box, highlighted, unfocused }: { element: VisualizationElement; box: ElementBox; highlighted: boolean; unfocused: boolean }) {
+function ElementGlyph({ element, box, highlighted, unfocused, pointerTarget }: { element: VisualizationElement; box: ElementBox; highlighted: boolean; unfocused: boolean; pointerTarget?: VisualizationElement }) {
+  const pointerBound = pointerTarget !== undefined;
   const className = `viz-element ${COMPONENT_CLASS_MAP[element.kind]} ${stateClass(element.state, highlighted)}${unfocused ? " is-unfocused" : ""}`;
   const dataProps = { "data-element-id": element.id, "data-kind": element.kind, "data-parent-id": element.parentId };
   if (["array", "queue", "timeline", "pipeline"].includes(element.kind)) return <g className={className} {...dataProps}><SequenceElement element={element} box={box} /></g>;
@@ -152,12 +163,12 @@ function ElementGlyph({ element, box, highlighted, unfocused }: { element: Visua
     {element.kind === "circle" && <><circle className="element-shape" cx={centerX} cy={centerY} r={Math.min(box.width, box.height) / 2} /><circle className="element-inner-ring" cx={centerX} cy={centerY} r={Math.max(1, Math.min(box.width, box.height) / 2 - 7)} /></>}
     {element.kind === "diamond" && <polygon className="element-shape" points={`${centerX},${box.y} ${box.x + box.width},${centerY} ${centerX},${box.y + box.height} ${box.x},${centerY}`} />}
     {element.kind === "pointer" && <>
-      <path className="pointer-indicator" d={`M ${centerX} ${box.y + 18} L ${centerX} ${box.y + 2} M ${centerX - 7} ${box.y + 9} L ${centerX} ${box.y + 2} L ${centerX + 7} ${box.y + 9}`} />
-      <rect className="element-shape pointer-shape" x={box.x} y={box.y + 16} width={box.width} height={Math.max(1, box.height - 16)} rx={DESIGN_TOKENS.radius.medium} />
+      {!pointerBound && <path className="pointer-indicator" d={`M ${centerX} ${box.y + 18} L ${centerX} ${box.y + 2} M ${centerX - 7} ${box.y + 9} L ${centerX} ${box.y + 2} L ${centerX + 7} ${box.y + 9}`} />}
+      <rect className="element-shape pointer-shape" x={box.x} y={box.y + (pointerBound ? 0 : 16)} width={box.width} height={Math.max(1, box.height - (pointerBound ? 0 : 16))} rx={DESIGN_TOKENS.radius.medium} />
     </>}
     {!["node", "circle", "diamond", "pointer"].includes(element.kind) && <rect className="element-shape" x={box.x} y={box.y} width={box.width} height={box.height} rx={element.kind === "group" ? DESIGN_TOKENS.radius.large : DESIGN_TOKENS.radius.medium} />}
     {element.kind === "annotation" && <rect className="annotation-accent" x={box.x + 8} y={box.y + 14} width={5} height={Math.max(8, box.height - 28)} rx={3} />}
-    <g clipPath={`url(#${clipId})`}>{element.kind === "pointer" ? <PointerText element={element} box={box} /> : element.kind === "group" ? <GroupText element={element} box={box} /> : <CardText element={element} box={box} />}</g>
+    <g clipPath={`url(#${clipId})`}>{element.kind === "pointer" ? <PointerText element={element} box={box} target={pointerTarget} /> : element.kind === "group" ? <GroupText element={element} box={box} /> : <CardText element={element} box={box} />}</g>
   </g>;
 }
 
@@ -189,6 +200,58 @@ function rectanglesOverlap(left: ElementBox, right: ElementBox, gap = 0): number
   return width * height;
 }
 
+function pointerTokens(value: VisualizationElement["value"]): Set<string> {
+  return new Set(textValue(value).toLocaleLowerCase().split(/[^\p{L}\p{N}_-]+/u).filter(Boolean));
+}
+
+function resolvePointerTarget(pointer: VisualizationElement, elements: VisualizationElement[]): VisualizationElement | undefined {
+  if (pointer.targetId) return elements.find((element) => element.id === pointer.targetId && element.visible);
+
+  // Legacy specs sometimes encoded a pointer target only as text (for example "current → 8").
+  // Recover it only when one visible element is the unique best match; ambiguous text stays unbound.
+  const tokens = pointerTokens(pointer.value);
+  if (tokens.size === 0) return undefined;
+  const pointerText = textValue(pointer.value).toLocaleLowerCase();
+  const ranked = elements
+    .filter((element) => element.id !== pointer.id && element.kind !== "pointer" && element.visible)
+    .map((element) => {
+      let score = 0;
+      if (tokens.has(element.id.toLocaleLowerCase())) score = Math.max(score, 4);
+      if (!Array.isArray(element.value)) {
+        const value = textValue(element.value).trim().toLocaleLowerCase();
+        if (value && tokens.has(value)) score = Math.max(score, 3);
+      }
+      const label = element.label?.trim().toLocaleLowerCase();
+      if (label && label.length >= 2 && pointerText.includes(label)) score = Math.max(score, 2);
+      return { element, score };
+    })
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score);
+  if (ranked.length === 0 || (ranked[1] && ranked[1].score === ranked[0]!.score)) return undefined;
+  return ranked[0]!.element;
+}
+
+function indexedTargetBox(element: VisualizationElement, box: ElementBox, index: number | undefined): ElementBox {
+  if (index === undefined || !Array.isArray(element.value) || index >= element.value.length) return box;
+  const count = Math.max(1, element.value.length);
+  if (["array", "queue", "timeline", "pipeline"].includes(element.kind)) {
+    const cellWidth = Math.max(42, (box.width - 24) / count);
+    return { x: box.x + 12 + index * cellWidth, y: box.y + 32, width: cellWidth, height: box.height - 44 };
+  }
+  if (["stack", "callStack"].includes(element.kind)) {
+    const cellHeight = Math.max(38, (box.height - 44) / count);
+    return { x: box.x + 12, y: box.y + 34 + (count - 1 - index) * cellHeight, width: box.width - 24, height: cellHeight };
+  }
+  if (element.kind === "memoryGrid") {
+    const columns = Math.max(1, Math.ceil(Math.sqrt(count)));
+    const rows = Math.max(1, Math.ceil(count / columns));
+    const cellWidth = (box.width - 24) / columns;
+    const cellHeight = (box.height - 44) / rows;
+    return { x: box.x + 12 + (index % columns) * cellWidth, y: box.y + 32 + Math.floor(index / columns) * cellHeight, width: cellWidth, height: cellHeight };
+  }
+  return box;
+}
+
 export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedIds = [] }: VisualizationCanvasProps) {
   const materialized = useMemo(() => materializeVisualization(spec, step), [spec, step]);
   const effectiveSpec = useMemo(() => ({ ...spec, elements: materialized.elements, relations: materialized.relations }), [spec, materialized]);
@@ -196,7 +259,29 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
   const highlighted = new Set([...highlightedIds, ...materialized.focusIds]);
   const focused = new Set([...focusedIds, ...materialized.focusIds]);
   const orderedElements = [...materialized.elements].sort((left, right) => Number(right.kind === "group") - Number(left.kind === "group"));
-  const visibleRelations = materialized.relations.filter((relation) => relation.visible);
+  const pointerBindings = useMemo(() => materialized.elements.flatMap((pointer) => {
+    if (pointer.kind !== "pointer" || !pointer.visible) return [];
+    const target = resolvePointerTarget(pointer, materialized.elements);
+    const targetBox = target ? boxes.get(target.id) : undefined;
+    if (!target || !targetBox) return [];
+    const relation: VisualizationRelation = {
+      id: `__pointer_target__${pointer.id}`,
+      kind: "arrow",
+      from: pointer.id,
+      to: target.id,
+      state: pointer.state,
+      directed: true,
+      visible: true,
+    };
+    return [{ relation, target, targetBox: indexedTargetBox(target, targetBox, pointer.targetIndex) }];
+  }), [boxes, materialized.elements]);
+  const pointerTargetBoxes = useMemo(() => new Map(pointerBindings.map((binding) => [binding.relation.id, binding.targetBox])), [pointerBindings]);
+  const pointerRelationIds = useMemo(() => new Set(pointerBindings.map((binding) => binding.relation.id)), [pointerBindings]);
+  const boundPointerTargets = useMemo(() => new Map(pointerBindings.map((binding) => [binding.relation.from, binding.target])), [pointerBindings]);
+  const visibleRelations = useMemo(() => [
+    ...materialized.relations.filter((relation) => relation.visible),
+    ...pointerBindings.map((binding) => binding.relation),
+  ], [materialized.relations, pointerBindings]);
   const relationGeometries = useMemo(() => {
     const occupiedLabels: ElementBox[] = [];
     const obstacles = materialized.elements.filter((element) => element.visible && element.kind !== "group").flatMap((element) => {
@@ -204,7 +289,7 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
       return box ? [{ id: element.id, box }] : [];
     });
     return visibleRelations.flatMap((relation) => {
-      const from = boxes.get(relation.from); const to = boxes.get(relation.to); if (!from || !to) return [];
+      const from = boxes.get(relation.from); const to = pointerTargetBoxes.get(relation.id) ?? boxes.get(relation.to); if (!from || !to) return [];
       const start = connectorPoint(from, to); const end = connectorPoint(to, from);
       const x1 = start.x; const y1 = start.y; const x2 = end.x; const y2 = end.y;
       const pairKey = [relation.from, relation.to].sort().join("::");
@@ -284,8 +369,8 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
       const contentMaxY = Math.max(y1, y2, controlY, labelBox ? labelBox.y + labelBox.height : Number.NEGATIVE_INFINITY);
       return [{ relation, path, labelX, labelY, labelWidth, contentBox: { x: contentMinX, y: contentMinY, width: Math.max(1, contentMaxX - contentMinX), height: Math.max(1, contentMaxY - contentMinY) } }];
     });
-  }, [boxes, materialized.elements, visibleRelations]);
-  const viewBox = useMemo(() => contentViewBox(boxes, relationGeometries.map((geometry) => geometry.contentBox)), [boxes, relationGeometries]);
+  }, [boxes, materialized.elements, pointerTargetBoxes, visibleRelations]);
+  const viewBox = useMemo(() => contentViewBox(boxes, relationGeometries.filter((geometry) => !pointerRelationIds.has(geometry.relation.id)).map((geometry) => geometry.contentBox)), [boxes, pointerRelationIds, relationGeometries]);
 
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -337,6 +422,9 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
   };
 
   return <div className="canvas-shell" data-theme-version={DESIGN_TOKENS.version} data-theme-token-hash={DESIGN_TOKEN_HASH} data-style-contract-hash={STYLE_CONTRACT_HASH}>
+    {spec.parameters.length > 0 && <div className="canvas-parameters" aria-label="演示参数">
+      {spec.parameters.map((parameter) => <span className="canvas-parameter" key={parameter.id}><span>{parameter.label}</span><strong>{textValue(parameter.default)}</strong></span>)}
+    </div>}
     <div className="canvas-toolbar" role="group" aria-label="画布缩放">
       <button type="button" aria-label="缩小画布" title="缩小画布" onClick={() => changeZoom(zoom - ZOOM_STEP)} disabled={zoom <= MIN_ZOOM}>−</button>
       <button type="button" className="zoom-value" aria-label="适应画布" title="适应画布" onClick={fitCanvas}>{Math.round(zoom * 100)}%</button>
@@ -371,7 +459,8 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
       <g className="relations-layer">
         {relationGeometries.map(({ relation, path, labelX, labelY, labelWidth }) => {
           const unfocused = focused.size > 0 && !focused.has(relation.id) && !focused.has(relation.from) && !focused.has(relation.to);
-          return <g key={relation.id} className={`viz-relation ${stateClass(relation.state, highlighted.has(relation.id))}${unfocused ? " is-unfocused" : ""}`} data-relation-id={relation.id} data-from={relation.from} data-to={relation.to}>
+          const pointerBinding = pointerRelationIds.has(relation.id);
+          return <g key={relation.id} className={`viz-relation ${stateClass(relation.state, highlighted.has(relation.id))}${pointerBinding ? " is-pointer-binding" : ""}${unfocused ? " is-unfocused" : ""}`} data-relation-id={relation.id} data-from={relation.from} data-to={relation.to} data-pointer-binding={pointerBinding || undefined}>
             <path className="relation-path" d={path} fill="none" markerEnd={relation.directed ? "url(#arrowhead)" : undefined} />
             {relation.label && <><rect className="relation-label-bg" x={labelX - labelWidth / 2} y={labelY - 17} width={labelWidth} height={23} rx={11.5} /><text x={labelX} y={labelY} textAnchor="middle">{relation.label}</text></>}
           </g>;
@@ -379,7 +468,7 @@ export function VisualizationCanvas({ spec, step, highlightedIds = [], focusedId
       </g>
       <g className="elements-layer">
         {orderedElements.filter((element) => element.visible).map((element) => {
-          const box = boxes.get(element.id); return box ? <ElementGlyph key={element.id} element={element} box={box} highlighted={highlighted.has(element.id)} unfocused={focused.size > 0 && !focused.has(element.id)} /> : null;
+          const box = boxes.get(element.id); return box ? <ElementGlyph key={element.id} element={element} box={box} highlighted={highlighted.has(element.id)} unfocused={focused.size > 0 && !focused.has(element.id)} pointerTarget={boundPointerTargets.get(element.id)} /> : null;
         })}
       </g>
     </svg>

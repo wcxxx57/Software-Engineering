@@ -25,6 +25,23 @@ describe("VisualizationSpec validation", () => {
     expect(() => validateVisualizationSpec(invalid)).toThrow(/不存在/);
   });
 
+  it("validates pointer targets and rejects textual or dangling target metadata", () => {
+    const valid = structuredClone(bubbleSortFixture);
+    const pointer = valid.elements.find((element) => element.id === "left")!;
+    pointer.targetId = "array";
+    pointer.targetIndex = 0;
+    valid.steps[0]!.operations.push({ type: "setPointerTarget", targetId: "left", pointsToId: "array", targetIndex: 1 });
+    expect(validateVisualizationSpec(valid).elements.find((element) => element.id === "left")).toMatchObject({ targetId: "array", targetIndex: 0 });
+
+    const missing = structuredClone(valid);
+    missing.elements.find((element) => element.id === "left")!.targetId = "missing";
+    expect(() => validateVisualizationSpec(missing)).toThrow(/指针.*目标元素不存在/);
+
+    const wrongKind = structuredClone(valid);
+    wrongKind.steps[0]!.operations.push({ type: "setPointerTarget", targetId: "array", pointsToId: "left" });
+    expect(() => validateVisualizationSpec(wrongKind)).toThrow(/必须是 pointer/);
+  });
+
   it("rejects duplicate IDs and parent cycles", () => {
     const invalid = structuredClone(bubbleSortFixture);
     invalid.elements.push({ id: "array", kind: "node", state: "normal", visible: true });

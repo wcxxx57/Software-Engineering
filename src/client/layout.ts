@@ -1,6 +1,6 @@
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation } from "d3-force";
 import { hierarchy, tree } from "d3-hierarchy";
-import type { VisualizationElement, VisualizationSpec } from "../shared/schema.js";
+import type { VisualizationElement, VisualizationRelation, VisualizationSpec } from "../shared/schema.js";
 import { ELEMENT_DEFAULT_SIZE, VISUALIZATION_VIEWBOX } from "../shared/geometry.js";
 
 export interface ElementBox {
@@ -355,15 +355,49 @@ function manualOrGrid(spec: VisualizationSpec, width: number, height: number): M
 
 function treeLayout(spec: VisualizationSpec, width: number, height: number): Map<string, ElementBox> {
   const elementById = new Map(spec.elements.map((element) => [element.id, element]));
-  const children = new Map<string, string[]>();
+  type BinarySide = "left" | "right";
+  type ChildLink = { id: string; side?: BinarySide; order: number };
+  type TreeDatum = { id: string; placeholder?: boolean; children?: TreeDatum[] };
+  const sideFromText = (value: string): BinarySide | undefined => {
+    const hasLeft = /左|left/i.test(value);
+    const hasRight = /右|right/i.test(value);
+    if (hasLeft === hasRight) return undefined;
+    return hasLeft ? "left" : "right";
+  };
+  const numericValue = (element?: VisualizationElement): number | undefined => {
+    if (typeof element?.value === "number") return element.value;
+    if (typeof element?.value === "string" && /^-?\d+(?:\.\d+)?$/.test(element.value.trim())) return Number(element.value);
+    return undefined;
+  };
+  const binarySide = (relation: VisualizationRelation): BinarySide | undefined => {
+    const child = elementById.get(relation.to);
+    const explicit = sideFromText([relation.label, relation.id, child?.label, child?.id].filter(Boolean).join(" "));
+    if (explicit) return explicit;
+    const parentValue = numericValue(elementById.get(relation.from));
+    const childValue = numericValue(child);
+    if (parentValue !== undefined && childValue !== undefined && parentValue !== childValue) return childValue < parentValue ? "left" : "right";
+    return undefined;
+  };
+  const children = new Map<string, ChildLink[]>();
   for (const relation of spec.relations.filter((relation) => relation.visible)) {
-    children.set(relation.from, [...(children.get(relation.from) ?? []), relation.to]);
+    const siblings = children.get(relation.from) ?? [];
+    children.set(relation.from, [...siblings, { id: relation.to, side: binarySide(relation), order: siblings.length }]);
   }
   const rootId = spec.layout.rootId ?? spec.elements.find((element) => !spec.relations.some((relation) => relation.to === element.id))?.id ?? spec.elements[0]!.id;
   const seen = new Set<string>();
-  const build = (id: string): { id: string; children?: Array<{ id: string; children?: unknown[] }> } => {
+  const build = (id: string): TreeDatum => {
     seen.add(id);
-    const childNodes = (children.get(id) ?? []).filter((child) => !seen.has(child)).map(build);
+    const links = (children.get(id) ?? [])
+      .filter((child) => !seen.has(child.id))
+      .sort((left, right) => {
+        const rank = (side?: BinarySide): number => side === "left" ? 0 : side === "right" ? 2 : 1;
+        return rank(left.side) - rank(right.side) || left.order - right.order;
+      });
+    const childNodes = links.map((child) => build(child.id));
+    if (links.length === 1 && links[0]!.side) {
+      const placeholder: TreeDatum = { id: `__tree_${id}_${links[0]!.side === "left" ? "right" : "left"}_slot`, placeholder: true };
+      return { id, children: links[0]!.side === "left" ? [childNodes[0]!, placeholder] : [placeholder, childNodes[0]!] };
+    }
     return childNodes.length > 0 ? { id, children: childNodes } : { id };
   };
   const root = hierarchy(build(rootId));

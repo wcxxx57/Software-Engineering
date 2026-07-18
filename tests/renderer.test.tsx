@@ -19,6 +19,14 @@ describe("fixed SVG renderer", () => {
     expect(container.querySelector(".canvas-shell")?.getAttribute("data-theme-token-hash")).toBe(hashBefore);
   });
 
+  it("keeps external input parameters visible without adding canvas elements", () => {
+    const { container } = render(<VisualizationCanvas spec={bubbleSortFixture} step={0} />);
+    const parameters = container.querySelector('[aria-label="演示参数"]');
+    expect(parameters).toBeInTheDocument();
+    expect(parameters).toHaveTextContent("播放速度");
+    expect(parameters).toHaveTextContent("normal");
+  });
+
   it("renders every gallery component and applies transient focus without changing theme", () => {
     const { container } = render(<VisualizationCanvas spec={componentGalleryFixture} step={0} focusedIds={["decision"]} />);
     for (const kind of ["group", "rect", "diamond", "circle", "annotation", "memoryGrid"]) {
@@ -34,6 +42,34 @@ describe("fixed SVG renderer", () => {
     const to = { x: 400, y: 100, width: 100, height: 100 };
     expect(connectorPoint(from, to)).toEqual({ x: 200, y: 150 });
     expect(connectorPoint(to, from)).toEqual({ x: 400, y: 150 });
+  });
+
+  it("renders a real pointer binding to an element or indexed sequence cell", () => {
+    const spec = structuredClone(bubbleSortFixture);
+    const pointer = spec.elements.find((element) => element.id === "left")!;
+    pointer.targetId = "array";
+    pointer.targetIndex = 1;
+    const { container, rerender } = render(<VisualizationCanvas spec={spec} step={0} />);
+
+    const binding = container.querySelector('[data-pointer-binding="true"][data-from="left"][data-to="array"]');
+    expect(binding).toBeInTheDocument();
+    expect(binding?.querySelector(".relation-path")).toHaveAttribute("marker-end", "url(#arrowhead)");
+    expect(container.querySelector('[data-element-id="left"] .pointer-indicator')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-element-id="left"]')).toHaveTextContent("2");
+
+    const emptySpec = structuredClone(spec);
+    emptySpec.elements.push({ id: "empty", kind: "node", label: "空位置", state: "error", visible: true });
+    emptySpec.elements.find((element) => element.id === "left")!.targetId = "empty";
+    delete emptySpec.elements.find((element) => element.id === "left")!.targetIndex;
+    rerender(<VisualizationCanvas spec={emptySpec} step={0} />);
+    expect(container.querySelector('[data-element-id="left"]')).toHaveTextContent("∅ / None");
+  });
+
+  it("recovers an unambiguous target from legacy pointer text", () => {
+    const spec = structuredClone(bubbleSortFixture);
+    spec.elements.find((element) => element.id === "left")!.value = "游标 → array";
+    const { container } = render(<VisualizationCanvas spec={spec} step={0} />);
+    expect(container.querySelector('[data-pointer-binding="true"][data-from="left"][data-to="array"]')).toBeInTheDocument();
   });
 
   it("wraps long CJK labels without hiding content", () => {

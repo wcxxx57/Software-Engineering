@@ -23,6 +23,18 @@ describe("runtime state", () => {
     expect(bubbleSortFixture.elements.find((element) => element.id === "array")?.value).toEqual([5, 2, 4, 1, 3]);
   });
 
+  it("moves a pointer through stable element IDs instead of display text", () => {
+    const spec = structuredClone(bubbleSortFixture);
+    const pointer = spec.elements.find((element) => element.id === "left")!;
+    pointer.targetId = "array";
+    pointer.targetIndex = 0;
+    spec.steps[0]!.operations.push({ type: "setPointerTarget", targetId: "left", pointsToId: "array", targetIndex: 2 });
+
+    const materialized = materializeVisualization(spec, 1);
+    expect(materialized.elements.find((element) => element.id === "left")).toMatchObject({ targetId: "array", targetIndex: 2 });
+    expect(pointer).toMatchObject({ targetId: "array", targetIndex: 0 });
+  });
+
   it("keeps playback state transient and bounded", () => {
     let state = applyRuntimeCommand(INITIAL_RUNTIME_STATE, { type: "play" }, 3);
     expect(state.playing).toBe(true);

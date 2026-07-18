@@ -48,6 +48,19 @@ export function materializeVisualization(spec: VisualizationSpec, step: number):
         focusIds = operation.targetIds;
         continue;
       }
+      if (operation.type === "setPointerTarget") {
+        const pointer = elementById.get(operation.targetId);
+        if (!pointer || pointer.kind !== "pointer") continue;
+        if (operation.pointsToId === null) {
+          delete pointer.targetId;
+          delete pointer.targetIndex;
+        } else {
+          pointer.targetId = operation.pointsToId;
+          if (operation.targetIndex === undefined) delete pointer.targetIndex;
+          else pointer.targetIndex = operation.targetIndex;
+        }
+        continue;
+      }
       const target = elementById.get(operation.targetId) ?? relationById.get(operation.targetId);
       if (!target) continue;
       if (operation.type === "setState") target.state = operation.state;

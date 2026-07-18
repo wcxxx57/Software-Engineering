@@ -62,6 +62,8 @@ export const visualizationElementSchema = z.strictObject({
   kind: elementKindSchema,
   label: z.string().max(200).optional(),
   value: elementValueSchema.optional(),
+  targetId: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/).optional(),
+  targetIndex: z.number().int().min(0).max(99).optional(),
   state: semanticStateSchema.default("normal"),
   parentId: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/).optional(),
   visible: z.boolean().default(true),
@@ -129,6 +131,12 @@ export const stepOperationSchema = z.discriminatedUnion("type", [
     type: z.literal("setVisible"),
     targetId: z.string().min(1).max(64),
     visible: z.boolean(),
+  }),
+  z.strictObject({
+    type: z.literal("setPointerTarget"),
+    targetId: z.string().min(1).max(64),
+    pointsToId: z.string().min(1).max(64).nullable(),
+    targetIndex: z.number().int().min(0).max(99).optional(),
   }),
   z.strictObject({
     type: z.literal("focus"),
