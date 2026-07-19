@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Box, Coins, Film, Gem, Sparkles } from "lucide-react";
+import { Box, Film, Gem, Sparkles } from "lucide-react";
 import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -63,8 +63,8 @@ const META: Record<Kind, KindMeta> = {
     innerShadow: "shadow-[inset_0_2px_8px_rgba(0,0,0,0.05)]",
     iconShadow:
       "[filter:drop-shadow(0_4px_12px_color-mix(in_oklch,var(--palette-green)_30%,transparent))]",
-    currency: "gold",
-    currencyIcon: <Coins className="size-4" strokeWidth={2.2} />,
+    currency: "diamond",
+    currencyIcon: <Gem className="size-4" strokeWidth={2.2} />,
   },
 };
 
@@ -88,9 +88,8 @@ export function ResourceGenerateCard({
   const amount =
     kind === "knowledge-video"
       ? config.resource.knowledge_video_diamond_cost
-      : config.resource.interactive_html_gold_cost;
-  const balance =
-    kind === "knowledge-video" ? (me?.diamond ?? 0) : (me?.gold ?? 0);
+      : config.resource.interactive_html_diamond_cost;
+  const balance = me?.diamond ?? 0;
   const locked = taskStatus === "LOCKED";
   const submitDisabled = locked || isPending;
 

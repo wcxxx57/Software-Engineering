@@ -29,6 +29,8 @@
 
 生成服务的目录与部署边界见 [`services/README.md`](./services/README.md)。部署与验收步骤见 [`docs/CORE_FLOW_DEPLOYMENT.md`](./docs/CORE_FLOW_DEPLOYMENT.md)，生产架构和排障见 [`docs/DEPLOYMENT_AND_ARCHITECTURE.md`](./docs/DEPLOYMENT_AND_ARCHITECTURE.md)，后续增加其他真实生成服务的边界见 [`docs/MICROSERVICE_EXTENSION.md`](./docs/MICROSERVICE_EXTENSION.md)。
 
+多模态本地联调步骤见 [`docs/MULTIMODAL_LOCAL_VALIDATION.md`](./docs/MULTIMODAL_LOCAL_VALIDATION.md)；知识视频服务的内部结构、任务去重和独立 API 调试方式见 [`services/knowledge2video/README.md`](./services/knowledge2video/README.md)。
+
 ## 2. 架构
 
 ```mermaid
@@ -50,6 +52,8 @@ flowchart LR
     EDU -->|"可视化 ID 回调"| BE
     K2V -->|"视频对象 Key 回调"| BE
 ```
+
+正常学习链路不会由浏览器直接调用 Knowledge2Video API。后端把任务发布到 RabbitMQ，`knowledge-video-bridge` 使用稳定的 Celery task ID 提交长任务，Worker 完成渲染后由 bridge 上传 MinIO 并回调后端。`knowledge-video-api` 仅用于保留原生 SSE/API 能力和独立调试。
 
 `core-generation` 在一个容器中运行四个独立 RabbitMQ 消费者：
 

@@ -358,11 +358,11 @@ async fn study_task_kv_dispatch_includes_full_learner_profile() {
 }
 
 #[tokio::test]
-async fn study_task_ih_insufficient_gold_returns_400() {
+async fn study_task_ih_insufficient_diamonds_returns_400() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
-    // 0 gold
-    app.update_user_state("alice", None, 0, 0, 0, 50).await;
+    // 0 diamonds
+    app.update_user_state("alice", None, 0, 0, 100, 0).await;
 
     let (_, _, task_ids) = app.insert_study_subject_with_plan(1, 1, 1).await;
 
@@ -375,7 +375,7 @@ async fn study_task_ih_insufficient_gold_returns_400() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INSUFFICIENT_GOLD");
+    assert_eq!(body["code"], "INSUFFICIENT_DIAMONDS");
 }
 
 #[tokio::test]

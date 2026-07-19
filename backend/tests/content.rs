@@ -66,7 +66,7 @@ async fn code_video_create_dispatch_success_charges_diamonds() {
 }
 
 #[tokio::test]
-async fn interactive_html_create_dispatch_success_charges_gold() {
+async fn interactive_html_create_dispatch_success_charges_diamonds() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("ih_create", "password123").await;
     app.update_user_state("ih_create", None, 0, 0, 100, 50)
@@ -88,7 +88,7 @@ async fn interactive_html_create_dispatch_success_charges_gold() {
     assert_eq!(payload["prompt"], "build a sorting demo");
 
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
-    assert_eq!(me_body["data"]["gold"], 90);
+    assert_eq!(me_body["data"]["diamond"], 30);
 }
 
 #[tokio::test]
@@ -169,7 +169,7 @@ async fn internal_callback_failed_triggers_refund() {
     let token = app.create_user_and_login("gen_user2", "password123").await;
     let api_key = &app.config.interactive_html_api_key;
 
-    app.update_user_state("gen_user2", None, 0, 0, 90, 10).await;
+    app.update_user_state("gen_user2", None, 0, 0, 100, 30).await;
     app.insert_interactive_html(1, interactive_html::InteractiveHtmlStatus::Queuing)
         .await;
 
@@ -195,9 +195,9 @@ async fn internal_callback_failed_triggers_refund() {
         .await;
     assert_eq!(status, StatusCode::OK);
 
-    // Check user gold was refunded
+    // Check user diamonds were refunded
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
-    assert_eq!(me_body["data"]["gold"], 100); // 90 + 10 refund
+    assert_eq!(me_body["data"]["diamond"], 50); // 30 + 20 refund
 }
 
 #[tokio::test]
@@ -591,11 +591,11 @@ async fn content_retry_failed_kv_insufficient_diamonds_returns_400() {
 }
 
 #[tokio::test]
-async fn content_retry_failed_ih_insufficient_gold_returns_400() {
+async fn content_retry_failed_ih_insufficient_diamonds_returns_400() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
-    // 0 gold
-    app.update_user_state("alice", None, 0, 0, 0, 50).await;
+    // 0 diamonds
+    app.update_user_state("alice", None, 0, 0, 100, 0).await;
 
     app.insert_interactive_html(1, interactive_html::InteractiveHtmlStatus::Failed)
         .await;
@@ -609,7 +609,7 @@ async fn content_retry_failed_ih_insufficient_gold_returns_400() {
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INSUFFICIENT_GOLD");
+    assert_eq!(body["code"], "INSUFFICIENT_DIAMONDS");
 }
 
 #[tokio::test]

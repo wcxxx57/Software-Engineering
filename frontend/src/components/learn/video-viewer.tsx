@@ -9,6 +9,11 @@ import { useResource, type ResourceSource } from "@/lib/query/resource";
 import { assetUrl } from "@/lib/storage";
 
 import { ContentCard } from "./content-card";
+import { ResourceGenerateCard } from "./resource-generate-card";
+import {
+  ResourceRefreshPending,
+  ResourceViewerPlaceholder,
+} from "./resource-viewer-placeholder";
 
 export type VideoViewerSource =
   | { kind: "task"; taskId: number }
@@ -31,18 +36,28 @@ export function VideoViewer({
       ? { kind: "task", taskId: source.taskId, resourceKind: "knowledge-video" }
       : { kind: "tool", resourceKind: source.resourceKind, id: source.id };
 
-  const { data, isPending, isError, error } = useResource({
+  const { data, isPending, isError } = useResource({
     source: innerSource,
     schema: knowledgeVideoSchema,
   });
+
+  if (data?.status === "FAILED" && source.kind === "task") {
+    return (
+      <ResourceGenerateCard
+        taskId={source.taskId}
+        taskStatus="STUDYING"
+        kind="knowledge-video"
+      />
+    );
+  }
 
   const body = (
     <>
       {isPending && <Placeholder />}
 
-      {isError && (
-        <Placeholder tone="error">
-          {error instanceof Error ? error.message : "加载失败"}
+      {isError && !data && (
+        <Placeholder>
+          <ResourceRefreshPending label="视频" />
         </Placeholder>
       )}
 
@@ -88,23 +103,18 @@ function Placeholder({
   tone?: "default" | "error";
 }) {
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-[color-mix(in_oklch,var(--palette-blue-light)_30%,transparent)] bg-gradient-to-br from-palette-blue-lighter to-palette-blue-mist shadow-[inset_0_2px_8px_rgba(0,0,0,0.05)]">
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.4)_0%,transparent_60%)]"
-      />
-      <div className="relative flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        {tone === "default" ? (
-          <Play
-            className="size-24 stroke-brand-gold [filter:drop-shadow(0_4px_12px_color-mix(in_oklch,var(--brand-gold)_30%,transparent))]"
-            strokeWidth={1.5}
-            fill="none"
-          />
-        ) : (
-          <p className="text-sm font-semibold text-destructive">{children}</p>
-        )}
-        {tone === "default" && children}
-      </div>
-    </div>
+    <ResourceViewerPlaceholder
+      theme="blue"
+      tone={tone}
+      icon={
+        <Play
+          className="size-24 stroke-brand-gold [filter:drop-shadow(0_4px_12px_color-mix(in_oklch,var(--brand-gold)_30%,transparent))]"
+          strokeWidth={1.5}
+          fill="none"
+        />
+      }
+    >
+      {children}
+    </ResourceViewerPlaceholder>
   );
 }

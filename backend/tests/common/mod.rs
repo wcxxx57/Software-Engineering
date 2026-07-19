@@ -53,7 +53,7 @@ impl TestApp {
             checkin_makeup_diamond_cost: 1,
             knowledge_video_diamond_cost: 5,
             code_video_diamond_cost: 5,
-            interactive_html_gold_cost: 10,
+            interactive_html_diamond_cost: 20,
             knowledge_explanation_gold_cost: 10,
             knowledge_video_exchange: "test.knowledge_video".to_owned(),
             code_video_exchange: "test.code_video".to_owned(),

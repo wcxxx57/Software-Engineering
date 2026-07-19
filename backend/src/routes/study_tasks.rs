@@ -383,7 +383,7 @@ pub async fn create_interactive_html(
         return Err(AppError::business(BusinessError::FeatureDisabled));
     }
     let now = Utc::now();
-    let cost = state.config.interactive_html_gold_cost;
+    let cost = state.config.interactive_html_diamond_cost;
     let tx = state.db.begin().await?;
 
     let (task, _, _) = load_owned_task(&tx, id, auth_user.user_id).await?;
@@ -399,12 +399,12 @@ pub async fn create_interactive_html(
         .await?
         .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
 
-    if existing_user.gold < cost {
-        return Err(AppError::business(BusinessError::InsufficientGold));
+    if existing_user.diamond < cost {
+        return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
     let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.gold = Set(active_user.gold.unwrap() - cost);
+    active_user.diamond = Set(active_user.diamond.unwrap() - cost);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
 
@@ -449,7 +449,7 @@ pub async fn create_interactive_html(
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
         let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.gold = Set(active_user.gold.unwrap() + cost);
+        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
 

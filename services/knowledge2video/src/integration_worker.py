@@ -18,6 +18,7 @@ from typing import Any
 
 import boto3
 import pika
+import redis
 import requests
 
 from src.api.config import settings
@@ -46,6 +47,13 @@ STORAGE_REGION = os.getenv("STORAGE_REGION", "us-east-1")
 STORAGE_BUCKET = os.getenv("STORAGE_BUCKET", "zhiying-content")
 WORKER_PREFETCH = max(1, int(os.getenv("INTEGRATION_WORKER_PREFETCH", "1")))
 RESULT_TIMEOUT = int(os.getenv("VIDEO_TASK_TIME_LIMIT_SECONDS", "43200")) + 300
+CELERY_RESULT_BACKEND = required("CELERY_RESULT_BACKEND")
+TASK_LOCK_TTL = RESULT_TIMEOUT + 3600
+task_store = redis.from_url(CELERY_RESULT_BACKEND)
+
+
+def celery_task_id(task_id: int) -> str:
+    return f"zhiying-knowledge-video-{task_id}"
 
 
 def backend_callback(task_id: int, status: str, object_key: str | None = None) -> None:
@@ -85,21 +93,36 @@ def upload_video(task_id: int, filename: str) -> str:
 
 def handle(message: dict[str, Any]) -> None:
     task_id = int(message["task_id"])
-    backend_callback(task_id, "GENERATING")
-    async_result = generate_video_task.apply_async(
-        args=[request_data(message), f"zhiying_video_{task_id}_{uuid.uuid4().hex}"],
-        queue="video_generation",
-    )
-    result = async_result.get(timeout=RESULT_TIMEOUT, propagate=True)
-    filename = str((result or {}).get("video_file") or "").strip()
-    if not filename:
-        raise RuntimeError("video task completed without video_file")
-    object_key = upload_video(task_id, filename)
-    backend_callback(task_id, "FINISHED", object_key)
-    print(
-        f"knowledge_video task finished task_id={task_id} object_key={object_key}",
-        flush=True,
-    )
+    celery_id = celery_task_id(task_id)
+    lock_key = f"zhiying:knowledge-video:submitted:{task_id}"
+    submitted = bool(task_store.set(lock_key, celery_id, nx=True, ex=TASK_LOCK_TTL))
+    try:
+        if submitted:
+            backend_callback(task_id, "GENERATING")
+            async_result = generate_video_task.apply_async(
+                args=[request_data(message), f"zhiying_video_{task_id}_{uuid.uuid4().hex}"],
+                queue="video_generation",
+                task_id=celery_id,
+            )
+        else:
+            async_result = generate_video_task.AsyncResult(celery_id)
+            print(
+                f"knowledge_video task resumed task_id={task_id} celery_id={celery_id}",
+                flush=True,
+            )
+        result = async_result.get(timeout=RESULT_TIMEOUT, propagate=True)
+        filename = str((result or {}).get("video_file") or "").strip()
+        if not filename:
+            raise RuntimeError("video task completed without video_file")
+        object_key = upload_video(task_id, filename)
+        backend_callback(task_id, "FINISHED", object_key)
+        print(
+            f"knowledge_video task finished task_id={task_id} object_key={object_key}",
+            flush=True,
+        )
+    except Exception:
+        task_store.delete(lock_key)
+        raise
 
 
 def main() -> None:

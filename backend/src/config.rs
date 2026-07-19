@@ -19,7 +19,7 @@ pub struct Config {
     // Content generation costs
     pub knowledge_video_diamond_cost: i32,
     pub code_video_diamond_cost: i32,
-    pub interactive_html_gold_cost: i32,
+    pub interactive_html_diamond_cost: i32,
     pub knowledge_explanation_gold_cost: i32,
 
     // Microservice exchanges (RabbitMQ)
@@ -134,10 +134,10 @@ impl Config {
             .parse()
             .map_err(|_| AppError::internal("CODE_VIDEO_DIAMOND_COST is invalid"))?;
 
-        let interactive_html_gold_cost = env::var("INTERACTIVE_HTML_GOLD_COST")
-            .unwrap_or_else(|_| "10".to_owned())
+        let interactive_html_diamond_cost = env::var("INTERACTIVE_HTML_DIAMOND_COST")
+            .unwrap_or_else(|_| "20".to_owned())
             .parse()
-            .map_err(|_| AppError::internal("INTERACTIVE_HTML_GOLD_COST is invalid"))?;
+            .map_err(|_| AppError::internal("INTERACTIVE_HTML_DIAMOND_COST is invalid"))?;
 
         let knowledge_explanation_gold_cost = env::var("KNOWLEDGE_EXPLANATION_GOLD_COST")
             .unwrap_or_else(|_| "10".to_owned())
@@ -220,7 +220,7 @@ impl Config {
             checkin_makeup_diamond_cost,
             knowledge_video_diamond_cost,
             code_video_diamond_cost,
-            interactive_html_gold_cost,
+            interactive_html_diamond_cost,
             knowledge_explanation_gold_cost,
             knowledge_video_exchange,
             code_video_exchange,

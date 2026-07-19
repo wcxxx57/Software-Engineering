@@ -49,6 +49,14 @@ export function useResource<T extends { status: ResourceStatus }>(opts: {
       if (status === "FINISHED" || status === "FAILED") return false;
       return 2000;
     },
+    retry: (failureCount, error) => {
+      const transient =
+        error instanceof TypeError ||
+        (error instanceof Error && /failed to fetch|network/i.test(error.message));
+      return transient && failureCount < 8;
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
+    meta: { skipErrorToast: true },
     staleTime: 0,
   });
 }

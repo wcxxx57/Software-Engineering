@@ -98,10 +98,6 @@ export function HandbookDialog({
 
               <Section tone="orange" Icon={Wand2} title="消耗方式">
                 <Bullet>
-                  <strong>交互式 HTML 实验室</strong>：每次生成消耗{" "}
-                  <strong>{config.resource.interactive_html_gold_cost} 金币</strong>。
-                </Bullet>
-                <Bullet>
                   <strong>额外知识点小测</strong>：每个任务前{" "}
                   <strong>{config.resource.study_quiz_free_limit_per_task} 轮免费</strong>，
                   之后每轮 <strong>{config.resource.study_quiz_extra_gold_cost} 金币</strong>。
@@ -157,6 +153,11 @@ export function HandbookDialog({
               </Section>
 
               <Section tone="orange" Icon={Zap} title="算力消耗">
+                <Bullet>
+                  <strong>交互式 HTML 实验室</strong>：
+                  <strong>{config.resource.interactive_html_diamond_cost} 钻石/次</strong>
+                  ，生成失败自动退还。
+                </Bullet>
                 <Bullet>
                   <strong>K2V 知识点视频</strong>：
                   <strong>{config.resource.knowledge_video_diamond_cost} 钻石/次</strong>

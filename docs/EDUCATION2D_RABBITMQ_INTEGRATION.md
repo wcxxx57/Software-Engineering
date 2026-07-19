@@ -34,7 +34,7 @@ sequenceDiagram
     participant FS as Education2D 数据卷
 
     FE->>BE: POST 创建 Interactive HTML
-    BE->>DB: 校验用户、扣金币、写入 QUEUING 记录
+    BE->>DB: 校验用户、扣钻石、写入 QUEUING 记录
     BE->>MQ: publish {task_id, prompt}
     MQ-->>BE: publisher confirm ACK
     BE-->>FE: 201 + interactive_html_id
@@ -82,7 +82,7 @@ Backend：
 RABBITMQ_URL=amqp://<user>:<password>@rabbitmq:5672/%2f
 INTERACTIVE_HTML_EXCHANGE=zhiying.interactive_html
 INTERACTIVE_HTML_API_KEY=sk-<共享密钥>
-INTERACTIVE_HTML_GOLD_COST=50
+INTERACTIVE_HTML_DIAMOND_COST=20
 ```
 
 Education2D：
@@ -124,10 +124,10 @@ Content-Type: application/json
 Backend 的处理顺序如下：
 
 1. 检查 `CORE_FLOW_ONLY`，功能被关闭时直接拒绝；
-2. 从配置读取本次消耗 `INTERACTIVE_HTML_GOLD_COST`；
+2. 从配置读取本次消耗 `INTERACTIVE_HTML_DIAMOND_COST`；
 3. 开启数据库事务，在事务中执行扣费和资源创建；
-4. 查询用户并校验金币余额；
-5. 扣除金币；
+4. 查询用户并校验钻石余额；
+5. 扣除钻石；
 6. 插入 `interactive_html` 记录，初始状态为 `QUEUING`；
 7. 插入 `user_interactive_html_link`，建立用户与资源的所有权关系；
 8. 提交数据库事务；
@@ -207,7 +207,7 @@ Content-Type: application/json
 数据库事务在 RabbitMQ 发布前已经提交。因此，如果发布或 publisher confirm 失败，Backend 会开启新的补偿事务：
 
 1. 把 `interactive_html.status` 改成 `FAILED`；
-2. 把本次扣除的金币退回用户；
+2. 把本次扣除的钻石退回用户；
 3. 返回服务不可用错误，不返回成功创建结果。
 
 这一补偿流程保证用户不会因为任务未成功进入 RabbitMQ 而承担生成费用。
@@ -370,7 +370,7 @@ Backend 在同一个数据库事务中：
 
 - 把业务记录更新为 `FAILED`；
 - 解析该资源的所有者；
-- 退还 `INTERACTIVE_HTML_GOLD_COST` 对应金币；
+- 退还 `INTERACTIVE_HTML_DIAMOND_COST` 对应钻石；
 - 更新 `updated_at`。
 
 所有者解析支持两种来源：
@@ -566,9 +566,9 @@ zhiying.interactive_html.generate
 
 至少验证：
 
-- RabbitMQ 不可用时创建请求失败、记录为 `FAILED` 且金币退回；
+- RabbitMQ 不可用时创建请求失败、记录为 `FAILED` 且钻石退回；
 - 使用错误 API Key 回调时 Backend 拒绝；
-- Agent 抛错时状态变为 `FAILED` 且金币只退一次；
+- Agent 抛错时状态变为 `FAILED` 且钻石只退一次；
 - Backend 暂时不可用时消息保持未成功确认并发生重投；
 - Worker 在处理期间重启后，RabbitMQ 能够重新投递未确认消息；
 - 数据卷重启后生成结果仍存在；

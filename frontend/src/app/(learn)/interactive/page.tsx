@@ -44,8 +44,8 @@ export default async function InteractivePage() {
           placeholder:
             "例如：可视化汉诺塔的递归调用过程，允许用户调节盘数与速度。",
         }}
-        currency="gold"
-        cost={config.resource.interactive_html_gold_cost}
+        currency="diamond"
+        cost={config.resource.interactive_html_diamond_cost}
         detailKind="interactive-html"
         cardThumbnailIcon={<Box strokeWidth={1.75} />}
         emptyHint="还没有生成过任何交互式实验。让 AI 把抽象的概念变成可玩的沙盒。"

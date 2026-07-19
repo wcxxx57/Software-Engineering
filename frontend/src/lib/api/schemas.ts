@@ -133,7 +133,7 @@ export type StorageConfig = z.infer<typeof storageConfigSchema>;
 export const resourceConfigSchema = z.object({
   knowledge_video_diamond_cost: z.number().int(),
   code_video_diamond_cost: z.number().int(),
-  interactive_html_gold_cost: z.number().int(),
+  interactive_html_diamond_cost: z.number().int(),
   study_quiz_free_limit_per_task: z.number().int(),
   study_quiz_extra_gold_cost: z.number().int(),
 });

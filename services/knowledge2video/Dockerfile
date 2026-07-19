@@ -8,14 +8,13 @@ FROM python:3.13-slim AS base
 # 避免交互式安装提示
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ============================================================================
-# 1. 配置国内镜像源（加速下载）
-# ============================================================================
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
-    sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true
+# 当前开发网络访问 Debian 官方源不稳定，使用可达的镜像；每个安装层仍会
+# 验证关键包和二进制，镜像源返回部分失败时不会静默通过。
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null || true
 
 # ============================================================================
-# 2. 安装系统依赖（分步安装，提高成功率）
+# 1. 安装系统依赖（分步安装，提高成功率）
 # ============================================================================
 # 先更新并安装基础工具
 RUN apt-get update && \
@@ -36,27 +35,27 @@ RUN apt-get update && \
     dpkg -s ffmpeg libcairo2-dev libpango1.0-dev fonts-noto-cjk >/dev/null && \
     rm -rf /var/lib/apt/lists/*
 
-# 单独安装 texlive（包较大，单独一层便于缓存和重试）
-# 使用重试机制应对网络不稳定
-RUN apt-get update && \
+# TeX Live 是 Manim MathTex 的硬依赖。重试成功后必须检查二进制，防止
+# 镜像源失败但 shell 循环仍以成功状态结束，最终在渲染阶段才暴露问题。
+RUN set -eux; \
+    installed=0; \
     for i in 1 2 3; do \
-        apt-get install -y --no-install-recommends --fix-missing \
+        if apt-get update && apt-get install -y --no-install-recommends --fix-missing \
             texlive-latex-base \
             texlive-latex-extra \
             texlive-fonts-recommended \
-            dvisvgm \
-        && break || (echo "=== Retry $i ===" && sleep 5 && apt-get update); \
-    done && \
-    for i in 1 2 3; do \
-        apt-get install -y --no-install-recommends --fix-missing \
-            texlive-fonts-extra \
-        && break || (echo "=== Retry $i ===" && sleep 5 && apt-get update); \
-    done && \
-    for i in 1 2 3; do \
-        apt-get install -y --no-install-recommends --fix-missing \
-            texlive-science \
-        && break || (echo "=== Retry $i ===" && sleep 5 && apt-get update); \
-    done && \
+            dvisvgm; then \
+            installed=1; \
+            break; \
+        fi; \
+        echo "=== TeX Live dependency retry $i ==="; \
+        sleep 5; \
+    done; \
+    test "$installed" = 1; \
+    command -v latex; \
+    command -v pdflatex; \
+    command -v dvisvgm; \
+    latex --version; \
     rm -rf /var/lib/apt/lists/*
 
 # ============================================================================

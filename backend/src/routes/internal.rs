@@ -299,13 +299,13 @@ async fn update_interactive_html(
 
     if new_status == interactive_html::InteractiveHtmlStatus::Failed {
         if let Some(owner_id) = resolve_interactive_html_owner(&tx, id).await? {
-            let cost = state.config.interactive_html_gold_cost;
+            let cost = state.config.interactive_html_diamond_cost;
             let existing_user = user::Entity::find_by_id(owner_id)
                 .one(&tx)
                 .await?
                 .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
             let mut active_user: user::ActiveModel = existing_user.into();
-            active_user.gold = Set(active_user.gold.unwrap() + cost);
+            active_user.diamond = Set(active_user.diamond.unwrap() + cost);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
         } else {
