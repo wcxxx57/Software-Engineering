@@ -1238,7 +1238,8 @@ class TeachingVideoAgent:
 
 逐秒检查全部联系表，只把以下真实可见问题判为问题：文字或图形相互遮挡、元素被画面
 裁切、影响阅读的低对比度、字符渲染为方框或乱码、切换后旧元素残留，以及逐句旁白
-字幕或横跨底部的字幕框。正常的标题、副标题、章节目录和装饰线不是字幕。
+字幕或横跨底部的字幕框。还要检查后续页面元素是否提前出现、当前页面元素是否延迟消失，
+以及完整页面是否在整句旁白期间缓慢淡入或淡出。正常的标题、副标题、章节目录和装饰线不是字幕。
 
 片段标题：{section.title}
 画面文字：{'；'.join(section.lecture_lines)}
@@ -1246,7 +1247,7 @@ class TeachingVideoAgent:
 只输出合法 JSON，不要 Markdown、注释、占位符或额外说明：
 {{"layout":{{"has_issues":false,"improvements":[]}}}}
 若确有问题，将 has_issues 改为 true；improvements 最多三项，每项必须是
-{{"problem":"具体可见问题","solution":"可执行修复","line_number":0,"object_affected":"对象名"}}。
+{{"problem":"具体可见问题","solution":"可执行修复","timestamp":"12.0-13.0s","line_number":0,"object_affected":"对象名"}}。
 """
         else:
             analysis_prompt = get_prompt4_layout_feedback(section=section, position_table=position_table)

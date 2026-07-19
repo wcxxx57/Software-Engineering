@@ -176,7 +176,9 @@ def _video_feedback_content(
                 f"{prompt}\n\n"
                 "The following images are chronological contact sheets sampled every second, "
                 "including the first and final frames. Read timestamps left-to-right and top-to-bottom. "
-                "Evaluate every visible state, including transient overlap and stale elements."
+                "Evaluate every visible state, including transient overlap and stale elements. "
+                "Also detect objects that appear before their narration step, remain after that step, "
+                "fade across most of a sentence, or jump to a new layout without instructional meaning."
             ),
         }
     ]

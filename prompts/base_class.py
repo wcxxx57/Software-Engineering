@@ -168,6 +168,8 @@ class TeachingScene(Scene):
         *animations,
         highlight_color="#C35101",
         reset_color="#2C1608",
+        remove_at_start=None,
+        show_at_start=None,
     ):
         \"\"\"
         V5.0 核心同步原语：
@@ -182,6 +184,12 @@ class TeachingScene(Scene):
             *animations: 需要与音频并行执行的动画
             highlight_color: 高亮颜色
             reset_color: 恢复颜色
+            remove_at_start: 本句旁白开始时立即移除的旧状态对象
+            show_at_start: 本句旁白开始时立即显示的新状态对象
+
+        `remove_at_start` / `show_at_start` 用于完整画面状态切换。它们在
+        add_sound 之前同一帧完成，避免把 FadeIn/FadeOut 拉伸到整句旁白，
+        从而造成新元素出现过晚、旧元素消失过晚或新旧状态长时间重叠。
         \"\"\"
         if isinstance(line_indices, int):
             line_indices = [line_indices]
@@ -202,6 +210,18 @@ class TeachingScene(Scene):
             raise IndexError(f"Lecture line indices are not on the current page: {line_indices}")
         for index in displayed_indices:
             self.lecture[index].set_color(highlight_color)
+
+        old_objects = remove_at_start or []
+        if not isinstance(old_objects, (list, tuple, set)):
+            old_objects = [old_objects]
+        new_objects = show_at_start or []
+        if not isinstance(new_objects, (list, tuple, set)):
+            new_objects = [new_objects]
+        for obj in old_objects:
+            self.remove(obj)
+        for obj in new_objects:
+            self.add(obj)
+
         self.add_sound(audio_path)
 
         if animations:
@@ -212,10 +232,27 @@ class TeachingScene(Scene):
         for index in displayed_indices:
             self.lecture[index].set_color(reset_color)
 
-    def play_narrated_step(self, audio_path, audio_duration, *animations):
+    def play_narrated_step(
+        self,
+        audio_path,
+        audio_duration,
+        *animations,
+        remove_at_start=None,
+        show_at_start=None,
+    ):
         '''封面等无左侧讲解列表页面的音画同步原语。'''
         if audio_duration <= 0:
             raise ValueError(f"audio_duration must be positive, got {audio_duration}")
+        old_objects = remove_at_start or []
+        if not isinstance(old_objects, (list, tuple, set)):
+            old_objects = [old_objects]
+        new_objects = show_at_start or []
+        if not isinstance(new_objects, (list, tuple, set)):
+            new_objects = [new_objects]
+        for obj in old_objects:
+            self.remove(obj)
+        for obj in new_objects:
+            self.add(obj)
         self.add_sound(audio_path)
         if animations:
             self.play(*animations, run_time=audio_duration)

@@ -60,7 +60,9 @@ def get_prompt3_code(
     - 每行最多 20 字；有代码页面最多 4 行，无代码页面最多 8 行；不得拆开同一 highlight_group。
     - 公式、递推式、状态变化或复杂图示的阅读时间应包含在对应旁白音频窗口中，优先与旁白并行动画。
     - 每段旁白都必须触发对应视觉变化或清晰指示；不得只播声音，也不得出现长时间无人讲解的画面。
-    - 放置新主元素前，逐个 FadeOut 并 remove 后续不再引用的旧元素；右侧必须调用 `fit_in_right_region` 或布局网格，禁止侵入左侧文字区。
+    - 每个语义步骤先构造一个完整的右侧状态组，并放入固定区域；同一对象跨步骤时位置和尺寸保持不变，禁止因内容变化重新 `arrange()` 整个画面。
+    - 完整状态切换必须使用 `remove_at_start=[old_state]` 与 `show_at_start=[new_state]`，让旧状态在新旁白开始时同帧移除、新状态同帧出现；不得用覆盖整句旁白的 `FadeOut/FadeIn` 承担状态切换。
+    - 未来步骤的元素不得提前 `self.add()`；当前旁白结束后仍需要的公共底图才可持续保留。右侧必须调用 `fit_in_right_region` 或布局网格，禁止侵入左侧文字区。
     - 禁止创建逐句字幕、底部字幕文字、字幕背景框、caption bar、subtitle bar；`spoken_script` 绝不能显示到画面。
     - 本节布局模式是 `{getattr(section, 'layout_mode', 'no_code')}`：`no_code` 时必须忽略下方参考结构里的代码块示例；`with_code` 才显示本节代码片段；`full_code` 只做完整代码分页回顾。
     - `full_code` 的代码页必须位于当前左侧讲解组下方，代码框顶边与讲解文字底边至少留 0.35 单位；不得让全宽代码框穿过讲解行。四行讲解时建议代码顶边不高于 y=0.35，并优先分页或缩小代码框高度。
@@ -323,6 +325,10 @@ def get_prompt3_code(
     - `steps[i]["spoken_script"]` 只用于离线 TTS，不允许显示在画面上
     - 画面上只能显示 `steps[i]["screen_text"]`
     - narration 段内部如需右侧动画，必须作为 `play_synced_step(..., *animations)` 的并行动画传入
+    - 完整画面状态必须在对应旁白开始的第一帧可见，并在下一状态旁白开始的第一帧移除。使用：
+      `play_synced_step(..., remove_at_start=[old_state], show_at_start=[new_state])`。
+    - `show_at_start` 中的对象不要再传 `FadeIn`，`remove_at_start` 中的对象不要再传 `FadeOut`；否则动画会被拉伸到整句旁白，造成出现过晚、消失过晚和新旧状态重叠。
+    - 只有指针移动、数值更新、高亮变化等“当前句内过程”才放入 `*animations`；稳定底图和本句一开始就应看到的信息放入 `show_at_start`。
     - `play_synced_step` 会把动画覆盖到整句旁白窗口：数组或树交换时，禁止把数字标签长距离移出格子/节点中心；应在固定位置直接变换数值，确保任意帧都能看到每个现存元素的数字。
     - 禁止对节点数量不同、且内部含数字标签的整组数据结构使用 `ReplacementTransform(old_group, new_group)`；应逐元素变换，或同步 `FadeOut(old_group)` + `FadeIn(new_group)`，不得出现“外框仍在但数字消失”的中间状态。
     - 所有“形状 + 数字/文字”的组合必须显式设置层级：背景圆/方块使用较低 `z_index`，数字标签使用更高 `z_index`；对背景执行 `.animate.set_fill()`、描边或高亮时，数字不得被重新排序到背景后方。
@@ -667,29 +673,32 @@ def algo(data):
 
     **🔴 放新元素前的清理检查（必须遵守！防止右侧元素堆叠重叠）：**
 
-    每次在右侧放置新的主要元素（数组、表格、图、大文字块等）前，必须执行以下 3 步：
+    每次在右侧放置新的主要元素（数组、表格、图、大文字块等）前，必须执行以下 4 步：
     1. **盘点**：列出当前右侧还存在哪些元素
     2. **判断**：哪些元素在后续动画中不再被引用？（不再 Transform、不再 move_to、不再读取位置）
-    3. **清理**：对不再需要的元素执行 `FadeOut` + `self.remove()`，然后再添加新元素
+    3. **分组**：把本步骤一开始就应该完整可见的内容组成 `new_state = VGroup(...)`
+    4. **原子切换**：在新步骤的 `play_synced_step` 中使用 `remove_at_start` 和 `show_at_start`，禁止让新旧完整状态交叉淡化整句旁白
 
     ```python
-    # ✅ 正确：放新数组前，先清理旧的不再使用的元素
-    # 页面切换时立即移除旧对象；如需淡出，放入上一个 play_synced_step 中并行执行。
-    self.remove(old_array, old_labels, old_pointer)
-    # 清理完毕后，再创建和添加新元素
+    # ✅ 正确：新旧完整状态在旁白边界同帧切换
+    old_state = VGroup(old_array, old_labels, old_pointer)
     new_array = VGroup(*[Square(side_length=0.6) for _ in range(8)]).arrange(RIGHT, buff=0.1)
     new_array.move_to([3.5, -0.5, 0])
-    # 将 FadeIn(new_array) 传入新语义组的 play_synced_step。
+    new_state = VGroup(new_array, new_labels, new_pointer)
+    self.play_synced_step(
+        step["highlight_indices"], step["audio_path"], step["audio_duration"],
+        remove_at_start=[old_state], show_at_start=[new_state]
+    )
 
-    # ✅ 正确：保留还在用的元素，只清理不用的
-    # old_pointer 后面还要用，所以只清理 old_labels
-    self.remove(old_labels)
-    new_labels = VGroup(...)
-    # 将 FadeIn(new_labels) 传入对应 play_synced_step。
+    # ✅ 正确：同一结构只更新当前句讲到的指针或数值，固定底图不重排
+    self.play_synced_step(..., pointer.animate.move_to(target_cell.get_top() + UP * 0.25))
 
     # ❌ 错误：不清理旧元素就直接添加新元素（导致重叠！）
     new_array = VGroup(...)  # ❌ 旧数组还在原位，新旧重叠！
     # 错误：旧数组未移除即让新数组入场。
+
+    # ❌ 错误：FadeIn/FadeOut 被 play_synced_step 拉伸到整句旁白
+    self.play_synced_step(..., FadeOut(old_state), FadeIn(new_state))
     ```
 
     ### 🔴🔴🔴 生成代码后必须执行的自检（Final Check）🔴🔴🔴
@@ -730,6 +739,8 @@ def algo(data):
     6. 检查讲解文字分批是否按语义切分，不同知识点不能混在同一批
     7. 检查右侧是否出现“**大型图案 + 右侧文字标注并存**”的情况；若出现，必须删除右侧文字或先切换场景后再显示
     8. 专项检查 `self.setup_layout(..., lecture_lines)` 的首批行：若包含 `O(` / `log` / `²` / `₂` / `ₙ` / `^` / `=` / `≤` / `≥`，必须改写为纯中文描述，并将公式改到右侧 `MathTex`
+    9. 逐步检查元素生命周期：未来步骤对象没有提前出现；旧状态没有跨入下一句；完整状态切换使用 `remove_at_start` / `show_at_start`，没有使用整句时长的交叉 Fade。
+    10. 检查跨步骤持续存在的数组、树、坐标系和代码框锚点不变；只更新当前句涉及的指针、数值、高亮或局部节点，不得整体重新排版。
 """
 
 

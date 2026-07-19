@@ -1,0 +1,28 @@
+{
+  "path": "/app/data/outputs/二分查找_商科场景_5分钟_4K_修复版.mp4",
+  "width": 3840,
+  "height": 2160,
+  "fps": 29.99822495710313,
+  "duration": 338.041,
+  "video_codec": "h264",
+  "pixel_format": "yuv420p",
+  "has_audio": true,
+  "audio_codec": "aac",
+  "audio_sample_rate": 48000,
+  "long_silences": [],
+  "sections": [
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_cover/95cfe580466c3efad5f7/section_cover_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_overview/82b4792e8ba8fd8f43d0/section_overview_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_0_intro/8b8e7ef03d9f7111c258/section_0_intro_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_1/6d198c3c16998bafb376/section_1_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_2/996e0dfd94a62956170d/section_2_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_3/ce66f8fc55de844e4cec/section_3_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_4/349d7d7475d7bdd7cb83/section_4_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_5/495c741ad24a3cf4dc1d/section_5_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_6/30b1bbfff82a5564b738/section_6_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_7/688eba878141e5ecace4/section_7_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_8_summary/3e940b853193fd6915b3/section_8_summary_with_audio.mp4",
+    "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_9_full_source/9583edf4fe1b170583c7/section_9_full_source_with_audio.mp4"
+  ],
+  "repaired_section": "/app/src/CASES/API_gpt-5/71e3197d-378f-4cc7-b5bc-29a7706e4d80/0-二分查找/audio_remux/4k30/section_4/349d7d7475d7bdd7cb83/section_4_with_audio.mp4"
+}
