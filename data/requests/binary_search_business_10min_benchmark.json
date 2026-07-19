@@ -1,0 +1,11 @@
+{
+  "knowledge_point": "二分查找",
+  "language": "Python",
+  "difficulty": "simple",
+  "duration": 10,
+  "render_profile": "4k30",
+  "extra_info": "我是经济管理专业学生，正在自学 Python，希望用它做数据分析和业务自动化，但没有系统的计算机专业基础。请结合按订单编号排序的电商订单表、按销售额排序的经营报表，以及快速定位目标记录等商科场景，帮助我理解二分查找。重点讲清楚数据必须有序的前提、left、right 和 mid 的变化过程、查找成功与查找失败，以及常见的边界错误。",
+  "use_feedback": true,
+  "use_assets": true,
+  "api_model": "gpt-5"
+}

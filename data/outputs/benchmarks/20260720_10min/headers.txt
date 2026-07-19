@@ -1,0 +1,12 @@
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Cache-Control: no-cache
+Connection: keep-alive
+Content-Type: text/event-stream; charset=utf-8
+Date: Sun, 19 Jul 2026 16:33:50 GMT
+Keep-Alive: timeout=4
+Proxy-Connection: keep-alive
+Server: uvicorn
+X-Accel-Buffering: no
+X-Task-Id: 5b2f620a-1fc1-46af-8e36-fc3ab8d88339
+

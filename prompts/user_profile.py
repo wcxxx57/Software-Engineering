@@ -327,7 +327,7 @@ def create_profile_from_text(profile_text: str) -> UserProfile:
 def parse_profile_with_ai_sync(
     profile_text: str, 
     api_function: Callable,
-    max_retries: int = 5
+    max_retries: int = 3
 ) -> Dict[str, Any]:
     """
     使用 AI 解析用户画像文本（同步版本，带重试机制）

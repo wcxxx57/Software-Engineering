@@ -187,7 +187,7 @@ def get_tts_endpoint_config() -> tuple[str, str, str, str]:
 def synthesize_tts_audio(
     text: str,
     output_path: Path,
-    max_retries: int = 5,
+    max_retries: int = 3,
     timeout: int = 120,
 ) -> Path:
     output_path = Path(output_path).resolve()
@@ -399,7 +399,7 @@ def build_section_steps(
     output_root: Path,
     api_func: Callable,
     expansion_max_retries: int = 3,
-    tts_max_retries: int = 5,
+    tts_max_retries: int = 3,
     target_audio_seconds: float | None = None,
 ) -> List[dict]:
     output_root = Path(output_root).resolve()
@@ -476,7 +476,7 @@ def build_section_steps(
 def repair_cached_step_audio(
     section_steps: List[dict],
     *,
-    max_retries: int = 5,
+    max_retries: int = 3,
     duration_tolerance: float = 0.08,
 ) -> bool:
     """Repair only missing/stale cached WAVs while preserving timeline duration."""

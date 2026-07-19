@@ -167,6 +167,11 @@ class VideoGenerateResponse(BaseModel):
                 "message": "视频生成成功。",
                 "data": {
                     "video_file": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6.mp4",
+                    "delivery_status": "success_with_warnings",
+                    "warnings": [{"code": "duration_target_missed", "message": "成片时长偏离目标，但视频完整可播放"}],
+                    "requested_render_profile": "4k30",
+                    "actual_render_profile": "1080p30",
+                    "long_silence_checked": False,
                     "outline": {
                         "topic": "二分搜索",
                         "sections": []
