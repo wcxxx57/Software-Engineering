@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::error::AppError;
 use crate::services::message_queue::{MessagePublisher, ROUTING_KEY_GENERATE};
+use crate::services::personalization::LearnerProfileSnapshot;
 
 #[derive(Debug, Serialize)]
 pub struct PretestRequest {
@@ -10,6 +11,7 @@ pub struct PretestRequest {
     pub total_stages: i32,
     pub language: String,
     pub target: String,
+    pub learner_profile: LearnerProfileSnapshot,
 }
 
 #[derive(Debug, Serialize)]

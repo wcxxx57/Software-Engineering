@@ -1,9 +1,14 @@
 "use client";
 
-import { BookOpen, Loader2 } from "lucide-react";
+import { BookOpen, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 
+import { createKnowledgeExplanationAction } from "@/app/(learn)/tasks/[id]/actions";
+import { Button } from "@/components/ui/button";
 import { knowledgeExplanationSchema } from "@/lib/api/schemas";
 import { useResource } from "@/lib/query/resource";
 
@@ -28,11 +33,32 @@ const PROSE_CLASSES = [
   "[&_blockquote]:border-l-4 [&_blockquote]:border-palette-purple-light [&_blockquote]:bg-white/40 [&_blockquote]:pl-4 [&_blockquote]:py-2 [&_blockquote]:my-4 [&_blockquote]:text-brand-medium [&_blockquote]:italic",
 ].join(" ");
 
-export function ExplanationViewer({ id }: { id: number }) {
+export function ExplanationViewer({
+  id,
+  taskId,
+}: {
+  id: number;
+  taskId: number;
+}) {
+  const router = useRouter();
+  const [isRetrying, startRetry] = useTransition();
   const { data, isPending, isError, error } = useResource({
     source: { kind: "explanation", id },
     schema: knowledgeExplanationSchema,
   });
+
+  const retry = () => {
+    startRetry(async () => {
+      const result = await createKnowledgeExplanationAction(taskId);
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+
+      toast.success("深度解析已重新加入生成队列");
+      router.refresh();
+    });
+  };
 
   return (
     <ContentCard
@@ -57,9 +83,33 @@ export function ExplanationViewer({ id }: { id: number }) {
       )}
 
       {data?.status === "FAILED" && (
-        <p className="rounded-2xl border border-dashed border-destructive/40 bg-destructive/5 px-6 py-8 text-center text-sm text-destructive">
-          知识讲解生成失败，请稍后重试
-        </p>
+        <div className="flex flex-col items-center rounded-2xl border border-dashed border-destructive/40 bg-destructive/5 px-6 py-8 text-center">
+          <TriangleAlert className="mb-3 size-8 text-destructive" strokeWidth={1.8} />
+          <p className="text-base font-extrabold text-brand-dark">
+            深度解析生成失败
+          </p>
+          <p className="mt-2 max-w-xl text-sm font-medium leading-relaxed text-brand-medium">
+            生成服务暂时不可用或模型响应失败，因此文字讲解和思维导图都无法构建。重新生成时会再次读取当前用户画像与知识点。
+          </p>
+          <Button
+            type="button"
+            disabled={isRetrying}
+            onClick={retry}
+            className="mt-5 inline-flex min-w-40 items-center justify-center gap-2 bg-gradient-to-br from-palette-purple to-palette-purple-dark font-bold text-white hover:opacity-90"
+          >
+            {isRetrying ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                正在重新提交
+              </>
+            ) : (
+              <>
+                <RefreshCw className="size-4" />
+                重新生成深度解析
+              </>
+            )}
+          </Button>
+        </div>
       )}
 
       {data &&

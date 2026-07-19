@@ -63,10 +63,11 @@ export function InteractiveHtmlViewer({
 
       {data?.status === "FINISHED" && data.object_key && (
         <iframe
-          title="interactive-html"
-          src={assetUrl(data.object_key, storage)}
-          sandbox="allow-scripts"
-          className="aspect-video w-full rounded-2xl border border-[color-mix(in_oklch,var(--palette-green-light)_50%,transparent)] bg-white"
+          title="二维交互可视化"
+          src={interactiveSource(data.object_key, storage)}
+          sandbox="allow-scripts allow-same-origin allow-forms"
+          allow="clipboard-write"
+          className="h-[min(82vh,860px)] min-h-[640px] w-full rounded-2xl border border-[color-mix(in_oklch,var(--palette-green-light)_50%,transparent)] bg-white"
         />
       )}
     </>
@@ -79,6 +80,15 @@ export function InteractiveHtmlViewer({
       {body}
     </ContentCard>
   );
+}
+
+function interactiveSource(objectKey: string, storage: ReturnType<typeof useConfig>["storage"]): string {
+  const prefix = "education2d:";
+  if (objectKey.startsWith(prefix)) {
+    const visualizationId = objectKey.slice(prefix.length);
+    return `/education2d/viewer/${encodeURIComponent(visualizationId)}`;
+  }
+  return assetUrl(objectKey, storage);
 }
 
 function Placeholder({

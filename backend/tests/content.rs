@@ -31,6 +31,9 @@ async fn knowledge_video_create_dispatch_success_charges_diamonds() {
     let payload = app.published_json(&app.config.knowledge_video_exchange);
     assert_eq!(payload["task_id"], 1);
     assert_eq!(payload["prompt"], "explain ownership");
+    assert_eq!(payload["learner_profile"]["age"], serde_json::Value::Null);
+    assert_eq!(payload["learner_profile"]["introduction"], "");
+    assert_eq!(payload["learner_profile"]["experience_points"], 0);
 
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
     assert_eq!(me_body["data"]["diamond"], 45);
@@ -109,6 +112,9 @@ async fn knowledge_explanation_create_dispatch_success_charges_gold() {
 
     let payload = app.published_json(&app.config.knowledge_explanation_exchange);
     assert_eq!(payload["prompt"], "explain trait bounds");
+    assert_eq!(payload["learner_profile"]["age"], serde_json::Value::Null);
+    assert_eq!(payload["learner_profile"]["introduction"], "");
+    assert_eq!(payload["learner_profile"]["experience_points"], 0);
 
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
     assert_eq!(me_body["data"]["gold"], 90);

@@ -13,7 +13,7 @@ use crate::{
     entities::{knowledge_explanation, user},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::content::{GenerateRequest, dispatch_to_service},
+    services::{content::dispatch_payload, personalization::LearnerProfileSnapshot},
     state::AppState,
 };
 
@@ -33,6 +33,13 @@ pub struct KnowledgeExplanationView {
     pub public: bool,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct KnowledgeExplanationGenerateRequest {
+    task_id: i32,
+    prompt: String,
+    learner_profile: LearnerProfileSnapshot,
 }
 
 impl From<knowledge_explanation::Model> for KnowledgeExplanationView {
@@ -67,6 +74,7 @@ pub async fn create(
         return Err(AppError::business(BusinessError::InsufficientGold));
     }
 
+    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
     let mut active_user: user::ActiveModel = existing_user.into();
     active_user.gold = Set(active_user.gold.unwrap() - cost);
     active_user.updated_at = Set(now);
@@ -88,11 +96,12 @@ pub async fn create(
 
     tx.commit().await?;
 
-    let request = GenerateRequest {
+    let request = KnowledgeExplanationGenerateRequest {
         task_id: record.id,
         prompt: payload.prompt,
+        learner_profile,
     };
-    if let Err(err) = dispatch_to_service(
+    if let Err(err) = dispatch_payload(
         state.publisher.as_ref(),
         &state.config.knowledge_explanation_exchange,
         &request,
@@ -197,11 +206,16 @@ pub async fn update(
         tx.commit().await?;
 
         if payload.retry {
-            let request = GenerateRequest {
+            let user = user::Entity::find_by_id(auth_user.user_id)
+                .one(&state.db)
+                .await?
+                .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+            let request = KnowledgeExplanationGenerateRequest {
                 task_id: updated.id,
                 prompt: updated.prompt.clone(),
+                learner_profile: LearnerProfileSnapshot::from_user(&user),
             };
-            if let Err(err) = dispatch_to_service(
+            if let Err(err) = dispatch_payload(
                 state.publisher.as_ref(),
                 &state.config.knowledge_explanation_exchange,
                 &request,

@@ -14,7 +14,7 @@ use crate::{
     entities::{knowledge_video, user, user_knowledge_video_link},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::content::{GenerateRequest, dispatch_to_service},
+    services::{content::dispatch_payload, personalization::LearnerProfileSnapshot},
     state::AppState,
 };
 
@@ -34,6 +34,13 @@ pub struct KnowledgeVideoView {
     pub public: bool,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct KnowledgeVideoGenerateRequest {
+    task_id: i32,
+    prompt: String,
+    learner_profile: LearnerProfileSnapshot,
 }
 
 impl From<knowledge_video::Model> for KnowledgeVideoView {
@@ -71,6 +78,7 @@ pub async fn create(
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
+    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
     let mut active_user: user::ActiveModel = existing_user.into();
     active_user.diamond = Set(active_user.diamond.unwrap() - cost);
     active_user.updated_at = Set(now);
@@ -98,11 +106,12 @@ pub async fn create(
 
     tx.commit().await?;
 
-    let request = GenerateRequest {
+    let request = KnowledgeVideoGenerateRequest {
         task_id: record.id,
         prompt: payload.prompt,
+        learner_profile,
     };
-    if let Err(err) = dispatch_to_service(
+    if let Err(err) = dispatch_payload(
         state.publisher.as_ref(),
         &state.config.knowledge_video_exchange,
         &request,

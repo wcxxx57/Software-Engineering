@@ -12,14 +12,15 @@ use serde::{Deserialize, Serialize};
 use crate::{
     auth::AuthUser,
     entities::{
-        interactive_html, knowledge_explanation, knowledge_video, study_quiz,
+        interactive_html, knowledge_explanation, knowledge_video, pretest_problem, study_quiz,
         study_quiz::StudyQuizStatus, study_stage, study_stage::StudyStageStatus, study_subject,
         study_subject::StudySubjectStatus, study_task, study_task::StudyTaskStatus, user,
     },
     error::{AppError, BusinessError},
     response::{created, ok},
     services::{
-        content::{GenerateRequest, dispatch_to_service},
+        content::{GenerateRequest, dispatch_payload, dispatch_to_service},
+        personalization::{LearnerProfileSnapshot, LearningContextSnapshot},
         study_subject::{QuizRequest, dispatch_quiz},
     },
     state::AppState,
@@ -75,6 +76,24 @@ pub struct StudyQuizBriefView {
 #[serde(default)]
 pub struct PromptRequest {
     pub prompt: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct KnowledgeVideoGenerateRequest {
+    task_id: i32,
+    prompt: String,
+    language: String,
+    extra_info: String,
+    learner_profile: LearnerProfileSnapshot,
+    learning_context: LearningContextSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+struct KnowledgeExplanationGenerateRequest {
+    task_id: i32,
+    prompt: String,
+    learner_profile: LearnerProfileSnapshot,
+    learning_context: LearningContextSnapshot,
 }
 
 fn task_default_prompt(task: &study_task::Model) -> String {
@@ -247,7 +266,7 @@ pub async fn create_knowledge_video(
     let cost = state.config.knowledge_video_diamond_cost;
     let tx = state.db.begin().await?;
 
-    let (task, _, _) = load_owned_task(&tx, id, auth_user.user_id).await?;
+    let (task, stage, subject) = load_owned_task(&tx, id, auth_user.user_id).await?;
 
     if task.status == StudyTaskStatus::Locked {
         return Err(AppError::business(BusinessError::InvalidStudyTaskStatus));
@@ -263,6 +282,32 @@ pub async fn create_knowledge_video(
     if existing_user.diamond < cost {
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
+
+    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
+    let pretest_problems = pretest_problem::Entity::find()
+        .filter(pretest_problem::Column::StudySubjectId.eq(subject.id))
+        .all(&tx)
+        .await?;
+    let learning_context = LearningContextSnapshot {
+        subject: subject.subject.clone(),
+        target: subject.target.clone(),
+        language: subject.language.clone(),
+        total_stages: subject.total_stages,
+        finished_stages: subject.finished_stages,
+        stage_total_tasks: stage.total_tasks,
+        stage_finished_tasks: stage.finished_tasks,
+        pretest_total_problems: pretest_problems.len() as i32,
+        pretest_answered_problems: pretest_problems
+            .iter()
+            .filter(|problem| problem.chosen_answer.is_some())
+            .count() as i32,
+        pretest_correct_problems: pretest_problems
+            .iter()
+            .filter(|problem| problem.chosen_answer == Some(problem.answer))
+            .count() as i32,
+        task_title: Some(task.title.clone()),
+        task_description: Some(task.description.clone()),
+    };
 
     let mut active_user: user::ActiveModel = existing_user.into();
     active_user.diamond = Set(active_user.diamond.unwrap() - cost);
@@ -288,11 +333,15 @@ pub async fn create_knowledge_video(
 
     tx.commit().await?;
 
-    let request = GenerateRequest {
+    let request = KnowledgeVideoGenerateRequest {
         task_id: kv_record.id,
         prompt: prompt.clone(),
+        language: subject.language,
+        extra_info: subject.target,
+        learner_profile,
+        learning_context,
     };
-    if let Err(err) = dispatch_to_service(
+    if let Err(err) = dispatch_payload(
         state.publisher.as_ref(),
         &state.config.knowledge_video_exchange,
         &request,
@@ -423,13 +472,46 @@ pub async fn create_explanation(
     let now = Utc::now();
     let tx = state.db.begin().await?;
 
-    let (task, _, _) = load_owned_task(&tx, id, auth_user.user_id).await?;
+    let (task, stage, subject) = load_owned_task(&tx, id, auth_user.user_id).await?;
 
     if task.status == StudyTaskStatus::Locked {
         return Err(AppError::business(BusinessError::InvalidStudyTaskStatus));
     }
 
     let prompt = resolve_prompt(payload, &task);
+
+    let existing_user = user::Entity::find_by_id(auth_user.user_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
+    let pretest_problems = pretest_problem::Entity::find()
+        .filter(pretest_problem::Column::StudySubjectId.eq(subject.id))
+        .all(&tx)
+        .await?;
+    let pretest_total_problems = pretest_problems.len() as i32;
+    let pretest_answered_problems = pretest_problems
+        .iter()
+        .filter(|problem| problem.chosen_answer.is_some())
+        .count() as i32;
+    let pretest_correct_problems = pretest_problems
+        .iter()
+        .filter(|problem| problem.chosen_answer == Some(problem.answer))
+        .count() as i32;
+    let learning_context = LearningContextSnapshot {
+        subject: subject.subject.clone(),
+        target: subject.target.clone(),
+        language: subject.language.clone(),
+        total_stages: subject.total_stages,
+        finished_stages: subject.finished_stages,
+        stage_total_tasks: stage.total_tasks,
+        stage_finished_tasks: stage.finished_tasks,
+        pretest_total_problems,
+        pretest_answered_problems,
+        pretest_correct_problems,
+        task_title: Some(task.title.clone()),
+        task_description: Some(task.description.clone()),
+    };
 
     let ke_record = knowledge_explanation::ActiveModel {
         user_id: Set(auth_user.user_id),
@@ -452,11 +534,13 @@ pub async fn create_explanation(
 
     tx.commit().await?;
 
-    let request = GenerateRequest {
+    let request = KnowledgeExplanationGenerateRequest {
         task_id: ke_record.id,
         prompt: prompt.clone(),
+        learner_profile,
+        learning_context,
     };
-    if let Err(err) = dispatch_to_service(
+    if let Err(err) = dispatch_payload(
         state.publisher.as_ref(),
         &state.config.knowledge_explanation_exchange,
         &request,

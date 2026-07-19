@@ -52,6 +52,48 @@ services:
       retries: 5
       start_period: 60s
 
+  redis:
+    image: redis:7-alpine
+    container_name: zhiying-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: zhiying-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    container_name: zhiying-minio-init
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        until mc alias set local http://minio:9000 "$${STORAGE_ACCESS_KEY}" "$${STORAGE_SECRET_KEY}"; do sleep 2; done
+        mc mb --ignore-existing "local/$${STORAGE_BUCKET}"
+        mc anonymous set download "local/$${STORAGE_BUCKET}"
+    environment:
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-zhiying-content}
+
   backend:
     build:
       context: ./backend
@@ -71,7 +113,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_TTL_DAYS: ${JWT_TTL_DAYS:-30}
       CORS_ALLOW_ORIGIN: https://${PUBLIC_HOST}
-      CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-true}
+      CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-false}
       REGISTER_BONUS_DIAMONDS: ${REGISTER_BONUS_DIAMONDS:-80}
       CHECKIN_REWARD_SEQUENCE: ${CHECKIN_REWARD_SEQUENCE:-1,2,3,4,6,8,10}
       CHECKIN_MAKEUP_GOLD_COST_PER_DAY: ${CHECKIN_MAKEUP_GOLD_COST_PER_DAY:-50}
@@ -79,6 +121,12 @@ services:
       KNOWLEDGE_EXPLANATION_GOLD_COST: ${KNOWLEDGE_EXPLANATION_GOLD_COST:-10}
       KNOWLEDGE_EXPLANATION_EXCHANGE: zhiying.knowledge_explanation
       KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
+      KNOWLEDGE_VIDEO_DIAMOND_COST: ${KNOWLEDGE_VIDEO_DIAMOND_COST:-5}
+      KNOWLEDGE_VIDEO_EXCHANGE: zhiying.knowledge_video
+      KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
+      INTERACTIVE_HTML_GOLD_COST: ${INTERACTIVE_HTML_GOLD_COST:-50}
+      INTERACTIVE_HTML_EXCHANGE: zhiying.interactive_html
+      INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
       STUDY_SUBJECT_DIAMOND_COSTS: ${STUDY_SUBJECT_DIAMOND_COSTS:-3:10,7:20,15:40,30:80}
       PRETEST_EXCHANGE: zhiying.pretest
       PRETEST_API_KEY: ${PRETEST_API_KEY}
@@ -88,10 +136,16 @@ services:
       QUIZ_API_KEY: ${QUIZ_API_KEY}
       STUDY_QUIZ_FREE_LIMIT_PER_TASK: ${STUDY_QUIZ_FREE_LIMIT_PER_TASK:-3}
       STUDY_QUIZ_EXTRA_GOLD_COST: ${STUDY_QUIZ_EXTRA_GOLD_COST:-20}
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-zhiying-content}
+      STORAGE_PUBLIC_BASE: ${STORAGE_PUBLIC_BASE}
 
   core-generation:
     build:
-      context: ./core-generation
+      context: ./services/core-generation
     image: zhiying/core-generation:local
     container_name: zhiying-core-generation
     restart: unless-stopped
@@ -110,6 +164,12 @@ services:
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-3}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
       PRETEST_PROBLEM_COUNT: ${PRETEST_PROBLEM_COUNT:-10}
+      PRETEST_PROBLEM_COUNT_MIN: ${PRETEST_PROBLEM_COUNT_MIN:-6}
+      PRETEST_PROBLEM_COUNT_MAX: ${PRETEST_PROBLEM_COUNT_MAX:-14}
+      EXPLANATION_TARGET_CHARS: ${EXPLANATION_TARGET_CHARS:-2600}
+      EXPLANATION_TARGET_CHARS_MIN: ${EXPLANATION_TARGET_CHARS_MIN:-1200}
+      EXPLANATION_TARGET_CHARS_MAX: ${EXPLANATION_TARGET_CHARS_MAX:-4800}
+      EXPLANATION_LENGTH_MAX_ATTEMPTS: ${EXPLANATION_LENGTH_MAX_ATTEMPTS:-2}
       QUIZ_PROBLEM_COUNT: ${QUIZ_PROBLEM_COUNT:-5}
       PLAN_TASKS_PER_STAGE: ${PLAN_TASKS_PER_STAGE:-3}
       WORKER_PREFETCH: ${WORKER_PREFETCH:-2}
@@ -128,6 +188,117 @@ services:
       retries: 10
       start_period: 20s
 
+  education2d:
+    build:
+      context: ./services/education2d
+    image: zhiying/education2d:local
+    container_name: zhiying-education2d
+    restart: unless-stopped
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    environment:
+      PORT: 3100
+      DATA_DIR: /data
+      DMX_BASE_URL: ${LLM_BASE_URL}
+      DMX_API_KEY: ${LLM_API_KEY}
+      AGENT_MODEL: ${EDUCATION2D_AGENT_MODEL:-${LLM_MODEL}}
+      AUTHOR_MODEL: ${EDUCATION2D_AUTHOR_MODEL:-${LLM_MODEL}}
+      AGENT_TIMEOUT_MS: ${EDUCATION2D_AGENT_TIMEOUT_MS:-300000}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+      BACKEND_BASE_URL: http://backend:9000
+      INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
+      WORKER_PREFETCH: ${EDUCATION2D_WORKER_PREFETCH:-1}
+      WORKER_ENABLED: "true"
+    volumes:
+      - education2d-data:/data
+
+  knowledge-video-api:
+    build:
+      context: ./services/knowledge2video
+    image: zhiying/knowledge2video:local
+    container_name: zhiying-knowledge-video-api
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment: &knowledge-video-environment
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      API_KEYS: ${KNOWLEDGE_VIDEO_SERVICE_API_KEY}
+      DEFAULT_API: ${K2V_DEFAULT_API:-gpt-5}
+      DMX_BASE_URL: ${LLM_BASE_URL}
+      DMX_API_KEY: ${LLM_API_KEY}
+      LOGIC_MODEL: ${K2V_LOGIC_MODEL:-${LLM_MODEL}}
+      CODE_MODEL: ${K2V_CODE_MODEL:-${LLM_MODEL}}
+      TTS_PROVIDER: ${K2V_TTS_PROVIDER:-vivo}
+      VIVO_TTS_APP_ID: ${VIVO_TTS_APP_ID:-}
+      VIVO_TTS_APP_KEY: ${VIVO_TTS_APP_KEY:-}
+      VIVO_TTS_BASE_URL: ${VIVO_TTS_BASE_URL:-wss://api-ai.vivo.com.cn}
+      VIVO_TTS_ENGINE_ID: ${VIVO_TTS_ENGINE_ID:-tts_humanoid_lam}
+      VIVO_TTS_VOICE: ${VIVO_TTS_VOICE:-F245_natural}
+      VIVO_TTS_SPEED: ${VIVO_TTS_SPEED:-50}
+      VIVO_TTS_VOLUME: ${VIVO_TTS_VOLUME:-50}
+      K2V_RENDER_WORKERS: ${K2V_RENDER_WORKERS:-1}
+      K2V_RENDER_PROFILE: ${K2V_RENDER_PROFILE:-1080p30}
+      MANIM_RENDER_TIMEOUT_SECONDS: ${MANIM_RENDER_TIMEOUT_SECONDS:-21600}
+      VIDEO_TASK_TIME_LIMIT_SECONDS: ${VIDEO_TASK_TIME_LIMIT_SECONDS:-43200}
+      VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS: ${VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS:-41400}
+      OUTPUT_DIR: /outputs
+      VIDEO_DIR: /outputs/videos
+      METADATA_DIR: /outputs/metadata
+    volumes: &knowledge-video-volumes
+      - knowledge-video-output:/outputs
+
+  knowledge-video-worker:
+    build:
+      context: ./services/knowledge2video
+    image: zhiying/knowledge2video:local
+    container_name: zhiying-knowledge-video-worker
+    restart: unless-stopped
+    command: >-
+      python -m celery -A src.api.tasks.celery_app worker
+      --loglevel=info --pool=solo -Q video_generation --concurrency=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment: *knowledge-video-environment
+    volumes: *knowledge-video-volumes
+
+  knowledge-video-bridge:
+    build:
+      context: ./services/knowledge2video
+    image: zhiying/knowledge2video:local
+    container_name: zhiying-knowledge-video-bridge
+    restart: unless-stopped
+    command: python -m src.integration_worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+      knowledge-video-worker:
+        condition: service_started
+    environment:
+      <<: *knowledge-video-environment
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+      BACKEND_BASE_URL: http://backend:9000
+      KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-zhiying-content}
+      INTEGRATION_WORKER_PREFETCH: ${KNOWLEDGE_VIDEO_WORKER_PREFETCH:-1}
+    volumes: *knowledge-video-volumes
+
   frontend:
     build:
       context: ./frontend
@@ -139,11 +310,17 @@ services:
         condition: service_started
     environment:
       BACKEND_API_URL: http://backend:9000
-      CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-true}
+      CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-false}
+      EDUCATION2D_INTERNAL_URL: http://education2d:3100
+      STORAGE_INTERNAL_URL: http://minio:9000
 
 volumes:
   postgres-data:
   rabbitmq-data:
+  redis-data:
+  minio-data:
+  education2d-data:
+  knowledge-video-output:
   npm-data:
   npm-letsencrypt:
 

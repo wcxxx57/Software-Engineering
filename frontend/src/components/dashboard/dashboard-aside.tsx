@@ -1,10 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { BookOpen, Coins, Crown, Flame, Gem, GraduationCap, LogOut, Pencil } from "lucide-react";
+import { useState } from "react";
+import {
+  BookOpen,
+  Coins,
+  Crown,
+  Flame,
+  Gem,
+  GraduationCap,
+  Loader2,
+  LogOut,
+  Pencil,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import { logoutAction } from "@/app/(app)/dashboard/actions";
 import { CheckinButton } from "@/components/dashboard/checkin-button";
 import { HandbookDialog } from "@/components/dashboard/handbook-dialog";
 import { ProfileEditDialog } from "@/components/dashboard/profile-edit-dialog";
@@ -24,19 +34,28 @@ export function DashboardAside({
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [handbookOpen, setHandbookOpen] = useState(false);
-  const [, startLogout] = useTransition();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const queryClient = useQueryClient();
   const level = levelFromExp(user.exp);
   const needsProfile = user.birth_year === null;
 
-  const handleLogout = () => {
-    startLogout(async () => {
-      // server action 清 cookie 并 redirect 到 /login；
-      // 客户端这里同步把 me / config 等所有 cache 清干净，
-      // 避免登出后被新登录用户看到上一个账号的缓存。
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
       queryClient.clear();
-      await logoutAction();
-    });
+      // 完整页面跳转可同时丢弃已认证的 RSC 与客户端状态，且无法后退到缓存页面。
+      window.location.replace("/login");
+    } catch {
+      setIsLoggingOut(false);
+      toast.error("退出登录失败，请重试");
+    }
   };
 
   return (
@@ -108,10 +127,16 @@ export function DashboardAside({
           <button
             type="button"
             onClick={handleLogout}
-            title="登出账号"
-            className="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-canvas text-destructive shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5"
+            disabled={isLoggingOut}
+            title={isLoggingOut ? "正在退出登录" : "退出登录"}
+            aria-label={isLoggingOut ? "正在退出登录" : "退出登录"}
+            className="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-canvas text-destructive shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
           >
-            <LogOut className="size-[18px]" strokeWidth={2.5} />
+            {isLoggingOut ? (
+              <Loader2 className="size-[18px] animate-spin" strokeWidth={2.5} />
+            ) : (
+              <LogOut className="size-[18px]" strokeWidth={2.5} />
+            )}
           </button>
         </div>
       </div>

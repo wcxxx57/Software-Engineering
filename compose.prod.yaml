@@ -10,3 +10,19 @@ services:
   core-generation:
     build: null
     image: ghcr.io/wcxxx57/software-engineering-core-generation:${IMAGE_TAG:-latest}
+
+  education2d:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-education2d:${IMAGE_TAG:-latest}
+
+  knowledge-video-api:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-knowledge2video:${IMAGE_TAG:-latest}
+
+  knowledge-video-worker:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-knowledge2video:${IMAGE_TAG:-latest}
+
+  knowledge-video-bridge:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-knowledge2video:${IMAGE_TAG:-latest}

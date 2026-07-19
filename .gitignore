@@ -19,4 +19,11 @@ Thumbs.db
 *.log
 *.tmp
 
+# Python 本地环境、测试和字节码缓存
+**/.venv/
+**/__pycache__/
+*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+
 # 各子项目的构建产物由子目录 .gitignore 继续管理

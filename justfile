@@ -32,5 +32,5 @@ frontend-check:
   cd frontend && pnpm exec tsc --noEmit && pnpm lint
 
 core-generation-check:
-  cd core-generation && uv run python -m unittest discover -s tests -v
+  cd services/core-generation && uv run python -m unittest discover -s tests -v
 

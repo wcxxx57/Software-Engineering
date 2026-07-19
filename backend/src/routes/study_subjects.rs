@@ -19,6 +19,7 @@ use crate::{
     error::{AppError, BusinessError},
     response::{created, ok},
     routes::study_stages::{StudyStageDetailView, StudyTaskBriefView},
+    services::personalization::LearnerProfileSnapshot,
     services::study_subject::{
         PlanRequest, PretestRequest, PretestResult, dispatch_plan, dispatch_pretest,
     },
@@ -148,6 +149,7 @@ pub async fn create(
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
+    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
     let mut active_user: user::ActiveModel = existing_user.into();
     active_user.diamond = Set(active_user.diamond.unwrap() - cost);
     active_user.updated_at = Set(now);
@@ -180,6 +182,7 @@ pub async fn create(
         total_stages,
         language,
         target,
+        learner_profile,
     };
     if let Err(err) = dispatch_pretest(
         state.publisher.as_ref(),

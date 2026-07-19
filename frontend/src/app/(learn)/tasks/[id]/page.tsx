@@ -75,7 +75,10 @@ export default async function TaskPage({
         {task.knowledge_explanation_id != null ? (
           <>
             <MarkmapCard id={task.knowledge_explanation_id} />
-            <ExplanationViewer id={task.knowledge_explanation_id} />
+            <ExplanationViewer
+              id={task.knowledge_explanation_id}
+              taskId={task.id}
+            />
           </>
         ) : (
           <ExplanationGenerateCard
@@ -128,7 +131,11 @@ async function ExtendedLearningResources({ task }: { task: StudyTask }) {
         <ResourceGenerateCard taskId={task.id} taskStatus={task.status} kind="knowledge-video" />
       )}
       {task.interactive_html_id != null ? (
-        <InteractiveHtmlViewer source={{ kind: "task", taskId: task.id }} />
+        <InteractiveHtmlViewer
+          source={{ kind: "task", taskId: task.id }}
+          title="2D 可视化操作"
+          subtitle="播放步骤、缩放画布并用自然语言调整图形"
+        />
       ) : (
         <ResourceGenerateCard taskId={task.id} taskStatus={task.status} kind="interactive-html" />
       )}

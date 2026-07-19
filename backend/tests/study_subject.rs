@@ -659,6 +659,10 @@ async fn study_subject_create_with_total_stages_seven_charges_twenty_diamonds() 
     assert_eq!(payload["total_stages"], 7);
     assert_eq!(payload["language"], "RUST");
     assert_eq!(payload["target"], "能独立写一个 web 服务");
+    assert_eq!(payload["learner_profile"]["age"], serde_json::Value::Null);
+    assert_eq!(payload["learner_profile"]["introduction"], "");
+    assert_eq!(payload["learner_profile"]["experience_points"], 0);
+    assert_eq!(payload["learner_profile"]["total_checkins"], 0);
 
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
     assert_eq!(me_body["data"]["diamond"], 80);

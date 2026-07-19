@@ -52,10 +52,10 @@ const META: Record<Kind, KindMeta> = {
   },
   "interactive-html": {
     theme: "green",
-    title: "具身交互沙盒",
-    subtitle: "全沉浸可交互环境",
+    title: "2D 可视化操作",
+    subtitle: "可播放、可编辑的知识图形",
     icon: <Box />,
-    tagline: "AI 将基于本任务自动搭建交互场景",
+    tagline: "AI 将基于本任务生成可逐步播放、缩放与自然语言编辑的二维可视化",
     innerBorder:
       "border border-[color-mix(in_oklch,var(--palette-green-light)_50%,transparent)]",
     innerBg:

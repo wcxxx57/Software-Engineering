@@ -310,6 +310,54 @@ async fn study_task_kv_locked_returns_400() {
 }
 
 #[tokio::test]
+async fn study_task_kv_dispatch_includes_full_learner_profile() {
+    let app = TestApp::new().await;
+    let token = app
+        .create_user_and_login("video_profile", "password123")
+        .await;
+    app.update_user_state("video_profile", None, 4, 12, 100, 50)
+        .await;
+
+    let (status, _) = app
+        .request(
+            "PATCH",
+            "/api/v1/me",
+            Some(&token),
+            Some(json!({
+                "birth_year": 2004,
+                "gender": "MALE",
+                "introduction": "会 Python 基础，希望详细学习算法"
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, _, task_ids) = app.insert_study_subject_with_plan(1, 1, 1).await;
+    let (status, _) = app
+        .request(
+            "POST",
+            &format!("/api/v1/study-tasks/{}/knowledge-video", task_ids[0][0]),
+            Some(&token),
+            Some(json!({"prompt": "二分搜索边界处理"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let payload = app.published_json(&app.config.knowledge_video_exchange);
+    assert_eq!(payload["prompt"], "二分搜索边界处理");
+    assert_eq!(payload["learner_profile"]["gender"], "MALE");
+    assert_eq!(
+        payload["learner_profile"]["introduction"],
+        "会 Python 基础，希望详细学习算法"
+    );
+    assert_eq!(payload["learner_profile"]["total_checkins"], 12);
+    assert_eq!(payload["learner_profile"]["streak_checkins"], 4);
+    assert_eq!(payload["learning_context"]["subject"], "Test Subject");
+    assert_eq!(payload["learning_context"]["stage_total_tasks"], 1);
+    assert_eq!(payload["learning_context"]["task_title"], "Task 1.1");
+}
+
+#[tokio::test]
 async fn study_task_ih_insufficient_gold_returns_400() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;

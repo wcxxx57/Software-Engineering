@@ -24,8 +24,14 @@ jobs:
             context: ./frontend
             image: ghcr.io/wcxxx57/software-engineering-frontend
           - name: core-generation
-            context: ./core-generation
+            context: ./services/core-generation
             image: ghcr.io/wcxxx57/software-engineering-core-generation
+          - name: education2d
+            context: ./services/education2d
+            image: ghcr.io/wcxxx57/software-engineering-education2d
+          - name: knowledge2video
+            context: ./services/knowledge2video
+            image: ghcr.io/wcxxx57/software-engineering-knowledge2video
 
     steps:
       - uses: actions/checkout@v4

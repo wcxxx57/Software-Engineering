@@ -1,10 +1,8 @@
 "use server";
 
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
-import { AUTH_COOKIE, serverFetch } from "@/lib/api/client";
+import { serverFetch } from "@/lib/api/client";
 import {
   checkinResponseSchema,
   meProfileSchema,
@@ -142,12 +140,5 @@ export async function updateUsernameAction(
     revalidatePath("/dashboard");
     return data;
   });
-}
-
-// ── Logout ──
-
-export async function logoutAction(): Promise<void> {
-  (await cookies()).delete(AUTH_COOKIE);
-  redirect("/login");
 }
 

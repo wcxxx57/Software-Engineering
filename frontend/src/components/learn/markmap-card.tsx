@@ -41,8 +41,13 @@ export function MarkmapCard({ id }: { id: number }) {
             </div>
           )}
           {data?.status === "FAILED" && (
-            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-destructive">
-              思维导图生成失败，请稍后重试
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+              <p className="text-sm font-bold text-destructive">
+                深度解析生成失败，暂时无法构建思维导图
+              </p>
+              <p className="max-w-md text-xs font-medium leading-relaxed text-brand-medium">
+                请在下方“深度解析”区域重新生成；导图会在解析内容生成成功后自动显示。
+              </p>
             </div>
           )}
           {data &&

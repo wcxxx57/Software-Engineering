@@ -14,6 +14,14 @@ pub async fn dispatch_to_service(
     exchange: &str,
     request: &GenerateRequest,
 ) -> Result<(), AppError> {
+    dispatch_payload(publisher, exchange, request).await
+}
+
+pub async fn dispatch_payload<T: Serialize>(
+    publisher: &dyn MessagePublisher,
+    exchange: &str,
+    request: &T,
+) -> Result<(), AppError> {
     let payload = serde_json::to_vec(request).map_err(|err| {
         tracing::error!(error = %err, "failed to serialize generate request");
         AppError::internal("failed to serialize generate request")
