@@ -26,6 +26,24 @@ def validate_requested_duration(value: Optional[int], minimum: int, maximum: int
     return value
 
 
+def body_section_count_range(target_minutes: int) -> Tuple[int, int]:
+    """Return the recommended number of outline/body sections for a video.
+
+    Cover and overview scenes are produced outside the outline, so they are not
+    included in this count.  Longer values are supported for compatibility with
+    callers that allow videos beyond the current K2V 12-minute range.
+    """
+    if isinstance(target_minutes, bool) or not isinstance(target_minutes, int) or target_minutes <= 0:
+        raise ValueError("target_minutes 必须是正整数")
+    if target_minutes <= 6:
+        return 4, 6
+    if target_minutes <= 9:
+        return 6, 8
+    if target_minutes <= 12:
+        return 8, 10
+    return 10, 12
+
+
 def normalize_grouped_lecture_lines(lines: List[str], groups: Any) -> List[str]:
     """Format visual lines as semantic sentences without changing their density.
 
@@ -148,20 +166,46 @@ def select_duration_with_ai(
     attempts: int = 3,
 ) -> Tuple[int, str]:
     summary = learner_profile.get("user_summary", {}) if isinstance(learner_profile, dict) else {}
+    known_concepts = summary.get("known_concepts") or summary.get("background") or "未说明"
+    knowledge_gaps = summary.get("knowledge_gaps") or "未说明"
+    learning_goal = summary.get("learning_goal") or summary.get("zpd_learning_target") or "掌握核心概念与应用"
+    difficulty_preference = summary.get("difficulty_preference") or "中等"
+
+    def _log_value(value: Any) -> str:
+        if isinstance(value, (list, tuple, set)):
+            return "、".join(str(item) for item in value) or "未说明"
+        if isinstance(value, dict):
+            return "、".join(f"{key}={item}" for key, item in value.items()) or "未说明"
+        return str(value).strip() or "未说明"
+
+    print("🧠 AI 时长决策依据（来自用户画像）")
+    print(f"   主题：{topic}")
+    print(f"   已有知识：{_log_value(known_concepts)}")
+    print(f"   待补知识：{_log_value(knowledge_gaps)}")
+    print(f"   学习目标：{_log_value(learning_goal)}")
+    print(f"   难度偏好：{_log_value(difficulty_preference)}")
+    print(f"   允许范围：{minimum}-{maximum} 分钟")
     prompt = f"""
 你是中文教学视频的时长规划员。请综合内容复杂度、学生已有知识、待补缺口、难度和讲解深度，选择合适的成片目标时长。
 
 主题：{topic}
 题目描述：{problem_description or '无，按知识点本身判断'}
-学生已有知识：{summary.get('known_concepts') or summary.get('background') or '未说明'}
-待补知识：{summary.get('knowledge_gaps') or '未说明'}
-学习目标：{summary.get('learning_goal') or summary.get('zpd_learning_target') or '掌握核心概念与应用'}
-难度偏好：{summary.get('difficulty_preference') or '中等'}
+学生已有知识：{known_concepts}
+待补知识：{knowledge_gaps}
+学习目标：{learning_goal}
+难度偏好：{difficulty_preference}
 
 约束：
 - 只能选择 {minimum} 到 {maximum} 之间的整数分钟。
 - 基础弱、概念多、推导或执行追踪复杂时取更长；基础强、主题单一时取更短。
 - 不得为了填满时间重复内容。
+- 选择“覆盖当前学习目标所需的最短充分时长”，不要把一个知识点按完整课程估时。
+- 参考标尺：
+  - 5 分钟：单一核心概念，学习者已有所需语言基础，只需一次主流程追踪和简短检查。
+  - 6 分钟：单一算法，需要一次成功追踪、一次失败或边界说明，并联系一个熟悉场景。
+  - 7-8 分钟：需要两种实现方式、多个大型案例，或较完整的复杂度解释。
+  - 9-12 分钟：包含递归与迭代对比、严格推导、多个算法变体或多个相互依赖的新概念。
+- 若用户明确不需要递归、证明和算法变体，不得仅因“没有系统计算机专业背景”自动选择 9-12 分钟。
 
 只输出 JSON：{{"duration": 整数, "reason": "一句中文理由"}}
 """.strip()
@@ -174,9 +218,12 @@ def select_duration_with_ai(
             payload = json.loads(match.group(0) if match else text)
             value = payload.get("duration")
             if isinstance(value, int) and not isinstance(value, bool) and minimum <= value <= maximum:
+                reason = str(payload.get("reason") or "模型未提供文字理由").strip()
+                print(f"✅ AI 时长决策结果：{value} 分钟；模型理由：{reason}")
                 return value, "ai"
         except Exception:
             continue
+    print(f"⚠️ AI 时长决策未返回有效结果，采用兜底值：{fallback} 分钟")
     return fallback, "fallback"
 
 
@@ -233,6 +280,12 @@ def validate_outline(
     if not isinstance(sections, list) or not sections:
         errors.append("sections 必须是非空数组")
         sections = []
+    min_sections, max_sections = body_section_count_range(target_minutes)
+    if sections and not min_sections <= len(sections) <= max_sections:
+        errors.append(
+            f"{target_minutes} 分钟视频的 sections 必须为 {min_sections}-{max_sections} 个"
+            f"（封面和导览不计入），当前为 {len(sections)} 个"
+        )
     section_ids: List[str] = []
     total_seconds = 0.0
     allowed = set(evidence_types)

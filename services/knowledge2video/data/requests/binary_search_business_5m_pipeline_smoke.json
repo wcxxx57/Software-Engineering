@@ -1,0 +1,11 @@
+{
+  "knowledge_point": "二分查找",
+  "language": "Python",
+  "difficulty": "simple",
+  "duration": 5,
+  "render_profile": "1080p30",
+  "extra_info": "我是经济管理专业学生，正在自学 Python，希望用它做数据分析和业务自动化，但没有系统的计算机专业基础。请结合按订单编号排序的电商订单表和快速定位目标订单的场景讲解二分查找，重点说明数据有序、left、right、mid 的变化、查找成功、查找失败和常见边界错误。为了本次短视频流水线验证，请将正文组织为4个逻辑连续的章节，讲解自然完整，不要为了凑章节重复内容。",
+  "use_feedback": false,
+  "use_assets": false,
+  "api_model": "gpt-5"
+}

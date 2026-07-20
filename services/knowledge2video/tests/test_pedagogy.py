@@ -5,6 +5,7 @@ import pytest
 
 from src.pedagogy import (
     TEACHING_SCHEMA_VERSION,
+    body_section_count_range,
     normalize_grouped_lecture_lines,
     parse_stage5_evaluation,
     resolve_duration,
@@ -17,7 +18,7 @@ from src.audio_steps import paginate_highlight_groups
 
 
 def _outline(minutes=5):
-    return {
+    outline = {
         "teaching_schema_version": TEACHING_SCHEMA_VERSION,
         "topic": "二分搜索",
         "target_audience": "有循环基础的学生",
@@ -37,7 +38,7 @@ def _outline(minutes=5):
             "new_concept": "折半排除",
             "misconception_check": "有序是使用前提",
             "bridge_to_next": "接着追踪边界变化",
-            "estimated_duration": minutes * 60,
+            "estimated_duration": minutes * 15,
             "evidence_basis": [{
                 "claim": "每轮排除一半",
                 "source_type": "不变量",
@@ -45,15 +46,27 @@ def _outline(minutes=5):
             }],
         }],
     }
+    base_section = outline["sections"][0]
+    outline["sections"] = [
+        {**base_section, "id": f"section_{index}", "estimated_duration": minutes * 15}
+        for index in range(4)
+    ]
+    outline["sections"][0]["id"] = "section_0_intro"
+    base_scaffold = outline["scaffold_map"][0]
+    outline["scaffold_map"] = [
+        {**base_scaffold, "section_id": section["id"]}
+        for section in outline["sections"]
+    ]
+    return outline
 
 
 def _storyboard(minutes=5):
-    return {
+    storyboard = {
         "teaching_schema_version": TEACHING_SCHEMA_VERSION,
         "sections": [{
             "id": "section_0_intro",
             "title": "边界如何收缩",
-            "estimated_duration": minutes * 60,
+            "estimated_duration": minutes * 15,
             "lecture_lines": ["先回忆顺序查找。", "有序让我们排除一半。"],
             "animations": ["展示数组", "收缩搜索区间"],
             "layout_mode": "no_code",
@@ -65,6 +78,18 @@ def _storyboard(minutes=5):
             "code_snippets": [],
         }],
     }
+    base_section = storyboard["sections"][0]
+    storyboard["sections"] = [
+        {**base_section, "id": f"section_{index}", "estimated_duration": minutes * 15}
+        for index in range(4)
+    ]
+    storyboard["sections"][0]["id"] = "section_0_intro"
+    return storyboard
+
+
+@pytest.mark.parametrize("minutes, expected", [(5, (4, 6)), (7, (6, 8)), (10, (8, 10))])
+def test_body_section_count_range_tracks_duration(minutes, expected):
+    assert body_section_count_range(minutes) == expected
 
 
 def test_manual_duration_skips_ai_and_bounds_are_strict():

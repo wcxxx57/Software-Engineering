@@ -1,5 +1,6 @@
 from typing import Optional
 from .user_profile import UserProfile, get_default_profile
+from src.pedagogy import body_section_count_range
 
 
 def get_prompt1_outline(
@@ -24,6 +25,7 @@ def get_prompt1_outline(
     # 如果没有提供用户配置，使用默认配置
     if user_profile is None:
         user_profile = get_default_profile()
+    min_sections, max_sections = body_section_count_range(duration)
     
     # 获取 AI 智能生成的用户画像提示词
     profile_prompt = user_profile.get_stage1_prompt()
@@ -60,7 +62,7 @@ def get_prompt1_outline(
     {force_difficulty_prompt}
     
     这意味着你需要：
-    1. 设计足够多的小节（Sections），通常需要 8-12 个小节。
+    1. `sections` 必须设计为 {min_sections}-{max_sections} 个正文章节；封面和导览由系统另行生成，不计入这里。不得把一个概念机械拆成多节来凑数量。
     2. 每个小节的内容必须详尽，涵盖初始化、每一步迭代、边界条件处理、复杂度分析以及总结。
     3. 特别是对于二分搜索，不能只讲一次成功的查找，必须包含：
        - 场景引入（查字典/猜数字）。
@@ -160,6 +162,7 @@ def get_prompt1_outline(
     base_prompt += f"""
 
     # 中文教学结构硬约束（必须进入 JSON）
+    - `sections` 数量必须为 {min_sections}-{max_sections} 个；这是 {duration} 分钟视频的硬约束。若模板示例数量与此不同，以本条为准；可以把相关的题目解读、执行追踪、边界或总结内容合理合并，但不能遗漏核心教学目标。
     - 顶层必须增加 `teaching_schema_version`: `zh-cn-pedagogy-v2`。
     - 顶层必须增加 `factuality_anchor_checklist` 和 `scaffold_map`；`factuality_anchor_checklist` 必须是非空字符串数组（例如 `["最小堆父节点不大于子节点", "heapq 默认是最小堆"]`），禁止放对象；`scaffold_map` 按 sections 顺序为每节给出 `section_id`、`prior_knowledge`、`target_concept`、`bridge_strategy`。
     - 每节只引入一个核心新概念，并增加：
