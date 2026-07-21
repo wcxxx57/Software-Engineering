@@ -204,3 +204,9 @@ class SyncTaskProgressCallback:
         self.redis.publish(self.channel, event)
         # 发送结束信号
         self.redis.publish(self.channel, "__END__")
+
+    def on_final_failure(self, message: str, data: Optional[Dict[str, Any]] = None):
+        """发送最终失败事件并关闭 SSE，供 Celery 正确标记任务失败。"""
+        event = self.sse_manager.emit_failed("generation", message, data)
+        self.redis.publish(self.channel, event)
+        self.redis.publish(self.channel, "__END__")

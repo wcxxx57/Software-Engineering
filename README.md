@@ -8,11 +8,11 @@
 
 | 项目 | 值 |
 |------|-----|
-| **Base URL** | `http://{server}:8082` |
+| **Base URL** | `http://{server}:8081`（可通过 `API_PORT` 修改） |
 | **协议** | HTTP |
 | **数据格式** | JSON |
 | **认证方式** | 请求头 `X-API-Key` |
-| **API 文档** | `http://{server}:8082/docs`（Swagger UI） |
+| **API 文档** | `http://{server}:8081/docs`（Swagger UI） |
 
 ---
 
@@ -61,12 +61,15 @@ X-API-Key: dev-api-key-12345
 | `age` | int | ❌ | null | 用户年龄（1-120），影响讲解风格 |
 | `gender` | string | ❌ | null | 用户性别（"男"/"女"） |
 | `language` | string | ❌ | `"Python"` | 编程语言（Python/Java/C++/JavaScript 等） |
-| `duration` | int | ❌ | `5` | 视频时长，单位：分钟（1-30） |
+| `duration` | int/null | ❌ | `null` | 目标时长（5-15 分钟）；不传时由 AI 根据题目和用户画像选择 |
+| `render_profile` | string | ❌ | `"4k30"` | 原生规格：`"1080p30"` / `"4k30"` / `"4k60"` |
 | `difficulty` | string | ❌ | `"medium"` | 内容难度：`"simple"` / `"medium"` / `"hard"` |
 | `extra_info` | string | ❌ | null | 用户补充信息（自然语言描述，如学习背景、目标等） |
 | `use_feedback` | bool | ❌ | `true` | 是否使用 MLLM 反馈优化视频质量 |
 | `use_assets` | bool | ❌ | `true` | 是否使用外部素材增强动画 |
-| `api_model` | string | ❌ | 服务端配置 | 指定 LLM 模型：`"claude"` / `"gpt-4o"` / `"gpt-41"` / `"gpt-5"` / `"Gemini"` |
+| `api_model` | string | ❌ | 服务端配置 | 指定 GPT 通道：推荐 `"gpt-5"`，兼容 `"gpt-4o"` / `"gpt-41"` / `"gpt-o4mini"` |
+
+生成结果不显示逐句旁白字幕或底部字幕框。画面教学文字与 TTS 旁白分离；最终文件会按所选规格校验分辨率、帧率、H.264、yuv420p、AAC、音轨、5–15 分钟物理时长以及超过 3.5 秒的异常静音。
 
 ### 请求示例
 
@@ -79,6 +82,7 @@ X-API-Key: dev-api-key-12345
   "age": 20,
   "language": "Python",
   "duration": 10,
+  "render_profile": "4k30",
   "difficulty": "simple",
   "extra_info": "我是大学生，有一定的python编程基础，想要预习数据结构与算法，目标是通过暑假系统学习并掌握相关知识。"
 }
@@ -87,7 +91,7 @@ X-API-Key: dev-api-key-12345
 **curl 命令**（使用 JSON 文件）：
 
 ```bash
-curl -N -X POST http://localhost:8082/api/v1/generate-video \
+curl -N -X POST http://localhost:8081/api/v1/generate-video \
   -H "Content-Type: application/json" \
   -H "X-API-Key: dev-api-key-12345" \
   -d @request.json
@@ -96,7 +100,7 @@ curl -N -X POST http://localhost:8082/api/v1/generate-video \
 **curl 命令**（最简请求，仅必填字段）：
 
 ```bash
-curl -N -X POST http://localhost:8082/api/v1/generate-video \
+curl -N -X POST http://localhost:8081/api/v1/generate-video \
   -H "Content-Type: application/json" \
   -H "X-API-Key: dev-api-key-12345" \
   -d '{
@@ -170,7 +174,7 @@ data: {"task_id":"uuid-xxx","message":"视频渲染失败: 内存不足"}
 
 ```bash
 curl -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8082/api/v1/tasks/{task_id}
+  http://localhost:8081/api/v1/tasks/{task_id}
 ```
 
 **响应示例**：
@@ -210,13 +214,13 @@ curl -H "X-API-Key: dev-api-key-12345" \
 ```bash
 # 下载完整文件
 curl -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8082/api/v1/files/a1b2c3...sha256.mp4 \
+  http://localhost:8081/api/v1/files/a1b2c3...sha256.mp4 \
   -o video.mp4
 
 # 断点续传（Range 请求）
 curl -H "X-API-Key: dev-api-key-12345" \
   -H "Range: bytes=0-1048575" \
-  http://localhost:8082/api/v1/files/a1b2c3...sha256.mp4 \
+  http://localhost:8081/api/v1/files/a1b2c3...sha256.mp4 \
   -o video_part.mp4
 ```
 
@@ -239,7 +243,7 @@ curl -H "X-API-Key: dev-api-key-12345" \
 
 ```bash
 curl -I -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8082/api/v1/files/a1b2c3...sha256.mp4
+  http://localhost:8081/api/v1/files/a1b2c3...sha256.mp4
 ```
 
 **响应头**：
@@ -261,7 +265,7 @@ Accept-Ranges: bytes
 
 ```bash
 curl -H "X-API-Key: dev-api-key-12345" \
-  http://localhost:8082/api/v1/files/a1b2c3...sha256.mp4/metadata
+  http://localhost:8081/api/v1/files/a1b2c3...sha256.mp4/metadata
 ```
 
 **响应示例**：
@@ -272,6 +276,24 @@ curl -H "X-API-Key: dev-api-key-12345" \
   "solution_code": "class Solution:\n    def isMatch(self, s: str, p: str) -> bool:\n        ...",
   "language": "Python",
   "duration": 10,
+  "duration_source": "manual",
+  "actual_duration_seconds": 603.21,
+  "actual_narration_seconds": 590.84,
+  "render_profile": "4k30",
+  "physical_media": {
+    "width": 3840,
+    "height": 2160,
+    "fps": 30.0,
+    "video_codec": "h264",
+    "pixel_format": "yuv420p",
+    "audio_codec": "aac"
+  },
+  "long_silence_count": 0,
+  "auto_removed_silence_seconds": 0,
+  "visual_quality": {
+    "all_sections_rendered": true,
+    "sections": {}
+  },
   "token_usage": {
     "prompt_tokens": 10000,
     "completion_tokens": 5000,
@@ -290,7 +312,7 @@ curl -H "X-API-Key: dev-api-key-12345" \
 无需认证。用于监控服务是否正常运行。
 
 ```bash
-curl http://localhost:8082/health
+curl http://localhost:8081/health
 ```
 
 **响应示例**：
@@ -342,7 +364,7 @@ curl http://localhost:8082/health
 
 ```javascript
 async function checkTaskStatus(taskId) {
-  const response = await fetch(`http://localhost:8082/api/v1/tasks/${taskId}`, {
+  const response = await fetch(`http://localhost:8081/api/v1/tasks/${taskId}`, {
     headers: { 'X-API-Key': 'dev-api-key-12345' },
   });
   const result = await response.json();
@@ -397,15 +419,15 @@ cp .env.example .env
 # 编辑 .env 修改配置
 
 > 🚨 物理防撞警示：启动前必须在 .env 文件中强行注入以下变量，以建立与 K2V 绝对隔离的命名空间与端口：
-> API_PORT=8082
-> REDIS_PORT=6382
+> API_PORT=8081
+> REDIS_PORT=6380
 > COMPOSE_PROJECT_NAME=c2v_backend
 
 # 4. 构建并启动
-docker-compose up -d --build
+docker compose up -d --build
 
 # 5. 验证服务
-curl http://localhost:8082/health
+curl http://localhost:8081/health
 ```
 
 ### 环境变量
@@ -413,13 +435,15 @@ curl http://localhost:8082/health
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
 | `API_KEYS` | API 认证密钥 | `dev-api-key-12345` |
-| `DEFAULT_API` | 默认 LLM 模型 | `claude` |
-| `API_PORT` | API 服务端口 | `8082` |
-| `REDIS_PORT` | Redis 宿主机映射端口 | `6382` |
+| `DEFAULT_API` | 默认 LLM 模型 | `gpt-5` |
+| `API_PORT` | API 服务端口 | `8081` |
+| `REDIS_PORT` | Redis宿主机映射端口 | `6380` |
+| `C2V_RENDER_WORKERS` | Manim 章节并发；4K 留空时自动使用 1 | - |
+| `VIDEO_TASK_TIMEOUT_SECONDS` | 整体任务超时 | `43200` |
 | `MAX_WORKERS` | 最大并行工作进程数（留空自动检测） | - |
 | `DEBUG` | 调试模式 | `false` |
 
-> ⚠️ **端口说明**：默认使用 `8082` 端口，而不是 `8000` 端口（避免与其他服务冲突）。
+> ⚠️ **端口说明**：Compose 默认映射 API 到 `8081`、Redis 到 `6380`，可在 `.env` 中覆盖。
 
 ### 架构
 
@@ -431,7 +455,7 @@ curl http://localhost:8082/health
 │  │    API     │  │  Worker   │  │   Redis   │   │
 │  │ (FastAPI)  │  │ (Celery)  │  │  (队列)   │   │
 │  │ c2v-api    │  │ c2v-worker│  │ c2v-redis │   │
-│  │   :8082    │  │           │  │  :6382    │   │
+│  │   :8081    │  │           │  │  :6380    │   │
 │  └─────┬─────┘  └─────┬─────┘  └───────────┘   │
 │        │               │                        │
 │        └───────┬───────┘                        │
@@ -446,22 +470,22 @@ curl http://localhost:8082/health
 
 ```bash
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 查看日志
-docker-compose logs -f          # 全部
-docker-compose logs -f api      # 仅 API
-docker-compose logs -f worker   # 仅 Worker
+docker compose logs -f          # 全部
+docker compose logs -f api      # 仅 API
+docker compose logs -f worker   # 仅 Worker
 
 # 重启
-docker-compose restart
+docker compose restart
 
 # 停止
-docker-compose down
+docker compose down
 
 # 清理所有数据（会删除已生成的视频！）
-docker-compose down -v
+docker compose down -v
 
 # 更新部署
-git pull && docker-compose up -d --build
+git pull && docker compose up -d --build
 ```

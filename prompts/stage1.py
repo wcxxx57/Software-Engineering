@@ -1,11 +1,12 @@
 from typing import Optional
 from .user_profile import UserProfile, get_default_profile
+from src.pedagogy import body_section_count_range
 
 
 def get_prompt1_outline(
     problem_description: str,
     solution_code: str,
-    duration: int = 5,
+    duration: int,
     reference_image_path: Optional[str] = None,
     user_profile: Optional[UserProfile] = None,
     forced_difficulty_level: Optional[str] = None
@@ -26,6 +27,7 @@ def get_prompt1_outline(
     # 如果没有提供用户配置，使用默认配置
     if user_profile is None:
         user_profile = get_default_profile()
+    min_sections, max_sections = body_section_count_range(duration)
     
     # 获取 AI 智能生成的用户画像提示词
     profile_prompt = user_profile.get_stage1_prompt()
@@ -62,7 +64,11 @@ def get_prompt1_outline(
     {solution_code}
     ```
 
-    要求视频总时长：至少 {duration} 分钟。
+    视频目标总时长：{duration} 分钟；各节预计时长合计应接近该目标，不得用重复内容凑时长。
+    `sections` 必须为 {min_sections}-{max_sections} 个正文章节；封面和导览由系统另行生成，不计入这里。下面的教学环节可以在同一章节中合理组合，不得为了逐项对应而机械拆章。
+
+    若用户画像明确来自非计算机学科，`topic` 优先采用“用用户熟悉的 X 理解 Y”结构，
+    其中 X 是画像中的真实场景，Y 是本题核心算法或数据结构；不要写成空泛的“面向某专业学生”。
     
     {profile_prompt}
     {force_difficulty_prompt}
@@ -180,7 +186,7 @@ def get_prompt1_outline(
     
     请严格按照以下格式输出：
     {{
-        "topic": "题目名称 - 解法名称（如'最长回文子串 - 动态规划解法'）",
+        "topic": "题目名称 - 解法名称；跨学科画像优先写成‘用X理解Y’",
         "target_audience": "根据用户画像描述目标受众",
         "programming_language": "{target_language}",
         "difficulty_level": "{difficulty_field_instruction}",
@@ -247,6 +253,25 @@ def get_prompt1_outline(
     - 对象最后一个字段后有逗号：`{{"id": "1",}}` ❌
     """
     
+    base_prompt += f"""
+
+    # 中文教学结构硬约束（必须进入 JSON）
+    - `sections` 数量必须为 {min_sections}-{max_sections} 个；这是 {duration} 分钟视频的硬约束。下面 JSON 中列出的章节仅用于说明字段和教学环节，实际输出必须按本条合并或拆分，同时保留用户原始代码和核心教学内容。
+    - 顶层必须增加 `teaching_schema_version`: `zh-cn-pedagogy-v2`。
+    - 顶层必须增加 `factuality_anchor_checklist` 和 `scaffold_map`；`scaffold_map` 按 sections 顺序为每节给出 `section_id`、`prior_knowledge`、`target_concept`、`bridge_strategy`。
+    - 每节只引入一个核心新概念，并增加：
+      - `learning_objective`：本节可检查的学习目标；
+      - `prior_knowledge_activation`：从学生已有知识自然起步；
+      - `new_concept`：本节唯一核心新概念；
+      - `misconception_check`：本节要预防的误区；
+      - `bridge_to_next`：为什么下一节是自然的下一步；
+      - `estimated_duration`：正整数秒；全片合计应接近 {duration * 60} 秒，允许误差 10%；
+      - `evidence_basis`：非空数组，每项含 `claim`、`source_type`、`anchor`。
+    - `source_type` 只能是：题目条件、标准答案代码、算法定义、不变量、执行追踪、复杂度推导、边界案例。
+    - 题目条件与标准答案代码是最高依据；没有依据的结论必须删除，严禁猜测。
+    - 标准答案代码仍须逐字保留，不得用教学优化为理由改写。
+    """
+
     if reference_image_path:
         base_prompt += f"\n注：请参考提供的图片来决定数据结构的视觉风格（如树是画成圆圈还是方块）。\n"
 

@@ -211,14 +211,17 @@ def generate_overview_manim_code(
         else:
             page_bullet_names = [f"bullet_{i}" for i in page_bullet_indices]
             block_lines.append(f"\n        # ── 第 {page_idx + 1} 页（共 {num_pages} 页）──")
-            block_lines.append(f"        self.play(FadeOut(bullets))")
-            block_lines.append(f"        self.remove(bullets)")
+            block_lines.append(f"        self.remove(*bullets)")
             block_lines.append(f"        bullets = VGroup({', '.join(page_bullet_names)}).arrange(DOWN, center=True, buff=0.35)")
             block_lines.append(f"        bullets.next_to(underline, DOWN, buff=0.5)")
             block_lines.append(f"        if bullets.get_bottom()[1] < -3.5:")
             block_lines.append(f"            bullets.scale_to_fit_height(5.0)")
             block_lines.append(f"            bullets.next_to(underline, DOWN, buff=0.5)")
             block_lines.append(f"        self.lecture = bullets")
+
+        block_lines.append(
+            f"        self.current_lecture_line_indices = list(range({len(page_bullet_indices)}))"
+        )
 
         for local_idx, bullet_global_idx in enumerate(page_bullet_indices):
             step_idx = bullet_global_idx + 1
@@ -266,22 +269,18 @@ class SectionOverviewScene(TeachingScene):
         # 创建全部 bullet Text 对象
 {bullet_creation_code}
 
-        # 显示标题 + 副标题，同时播放起始语旁白（step_0）
-        self.add_sound(steps[0]["audio_path"])
-        self.play(FadeIn(page_title), FadeIn(subtitle), FadeIn(underline), run_time=min(steps[0]["audio_duration"], 2.0))
-        remaining_intro = steps[0]["audio_duration"] - min(steps[0]["audio_duration"], 2.0)
-        if remaining_intro > 0:
-            self.wait(remaining_intro)
+        # 标题是结构性画面文字，不是字幕；先稳定显示，再播放完整导览旁白。
+        self.add(page_title, subtitle, underline)
+        self.play_narrated_step(steps[0]["audio_path"], steps[0]["audio_duration"])
 
         # ── 分页展示全部章节 ──
 {page_animation_code}
 
         # ── 结束语旁白（不显示文字，只播放声音）──
-        self.add_sound(steps[{last_step_idx}]["audio_path"])
-        self.wait(steps[{last_step_idx}]["audio_duration"])
-
-        self.play(FadeOut(bullets))
-        self.wait(0.5)
+        self.play_narrated_step(
+            steps[{last_step_idx}]["audio_path"],
+            steps[{last_step_idx}]["audio_duration"],
+        )
 '''
 
     return code

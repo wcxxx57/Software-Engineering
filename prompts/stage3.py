@@ -46,11 +46,10 @@ def get_prompt3_code(
     - **节奏分配建议**:
         - 已给定音频真值总时长约 **{total_audio_duration:.2f} 秒**
         - 每条 narration 的持续时间必须严格等于对应 step 的 `audio_duration`
-        - 剩余 {max(0, estimated_duration - total_audio_duration):.2f} 秒才允许用于 narration 之间的额外停顿或章节收尾
+        - 章节时长由完整教学旁白与并行动画共同形成，不得用人工静音补足差额
     - **wait() 使用指南**:
-        - narration 段内部严禁用 `self.wait()` 代替 `audio_duration`
-        - narration 之间允许极短停顿：`self.wait(0.2)` 到 `self.wait(0.8)`
-        - 章节结束前允许 `self.wait(1)` 到 `self.wait(2)`
+        - `construct()` 内不得直接调用 `self.wait()`，尤其不得用长停顿凑时长
+        - 所有可见动画都作为对应 `play_synced_step(..., *animations)` 的并行动画
     - **⚠️ 必须严格遵守**: narration 时间轴以 `audio_duration` 为唯一真理，严禁自行压缩！
 """
     
@@ -70,6 +69,31 @@ def get_prompt3_code(
     solution_code_literal = json.dumps(solution_code, ensure_ascii=False) if solution_code else json.dumps(
         "# 用户提供的标准答案代码原文"
     )
+    code_snippets = getattr(section, "code_snippets", None) or []
+    code_snippet_literal = json.dumps(code_snippets[0], ensure_ascii=False) if code_snippets else solution_code_literal
+    code_pages_literal = json.dumps(code_snippets, ensure_ascii=False)
+
+    pedagogy_guidance = f"""
+    ## 中文教学画面与同步硬约束
+    - `section_steps` 已记录页码、当前页绝对行号、组合高亮索引；必须以这些字段为准，不得自己重排。
+    - 首屏调用 `setup_layout(title, steps[0]['page_screen_texts'], steps[0]['page_line_indices'])`。
+    - 翻页时仅在 `page_index` 改变后调用 `replace_lecture_lines(step['page_screen_texts'], step['page_line_indices'])`。
+    - 每条旁白必须调用 `play_synced_step(step['highlight_indices'], step['audio_path'], step['audio_duration'], ...)`，支持一次高亮多行。
+    - 每行最多 20 字；有代码页面最多 4 行，无代码页面最多 8 行；不得拆开同一 highlight_group。
+    - 公式、递推式、状态变化或复杂图示所需阅读时间必须写进完整旁白，并让画面在该旁白期间保持可读。
+    - 每段旁白都必须触发对应视觉变化或清晰指示；不得只播声音，也不得出现长时间无人讲解的画面。
+    - 每个语义步骤先构造一个完整的右侧状态组，并放入固定区域；同一对象跨步骤时位置和尺寸保持不变，禁止因内容变化重新 `arrange()` 整个画面。
+    - 完整状态切换必须使用 `remove_at_start=[old_state]` 与 `show_at_start=[new_state]`，让旧状态在新旁白开始时同帧移除、新状态同帧出现；不得用覆盖整句旁白的 `FadeOut/FadeIn` 承担状态切换。
+    - 未来步骤的元素不得提前 `self.add()`；当前旁白结束后仍需要的公共底图才可持续保留。右侧 X 限定为 0.3-6.5，Y 限定为 -3.5-3.0。
+    - C2V 代码块只能使用 section.code_snippets；它们已经过标准答案逐字连续片段校验，严禁改写、补注释或重新格式化。
+    - 本节布局模式是 `{getattr(section, 'layout_mode', 'no_code')}`：`no_code` 时必须忽略下方参考结构里的代码块示例；`with_code` 才显示本节连续代码片段；`full_code` 只做完整代码分页回顾。
+    - `spoken_script` 只用于 TTS，画面只能显示 `screen_texts`；禁止字幕、底部字幕条、字幕背景框和 SRT。
+    - `construct()` 内禁止直接 `self.play()`、`self.add_sound()` 或 `self.wait()`；旁白与动画只能通过 `play_synced_step()`，封面/导览才可用 `play_narrated_step()`。
+    - 背景方块/圆/表格单元设置较低 z_index，数字与标签设置更高 z_index；任何 Transform 后数字仍必须可见。
+    - 数量或标签不同的数组、节点组不得整组 `ReplacementTransform`；逐元素变换并显式 remove 旧结构。
+    - `full_code` 必须按连续源码行分页，逐页检查安全区；宁可多页，不得缩成不可读字号，也不得与标题或说明重叠。
+    - 本节全部源码页为 `{code_pages_literal}`。`full_code` 必须逐页创建 Code 对象并按顺序全部展示；切页前 remove 旧代码页，每个源码页至少在一条旁白期间完整可见。
+    """
 
     return f"""
     你是一位精通 Manim 的 Python 专家。请编写代码生成一个**解释复杂算法执行逻辑**的视频片段。
@@ -79,6 +103,7 @@ def get_prompt3_code(
 
     {profile_prompt}
     {solution_code_guidance}
+    {pedagogy_guidance}
 
     ## 🔴🔴🔴 关键规则摘要（必须首先阅读！）🔴🔴🔴
     
@@ -313,7 +338,7 @@ def get_prompt3_code(
     ```python
     # ✅ 正确：使用音频真实时长作为 narration 唯一时间真值
     self.play_synced_step(
-        0,
+        steps[0]["highlight_indices"],
         steps[0]["audio_path"],
         steps[0]["audio_duration"],
         Create(array_group)
@@ -328,8 +353,12 @@ def get_prompt3_code(
     - `steps[i]["spoken_script"]` 只用于离线 TTS，不允许显示在画面上
     - 画面上只能显示 `steps[i]["screen_text"]`
     - narration 段内部如需右侧动画，必须作为 `play_synced_step(..., *animations)` 的并行动画传入
+    - 完整画面状态必须在对应旁白开始的第一帧可见，并在下一状态旁白开始的第一帧移除。使用：
+      `play_synced_step(..., remove_at_start=[old_state], show_at_start=[new_state])`。
+    - `show_at_start` 中的对象不要再传 `FadeIn`，`remove_at_start` 中的对象不要再传 `FadeOut`；否则动画会被拉伸到整句旁白，造成出现过晚、消失过晚和新旧状态重叠。
+    - 只有指针移动、数值更新、高亮变化等“当前句内过程”才放入 `*animations`；稳定底图和本句一开始就应看到的信息放入 `show_at_start`。
     - narration 段内部严禁为了对齐语音而额外写 `self.wait(x)`
-    - 如果当前 batch 的 `screen_texts` 不够覆盖后续 narration，必须先调用 `self.replace_lecture_lines(next_batch_lines)` 再继续
+    - `page_index` 改变时，必须用该 step 的 `page_screen_texts` 和 `page_line_indices` 翻页
     - **🔴 construct() 内严禁直接调用 `self.add_sound(...)`。音频播放只能通过 `play_synced_step(...)` 触发。**
     - **🔴 任何代码展示必须忠实于用户提供的 `solution_code`，严禁擅自修改算法逻辑。**
 
@@ -428,7 +457,7 @@ def algo(data):
     pass\"\"\"
     code_obj = self.create_code_block(code_text, language="{target_language.lower()}")
     code_obj.to_edge(DOWN, buff=0.3).to_edge(LEFT, buff=0.3)
-    self.play(Create(code_obj))
+    # 将 Create(code_obj) 传给当前 play_synced_step，不要裸调用 self.play
     
     # ❌ 错误：手动创建 Code 对象
     Code(code_string=code_text, language="python")  # ❌ 容易遗漏参数
@@ -446,16 +475,16 @@ def algo(data):
     ```python
     code_lines = code_obj[2]
     highlight = SurroundingRectangle(code_lines[0], color=YELLOW, buff=0.05)
-    self.play(Create(highlight))
+    # 将 Create(highlight) 作为当前 play_synced_step 的动画参数
     
     # ✅ 移动高亮框 (使用 Transform)
     new_highlight = SurroundingRectangle(code_lines[2], color=YELLOW, buff=0.05)
-    self.play(Transform(highlight, new_highlight))
+    # 将 Transform(highlight, new_highlight) 作为下一 play_synced_step 的动画参数
     ```
 
     ### 2. 交互与逻辑表现
     - **代码高亮**: 使用 `SurroundingRectangle` 精确框选，禁止用 `Indicate` 高亮代码块
-    - **呼吸感时序**: 文字高亮结束后必须 `self.wait(0.5)`，先左上文字→停顿→再右侧动画
+    - **呼吸感时序**: 右侧动画与完整旁白同步；阅读时间包含在对应旁白中，不另加人工停顿
     - **逻辑外显化**: 条件判断显示 `MathTex("5 > 3")`，成立变绿/不成立变红
     - **递归**: 在屏幕一角维护 Stack VGroup，每层递归 add 矩形，返回时 remove
 
@@ -469,7 +498,7 @@ def algo(data):
 
     ```python
     self.play_synced_step(
-        0,
+        steps[0]["highlight_indices"],
         steps[0]["audio_path"],
         steps[0]["audio_duration"],
         FadeIn(some_right_side_obj)
@@ -515,10 +544,11 @@ def algo(data):
     - 音频步骤数据: {section_steps}
     - 动画指令: {section.animations}
     - 标准答案代码: {solution_code if solution_code else "未提供"}
+    - 已校验的连续源码页: {code_pages_literal}
 
     ### 代码规范
     - 继承 `TeachingScene`，变量先定义后使用
-    - 节奏：`self.wait(1)` 给观众思考时间
+    - 节奏：用完整教学旁白承载思考时间，禁止额外 `wait()`
     - 代码语言: **{target_language}**
 
     ### 参考代码结构
@@ -529,14 +559,12 @@ def algo(data):
     class {section.id.title().replace('_', '')}Scene(TeachingScene):
         def construct(self):
             steps = {section_steps}
-            current_batch = steps[:4]
-            screen_texts = [step["screen_text"] for step in current_batch]
-
             # 🔴🔴🔴 第一行必须调用 setup_layout()！设置背景色和基础布局 🔴🔴🔴
-            self.setup_layout("{section.title}", screen_texts)
+            self.setup_layout("{section.title}", steps[0]["page_screen_texts"], steps[0]["page_line_indices"])
 
             # 1. 创建代码块 - 🔴 必须使用 self.create_code_block()！
-            code_raw = {solution_code_literal}
+            code_pages = {code_pages_literal}
+            code_raw = code_pages[0] if code_pages else {code_snippet_literal}
             code = self.create_code_block(code_raw, language="{target_language.lower()}")
             code.to_edge(DOWN, buff=0.3).to_edge(LEFT, buff=0.3)
 
@@ -549,14 +577,14 @@ def algo(data):
 
             # 🔴 narration 必须使用 play_synced_step，以音频真实时长为准
             self.play_synced_step(
-                0,
+                steps[0]["highlight_indices"],
                 steps[0]["audio_path"],
                 steps[0]["audio_duration"],
                 Create(code)
             )
 
             self.play_synced_step(
-                1,
+                steps[1]["highlight_indices"],
                 steps[1]["audio_path"],
                 steps[1]["audio_duration"],
                 Create(array_group)
@@ -566,7 +594,7 @@ def algo(data):
             code_lines = code[2]
             highlight = SurroundingRectangle(code_lines[0], color=YELLOW, buff=0.05)
             self.play_synced_step(
-                2,
+                steps[2]["highlight_indices"],
                 steps[2]["audio_path"],
                 steps[2]["audio_duration"],
                 Create(highlight)
@@ -575,23 +603,22 @@ def algo(data):
             # 移动高亮
             new_hl = SurroundingRectangle(code_lines[1], color=YELLOW, buff=0.05)
             self.play_synced_step(
-                3,
+                steps[3]["highlight_indices"],
                 steps[3]["audio_path"],
                 steps[3]["audio_duration"],
                 Transform(highlight, new_hl)
             )
 
-            # 如果 narration 超过当前批次，必须先切换左侧讲解文字，再继续高亮
+            # page_index 改变时按侧车页码切换，并继续使用绝对行号
             if len(steps) > 4:
-                next_batch = steps[4:8]
-                self.replace_lecture_lines([step["screen_text"] for step in next_batch])
+                next_step = steps[4]
+                self.replace_lecture_lines(next_step["page_screen_texts"], next_step["page_line_indices"])
                 self.play_synced_step(
-                    0,
-                    next_batch[0]["audio_path"],
-                    next_batch[0]["audio_duration"]
+                    next_step["highlight_indices"],
+                    next_step["audio_path"],
+                    next_step["audio_duration"]
                 )
             
-            self.wait(2)
     ```
 
     ### 强制约束 - 字体与配色
@@ -672,30 +699,32 @@ def algo(data):
 
     **🔴 放新元素前的清理检查（必须遵守！防止右侧元素堆叠重叠）：**
 
-    每次在右侧放置新的主要元素（数组、表格、图、大文字块等）前，必须执行以下 3 步：
+    每次在右侧放置新的主要元素（数组、表格、图、大文字块等）前，必须执行以下 4 步：
     1. **盘点**：列出当前右侧还存在哪些元素
     2. **判断**：哪些元素在后续动画中不再被引用？（不再 Transform、不再 move_to、不再读取位置）
-    3. **清理**：对不再需要的元素执行 `FadeOut` + `self.remove()`，然后再添加新元素
+    3. **分组**：把本步骤一开始就应该完整可见的内容组成 `new_state = VGroup(...)`
+    4. **原子切换**：在新步骤的 `play_synced_step` 中使用 `remove_at_start` 和 `show_at_start`，禁止让新旧完整状态交叉淡化整句旁白
 
     ```python
-    # ✅ 正确：放新数组前，先清理旧的不再使用的元素
-    self.play(FadeOut(old_array), FadeOut(old_labels), FadeOut(old_pointer))
-    self.remove(old_array, old_labels, old_pointer)
-    # 清理完毕后，再创建和添加新元素
+    # ✅ 正确：新旧完整状态在旁白边界同帧切换
+    old_state = VGroup(old_array, old_labels, old_pointer)
     new_array = VGroup(*[Square(side_length=0.6) for _ in range(8)]).arrange(RIGHT, buff=0.1)
     new_array.move_to([3.5, -0.5, 0])
-    self.play(FadeIn(new_array))
+    new_state = VGroup(new_array, new_labels, new_pointer)
+    self.play_synced_step(
+        step["highlight_indices"], step["audio_path"], step["audio_duration"],
+        remove_at_start=[old_state], show_at_start=[new_state]
+    )
 
-    # ✅ 正确：保留还在用的元素，只清理不用的
-    # old_pointer 后面还要用，所以只清理 old_labels
-    self.play(FadeOut(old_labels))
-    self.remove(old_labels)
-    new_labels = VGroup(...)
-    self.play(FadeIn(new_labels))
+    # ✅ 正确：同一结构只更新当前句讲到的指针或数值，固定底图不重排
+    self.play_synced_step(..., pointer.animate.move_to(target_cell.get_top() + UP * 0.25))
 
     # ❌ 错误：不清理旧元素就直接添加新元素（导致重叠！）
     new_array = VGroup(...)  # ❌ 旧数组还在原位，新旧重叠！
-    self.play(FadeIn(new_array))
+    # ❌ 下一条旁白前旧结构仍存在，会发生重叠
+
+    # ❌ 错误：FadeIn/FadeOut 被 play_synced_step 拉伸到整句旁白
+    self.play_synced_step(..., FadeOut(old_state), FadeIn(new_state))
     ```
 
     ### 🔴🔴🔴 生成代码后必须执行的自检（Final Check）🔴🔴🔴
@@ -717,28 +746,31 @@ def algo(data):
     | `Text(".*log₂.*")` | 下标渲染不稳定/方框 | 拆分为 Text + `MathTex(r"\\log_2 n")` |
     | `Code(code_string=` | 样式错误 | `self.create_code_block(` |
     | `self.add_sound(` | ❌ 旁白调度越权 | 只能使用 `self.play_synced_step(` |
-    | `self.add_to_right(` | ❌ 该方法已删除！ | 手动 `move_to` + 边界检查 + `self.play(FadeIn(...))` |
-    | `self.remove_from_right(` | ❌ 该方法已删除！ | `self.play(FadeOut(...))` + `self.remove(...)` |
-    | `self.clear_right_area(` | ❌ 该方法已删除！ | 逐个 `FadeOut` + `self.remove()` |
+    | `self.add_to_right(` | ❌ 该方法已删除！ | 手动定位，再把 FadeIn 传入 `play_synced_step` |
+    | `self.remove_from_right(` | ❌ 该方法已删除！ | 在下一旁白前显式 `self.remove(...)` |
+    | `self.clear_right_area(` | ❌ 该方法已删除！ | 显式移除不再使用的每个旧对象 |
     | `# 使用 Text 代替 MathTex` | ❌ 严禁替换！环境已配置 LaTeX | 保持 MathTex，修复 LaTeX 语法 |
     | `# 避免 LaTeX` | ❌ 严禁以此为借口 | 保持 MathTex，环境没有 LaTeX 问题 |
 
     **🔴🔴🔴 严禁使用 `self.add_to_right()` — 该方法不存在！🔴🔴🔴**
     基类 `TeachingScene` 中没有 `add_to_right`、`remove_from_right`、`clear_right_area` 方法。
     如果你的代码中出现这些调用，运行时会直接报 `AttributeError` 崩溃！
-    正确做法：手动 `move_to()` 定位 → 检查边界 → `self.play(FadeIn(obj))` 添加。
+    正确做法：手动 `move_to()` 定位 → 检查边界 → 将 `FadeIn(obj)` 传给对应的 `play_synced_step()`。
 
     **完整自检步骤（必须全部执行）：**
     1. 搜索所有 `Text(` 调用，检查内容是否包含 ✓✗×√ 或数学符号 → 必须改为 MathTex，否则运行必定失败！
     2. 专项检查所有讲解行：若行文本含 `O(`/`log`/`²`/`₂`/`ₙ`/`^`/`=`/`≤`/`≥`/`✓`/`✗`，禁止整句 `Text(line, ...)`，必须改为 Text + MathTex 混排（重点检查 `log₂n`）
     3. 检查每一条 narration 是否都调用了 `play_synced_step`
-    4. 检查 narration 段内部是否错误地写了手动 `self.wait(x)` 来代替 `audio_duration`
+    4. 检查 `construct()` 是否出现任何手动 `self.wait(x)` 或裸 `self.play(...)`，如有必须并入对应 `play_synced_step(...)`
     4.1 检查 `construct()` 内是否出现了任何 `self.add_sound(...)`，如有必须改为 `self.play_synced_step(...)`
     5. 检查每行讲解文字是否超过20个中文字符，超过则拆行（不超过20字的短句不要强行拆开）
     6. 检查讲解文字分批是否按语义切分，不同知识点不能混在同一批
     7. 检查右侧是否出现“**大型图案 + 右侧文字标注并存**”的情况；若出现，必须删除右侧文字或先切换场景后再显示
     8. 专项检查 `self.setup_layout(..., lecture_lines)` 的首批行：若包含 `O(` / `log` / `²` / `₂` / `ₙ` / `^` / `=` / `≤` / `≥`，必须改写为纯中文描述，并将公式改到右侧 `MathTex`
-    9. 检查所有代码展示是否与用户提供的 `solution_code` 保持一致，严禁擅自修改核心逻辑
+    9. 检查所有代码展示是否与用户提供的 `solution_code` 逐字一致
+    10. 检查画面没有字幕、底部字幕框；数字/标签 z_index 高于背景；数量不同的结构没有整组 ReplacementTransform
+    11. 逐步检查元素生命周期：未来步骤对象没有提前出现；旧状态没有跨入下一句；完整状态切换使用 `remove_at_start` / `show_at_start`，没有使用整句时长的交叉 Fade。
+    12. 检查跨步骤持续存在的数组、树、坐标系和代码框锚点不变；只更新当前句涉及的指针、数值、高亮或局部节点，不得整体重新排版。
 """
 
 
@@ -766,14 +798,14 @@ def get_regenerate_note(attempt, MAX_REGENERATE_TRIES, error_message: str = None
 
 **1. 只修复错误，不删除内容！**
 - 仅针对错误信息中指出的具体问题进行修复
-- **严禁删除任何讲解文字、动画步骤或 wait() 调用**
+- **严禁删除任何讲解文字或动画步骤；旧代码中的裸 wait() 必须删除并把有效时序并入旁白步骤**
 - **严禁缩短视频时长或减少内容**
 - **严禁将复杂动画简化为只显示标题和文字**
 
 **2. 保持完整性检查清单：**
 - [ ] 所有原有的讲解文字是否都保留了？
 - [ ] 所有原有的动画步骤是否都保留了？
-- [ ] wait() 调用的总时长是否与原来相近？
+- [ ] 每条有效动画是否都已并入对应旁白步骤，而不是用 wait() 补时长？
 - [ ] 数据结构可视化（数组、指针、高亮等）是否完整？
 - [ ] 代码块和代码高亮是否保留？
 
@@ -809,7 +841,7 @@ def get_regenerate_note(attempt, MAX_REGENERATE_TRIES, error_message: str = None
         # 无具体信息时的通用提示
         return base_note + """请检查并改进代码：
 - 确保所有变量在使用前已定义
-- 检查 `self.wait()` 是否充足
+- 删除裸 `self.wait()`，确保所有动画由对应旁白步骤承载
 - **保持动画效果完整，不要过度简化**
 - **严禁删除任何讲解文字、动画步骤或数据结构可视化**
 """

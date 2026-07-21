@@ -27,6 +27,6 @@ docker-compose run --rm --no-deps -v "$PWD:/workspace" -w /workspace -e PYTHONPA
 ## 音视频真值铁律
 
 - 任何音视频对齐、旁白时长、成片时长相关判断，严禁使用模型估算值或接口元数据，必须且只能依赖物理文件落盘后的本地测时结果（如 `ffprobe`、`wave`、`pydub`）。
-- 涉及 TTS 与大体积音频流的容器命令，必须确保 `NO_PROXY` / `no_proxy` 包含 `vip.dmxapi.com`，防止代理/VPN 在物理链路层劫持音频请求。
+- 涉及 TTS 与大体积音频流的容器命令，必须确保 `NO_PROXY` / `no_proxy` 包含 `api-ai.vivo.com.cn`（以及兼容旧链路的 `vip.dmxapi.com`），防止代理/VPN 在物理链路层劫持音频请求。
 - 端到端重跑、E2E 或音频链路测试前，必须销毁旧的音频、代码生成物、渲染产物与合并视频，禁止让脏缓存伪装成“成功结果”。
 - “文件带音轨”不等于“旁白完整发声”。验收有声视频时，必须同时做局部静音分析（如 `ffmpeg silencedetect`、分段抽样、AST 对位分析），禁止只看 AAC 流存在与平均音量。

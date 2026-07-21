@@ -1,5 +1,9 @@
 base_class = """
 class TeachingScene(Scene):
+    BACKGROUND_Z = 0
+    STRUCTURE_Z = 2
+    LABEL_Z = 5
+    UI_Z = 10
     # 右侧安全区域边界常量
     RIGHT_X_MIN = 0.3
     RIGHT_X_MAX = 6.5
@@ -10,17 +14,17 @@ class TeachingScene(Scene):
     RIGHT_MAX_HEIGHT = 5.5
 
     def _build_lecture_group(self, lecture_lines):
-        lecture_texts = [Text(line, font="Noto Sans CJK SC", font_size=20, color="#2C1608") for line in lecture_lines]
+        lecture_texts = [Text(line, font="Noto Sans CJK SC", font_size=20, color="#2C1608").set_z_index(self.UI_Z) for line in lecture_lines]
         lecture_group = VGroup(*lecture_texts).arrange(DOWN, aligned_edge=LEFT, buff=0.3)
         return lecture_group
 
-    def setup_layout(self, title_text, lecture_lines):
+    def setup_layout(self, title_text, lecture_lines, lecture_line_indices=None):
         # BASE - 温暖配色方案
         self.camera.background_color = "#FFFDF4"  # 温暖米白色背景
         
         # 大标题 - 必须使用加粗 weight="BOLD"，颜色 #BE8944
         # 使用 Noto Sans CJK SC 字体（跨平台：Linux/Windows/macOS）
-        self.title = Text(title_text, font="Noto Sans CJK SC", font_size=28, color="#BE8944", weight="BOLD").to_edge(UP)
+        self.title = Text(title_text, font="Noto Sans CJK SC", font_size=28, color="#BE8944", weight="BOLD").to_edge(UP).set_z_index(self.UI_Z)
         self.add(self.title)
 
         # Left-side lecture content (bullets with "-")
@@ -29,6 +33,7 @@ class TeachingScene(Scene):
         self.lecture.next_to(self.title, DOWN, buff=1.0).to_edge(LEFT, buff=0.3)
         self.add(self.lecture)
         self.lecture_anchor = self.lecture.get_corner(UL)
+        self.current_lecture_line_indices = list(lecture_line_indices) if lecture_line_indices is not None else list(range(len(lecture_lines)))
 
         # Define fine-grained animation grid (6x6 grid on right side)
         self.grid = {}
@@ -54,7 +59,7 @@ class TeachingScene(Scene):
         Returns:
             Code 对象
         \"\"\"
-        return Code(
+        code_block = Code(
             code_string=code_text,  # 使用 code_string 而不是 code
             language=language,
             background="rectangle",  # 🔴 必须有
@@ -65,6 +70,15 @@ class TeachingScene(Scene):
                 "stroke_width": 2
             }
         )
+        code_block.set_z_index(self.STRUCTURE_Z)
+        return code_block
+
+    def labeled_shape(self, shape, label):
+        \"\"\"统一保证节点、数组或表格标签位于背景形状之上。\"\"\"
+        shape.set_z_index(self.STRUCTURE_Z)
+        label.set_z_index(self.LABEL_Z)
+        label.move_to(shape.get_center())
+        return VGroup(shape, label)
 
     def place_at_grid(self, mobject, grid_pos, scale_factor=1.0):
         \"\"\"将元素放置到网格位置。\"\"\"
@@ -132,12 +146,14 @@ class TeachingScene(Scene):
 
     def play_synced_step(
         self,
-        line_index,
+        line_indices,
         audio_path,
         audio_duration,
         *animations,
         highlight_color="#C35101",
         reset_color="#2C1608",
+        remove_at_start=None,
+        show_at_start=None,
     ):
         \"\"\"
         V5.0 核心同步原语：
@@ -146,19 +162,50 @@ class TeachingScene(Scene):
         - 允许右侧动画与音频并行运行
 
         Args:
-            line_index: 左侧讲解文字索引
+            line_indices: 当前讲解文字的绝对索引，支持一个索引或多个索引
             audio_path: 音频绝对路径
             audio_duration: 音频真实物理时长（秒）
             *animations: 需要与音频并行执行的动画
             highlight_color: 高亮颜色
             reset_color: 恢复颜色
+            remove_at_start: 本句旁白开始时立即移除的旧状态对象
+            show_at_start: 本句旁白开始时立即显示的新状态对象
+
+        `remove_at_start` / `show_at_start` 用于完整画面状态切换。它们在
+        add_sound 之前同一帧完成，避免把 FadeIn/FadeOut 拉伸到整句旁白，
+        从而造成新元素出现过晚、旧元素消失过晚或新旧状态长时间重叠。
         \"\"\"
-        if not (0 <= line_index < len(self.lecture)):
-            raise IndexError(f"Invalid lecture line index: {line_index}")
+        if isinstance(line_indices, int):
+            line_indices = [line_indices]
+        elif isinstance(line_indices, tuple):
+            line_indices = list(line_indices)
+        if not isinstance(line_indices, list) or not line_indices:
+            raise ValueError("line_indices must be a non-empty int list")
         if audio_duration <= 0:
             raise ValueError(f"audio_duration must be positive, got {audio_duration}")
 
-        self.lecture[line_index].set_color(highlight_color)
+        displayed_indices = []
+        for absolute_index in line_indices:
+            displayed_indices.extend(
+                index for index, value in enumerate(self.current_lecture_line_indices)
+                if value == absolute_index and index not in displayed_indices
+            )
+        if not displayed_indices:
+            raise IndexError(f"Lecture line indices are not on the current page: {line_indices}")
+        for index in displayed_indices:
+            self.lecture[index].set_color(highlight_color)
+
+        old_objects = remove_at_start or []
+        if not isinstance(old_objects, (list, tuple, set)):
+            old_objects = [old_objects]
+        new_objects = show_at_start or []
+        if not isinstance(new_objects, (list, tuple, set)):
+            new_objects = [new_objects]
+        for obj in old_objects:
+            self.remove(obj)
+        for obj in new_objects:
+            self.add(obj)
+
         self.add_sound(audio_path)
 
         if animations:
@@ -166,18 +213,47 @@ class TeachingScene(Scene):
         else:
             self.wait(audio_duration)
 
-        self.lecture[line_index].set_color(reset_color)
+        for index in displayed_indices:
+            self.lecture[index].set_color(reset_color)
 
-    def replace_lecture_lines(self, lecture_lines):
+    def play_narrated_step(
+        self,
+        audio_path,
+        audio_duration,
+        *animations,
+        remove_at_start=None,
+        show_at_start=None,
+    ):
+        '''播放没有左侧高亮目标的完整旁白步骤，例如封面或导览收束句。'''
+        if audio_duration <= 0:
+            raise ValueError(f"audio_duration must be positive, got {audio_duration}")
+        old_objects = remove_at_start or []
+        if not isinstance(old_objects, (list, tuple, set)):
+            old_objects = [old_objects]
+        new_objects = show_at_start or []
+        if not isinstance(new_objects, (list, tuple, set)):
+            new_objects = [new_objects]
+        for obj in old_objects:
+            self.remove(obj)
+        for obj in new_objects:
+            self.add(obj)
+        self.add_sound(audio_path)
+        if animations:
+            self.play(*animations, run_time=audio_duration)
+        else:
+            self.wait(audio_duration)
+
+    def replace_lecture_lines(self, lecture_lines, lecture_line_indices=None):
         \"\"\"
         将左侧讲解文字整体切换为新的一批，并保持左上锚点不变。
         用于 steps 数量较多时的分批显示。
         \"\"\"
         new_lecture = self._build_lecture_group(lecture_lines)
         new_lecture.align_to(self.lecture_anchor, UL)
-        self.play(FadeOut(self.lecture), FadeIn(new_lecture))
         self.remove(self.lecture)
+        self.add(new_lecture)
         self.lecture = new_lecture
+        self.current_lecture_line_indices = list(lecture_line_indices) if lecture_line_indices is not None else list(range(len(lecture_lines)))
 
     def place_in_area(self, mobject, top_left, bottom_right, scale_factor=1.0):
         \"\"\"将元素放置到网格区域中心，并自动边界裁剪。\"\"\"

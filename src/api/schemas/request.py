@@ -15,6 +15,14 @@ class DifficultyLevel(str, Enum):
     HARD = "hard"
 
 
+class RenderProfileName(str, Enum):
+    """可选的原生渲染规格。"""
+
+    HD_1080P30 = "1080p30"
+    UHD_4K30 = "4k30"
+    UHD_4K60 = "4k60"
+
+
 class EventType(str, Enum):
     """SSE 事件类型"""
     RUNNING = "running"
@@ -56,10 +64,14 @@ class VideoGenerateRequest(BaseModel):
         examples=["Python", "Java", "C++", "JavaScript"]
     )
     duration: Optional[int] = Field(
-        5, 
-        ge=1, 
-        le=30,
-        description="视频时长（分钟）"
+        None,
+        ge=5,
+        le=15,
+        description="视频目标时长（分钟）；不传时由 AI 在 5-15 分钟内选择"
+    )
+    render_profile: RenderProfileName = Field(
+        RenderProfileName.UHD_4K30,
+        description="原生渲染规格，默认 3840x2160/30fps",
     )
     
     difficulty: Optional[DifficultyLevel] = Field(
@@ -98,7 +110,8 @@ class VideoGenerateRequest(BaseModel):
                 "age": 20,
                 "gender": "男",
                 "language": "Python",
-                "duration": 5,
+                "duration": None,
+                "render_profile": "4k30",
                 "difficulty": "medium",
                 "extra_info": "我是大学生，有一定编程基础，想深入理解算法"
             }
@@ -160,6 +173,11 @@ class VideoGenerateResponse(BaseModel):
                 "message": "视频生成成功。",
                 "data": {
                     "video_file": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6.mp4",
+                    "delivery_status": "success_with_warnings",
+                    "warnings": [{"code": "render_profile_fallback", "message": "4K 未完整生成，已返回完整 1080p 视频"}],
+                    "requested_render_profile": "4k30",
+                    "actual_render_profile": "1080p30",
+                    "long_silence_checked": False,
                     "outline": {
                         "topic": "二分搜索",
                         "sections": []

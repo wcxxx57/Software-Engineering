@@ -18,7 +18,7 @@ from ..tasks.video_tasks import generate_video_task
 router = APIRouter(prefix="/api/v1", tags=["视频生成"])
 
 
-async def sse_event_generator(channel_name: str) -> AsyncGenerator[str, None]:
+async def sse_event_generator(channel_name: str, redis_client, pubsub) -> AsyncGenerator[str, None]:
     """
     SSE 事件生成器
     
@@ -30,15 +30,8 @@ async def sse_event_generator(channel_name: str) -> AsyncGenerator[str, None]:
     Yields:
         SSE 格式的事件字符串
     """
-    # 创建异步 Redis 客户端
-    redis_client = await aioredis.from_url(settings.redis_url)
-    pubsub = redis_client.pubsub()
-    
     try:
-        await pubsub.subscribe(channel_name)
-        
-        # 设置超时时间（1小时）
-        timeout = 3600
+        timeout = settings.video_task_timeout_seconds
         start_time = asyncio.get_event_loop().time()
         
         while True:
@@ -107,7 +100,7 @@ async def generate_video(
         "solution_code": "def searchInsert(nums, target):\\n    left, right = 0, len(nums) - 1\\n    ...",
         "age": 20,
         "language": "Python",
-        "duration": 5
+        "duration": null
     }
     ```
     
@@ -133,7 +126,8 @@ async def generate_video(
         "age": request.age,
         "gender": request.gender,
         "language": request.language or settings.default_language,
-        "duration": request.duration or settings.default_duration,
+        "duration": request.duration,
+        "render_profile": request.render_profile.value,
         "difficulty": request.difficulty.value if request.difficulty else "medium",
         "extra_info": request.extra_info,
         "use_feedback": request.use_feedback,
@@ -141,10 +135,19 @@ async def generate_video(
         "api_model": request.api_model or settings.default_api,
     }
     
-    # 提交 Celery 任务
+    # 先订阅 Redis，再提交 Celery，避免快速失败/完成事件在订阅前丢失
+    redis_client = await aioredis.from_url(settings.redis_url)
+    pubsub = redis_client.pubsub()
     try:
+        await pubsub.subscribe(channel_name)
         task = generate_video_task.delay(request_data, channel_name)
     except Exception as e:
+        try:
+            await pubsub.unsubscribe(channel_name)
+            await pubsub.close()
+            await redis_client.close()
+        except Exception:
+            pass
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"任务队列不可用: {str(e)}"
@@ -152,7 +155,7 @@ async def generate_video(
     
     # 返回 SSE 流
     return StreamingResponse(
-        sse_event_generator(channel_name),
+        sse_event_generator(channel_name, redis_client, pubsub),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

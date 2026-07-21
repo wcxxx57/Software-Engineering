@@ -62,6 +62,7 @@ class CoverScene(Scene):
         bg.set_fill(color=["#fff6db", "#f9ebe4", "#fbd9c4"])
         bg.set_sheen_direction(DR)
         bg.move_to(ORIGIN)
+        bg.set_z_index(0)
         self.add(bg)
 
         # ── 大标题（短名称，居中）──
@@ -72,6 +73,9 @@ class CoverScene(Scene):
             color="#7B4B2A",
             weight="BOLD",
         )
+        if title.width > 12.2:
+            title.scale_to_fit_width(12.2)
+        title.set_z_index(5)
         title.move_to(UP * 0.5)
 
         # ── 副标题（完整名称）──
@@ -81,10 +85,13 @@ class CoverScene(Scene):
             font_size=28,
             color="#8B5E3C",
         )
+        if subtitle.width > 12.2:
+            subtitle.scale_to_fit_width(12.2)
+        subtitle.set_z_index(5)
         subtitle.next_to(title, DOWN, buff=0.5)
 
         # ── 装饰线 ──
-        line_width = max(title.width, subtitle.width) + 1.5
+        line_width = min(max(title.width, subtitle.width) + 1.5, 13.2)
         line_width = max(line_width, 5.0)
         half_width = line_width / 2
 
@@ -104,50 +111,11 @@ class CoverScene(Scene):
         )
         lower_line.next_to(subtitle, DOWN, buff=0.6)
 
-        # ── 动画序列 ──
-        # 0. 先将所有元素静态添加到画面（确保第一帧即为完整封面，作为视频缩略图）
+        # 第 0 秒就是完整封面；旁白期间不隐藏、不重新播放入场动画。
+        if not steps:
+            raise ValueError("Cover narration step is required")
         self.add(upper_line, title, subtitle, lower_line)
-        self.wait(0.1)
-
-        # 1. 移除静态元素，用动画重新展示（视觉上从完整封面开始，然后有入场感）
-        self.remove(upper_line, title, subtitle, lower_line)
-
-        # 2. 装饰线从中心展开
-        self.play(
-            Create(upper_line),
-            Create(lower_line),
-            run_time=0.8,
-        )
-
-        # 3. 大标题 FadeIn
-        self.play(
-            FadeIn(title, scale=0.9),
-            run_time=0.6,
-        )
-
-        # 4. 副标题 FadeIn
-        self.play(
-            FadeIn(subtitle, shift=UP * 0.2),
-            run_time=0.5,
-        )
-
-        # 5. 播放介绍旁白
-        if steps:
-            self.add_sound(steps[0]["audio_path"])
-            self.wait(steps[0]["audio_duration"])
-        else:
-            self.wait(2.0)
-
-        # 6. 短暂淡出过渡
-        self.play(
-            FadeOut(title),
-            FadeOut(subtitle),
-            FadeOut(upper_line),
-            FadeOut(lower_line),
-            run_time=0.6,
-        )
-
-        self.wait(0.3)
+        self.play_narrated_step(steps[0]["audio_path"], steps[0]["audio_duration"])
 '''
 
     return code

@@ -35,11 +35,12 @@ class Settings:
     metadata_dir: str = "data/outputs/metadata"
     
     # LLM API 配置
-    default_api: str = "claude"
+    default_api: str = "gpt-5"
     
     # 视频生成默认配置
-    default_duration: int = 5
+    default_duration: Optional[int] = None
     default_language: str = "Python"
+    video_task_timeout_seconds: int = 43200
     
     # 调试模式
     debug: bool = False
@@ -72,6 +73,9 @@ class Settings:
         
         # LLM API
         self.default_api = os.getenv("DEFAULT_API", self.default_api)
+        self.video_task_timeout_seconds = int(
+            os.getenv("VIDEO_TASK_TIMEOUT_SECONDS", str(self.video_task_timeout_seconds))
+        )
         
         # 调试模式
         self.debug = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")

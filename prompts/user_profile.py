@@ -43,21 +43,29 @@ def get_profile_analysis_prompt(user_profile_text: str) -> str:
         "background": "推断的知识背景和已有储备",
         "learning_goal": "用户的学习目标",
         "target_language": "用户选择的编程语言（如未指定则默认Python）",
-        "difficulty_preference": "用户期望的难度（入门/中等/进阶）—— 必须严格遵循用户描述中明确指定的难度级别，不得自行调整"
+        "difficulty_preference": "用户期望的难度（入门/中等/进阶）—— 必须严格遵循用户描述中明确指定的难度级别，不得自行调整",
+        "known_concepts": ["用户已经能独立运用的3-8个概念"],
+        "knowledge_gaps": ["本视频需要补齐的知识缺口"],
+        "likely_misconceptions": ["该学习者最可能出现的错误认知"],
+        "forbidden_jargon": ["未解释前应避免使用的超纲术语"]
     }},
     "stage1_outline_guidance": {{
         "audience_description": "一句话描述目标受众，用于大纲生成",
         "content_depth": "内容深度要求（应该讲多深、跳过什么）",
         "example_style": "举例风格（用什么样的例子更容易让该用户理解）",
         "pacing_requirement": "节奏要求（快/中/慢，是否需要详细解释每个概念）",
-        "motivation_hook": "开场引入建议（什么样的场景能吸引该用户）"
+        "motivation_hook": "开场引入建议（什么样的场景能吸引该用户）",
+        "must_master_outcomes": ["2-4个可检查的学习结果"],
+        "zpd_bridge_strategy": "如何从已有知识逐步连接到新概念"
     }},
     "stage2_storyboard_guidance": {{
         "visual_complexity": "视觉复杂度要求（简洁明了/适中/详尽复杂）",
         "animation_pace": "动画节奏（每步停顿时间、是否需要重复演示）",
         "code_display_style": "代码展示风格（注释多少、是否逐行讲解）",
         "lecture_tone": "讲解语气风格（轻松活泼/专业严谨/循循善诱）",
-        "emphasis_points": "该用户特别需要强调的内容"
+        "emphasis_points": "该用户特别需要强调的内容",
+        "max_new_terms_per_section": 2,
+        "retrieval_pause_frequency": "认知检查频率，例如每2-3节一次"
     }},
     "stage3_code_guidance": {{
         "code_language": "代码语言",
@@ -92,12 +100,18 @@ def get_stage1_profile_prompt(parsed_profile: Dict[str, Any]) -> str:
 - **学习目标**: {summary.get('learning_goal', '未指定')}
 - **期望难度**: {summary.get('difficulty_preference', '中等')}
 - **编程语言**: {summary.get('target_language', 'Python')}
+- **已有知识**: {summary.get('known_concepts', [])}
+- **待补缺口**: {summary.get('knowledge_gaps', [])}
+- **易错认知**: {summary.get('likely_misconceptions', [])}
+- **避免术语**: {summary.get('forbidden_jargon', [])}
 
 ### 大纲设计指导
 - **内容深度**: {guidance.get('content_depth', '适中')}
 - **举例风格**: {guidance.get('example_style', '贴近生活的例子')}
 - **节奏要求**: {guidance.get('pacing_requirement', '中等节奏')}
 - **开场引入**: {guidance.get('motivation_hook', '使用生活化场景引入')}
+- **学习结果**: {guidance.get('must_master_outcomes', [])}
+- **知识桥接策略**: {guidance.get('zpd_bridge_strategy', '从已知到未知逐步搭桥')}
 """
 
 
@@ -121,6 +135,9 @@ def get_stage2_profile_prompt(parsed_profile: Dict[str, Any]) -> str:
 - **目标观众**: {summary.get('age_group', '未指定')}
 - **知识背景**: {summary.get('background', '未指定')}
 - **编程语言**: {summary.get('target_language', 'Python')}
+- **已有知识**: {summary.get('known_concepts', [])}
+- **待补缺口**: {summary.get('knowledge_gaps', [])}
+- **避免术语**: {summary.get('forbidden_jargon', [])}
 
 ### 分镜设计指导
 - **视觉复杂度**: {guidance.get('visual_complexity', '适中')}
@@ -128,6 +145,8 @@ def get_stage2_profile_prompt(parsed_profile: Dict[str, Any]) -> str:
 - **代码展示风格**: {guidance.get('code_display_style', '适量注释，逐步讲解')}
 - **讲解语气**: {guidance.get('lecture_tone', '清晰专业')}
 - **特别强调**: {guidance.get('emphasis_points', '核心概念和实际应用')}
+- **每节新术语上限**: {guidance.get('max_new_terms_per_section', 2)}
+- **认知检查频率**: {guidance.get('retrieval_pause_frequency', '每2-3节一次')}
 """
 
 
@@ -194,21 +213,29 @@ class UserProfile:
                 "background": "有一定编程基础",
                 "learning_goal": "学习算法与数据结构",
                 "target_language": "Python",
-                "difficulty_preference": "中等"
+                "difficulty_preference": "中等",
+                "known_concepts": ["变量", "条件判断", "循环"],
+                "knowledge_gaps": ["算法选择依据", "正确性与复杂度分析"],
+                "likely_misconceptions": ["只记代码而不理解不变量"],
+                "forbidden_jargon": ["未解释的高级算法术语"]
             },
             "stage1_outline_guidance": {
                 "audience_description": "有编程基础的大学生",
                 "content_depth": "理论与实践结合，包含复杂度分析",
                 "example_style": "使用课程项目和面试题场景",
                 "pacing_requirement": "中等节奏，适当跳过基础概念",
-                "motivation_hook": "从实际问题引入，展示算法的实用价值"
+                "motivation_hook": "从实际问题引入，展示算法的实用价值",
+                "must_master_outcomes": ["能解释核心思路", "能追踪关键状态", "能分析复杂度"],
+                "zpd_bridge_strategy": "先激活熟悉的顺序执行经验，再引出算法优化"
             },
             "stage2_storyboard_guidance": {
                 "visual_complexity": "适中，关键步骤详细展示",
                 "animation_pace": "中等节奏，关键步骤停顿讲解",
                 "code_display_style": "包含必要注释，展示标准实现",
                 "lecture_tone": "专业但易懂",
-                "emphasis_points": "算法核心思想和实现技巧"
+                "emphasis_points": "算法核心思想和实现技巧",
+                "max_new_terms_per_section": 2,
+                "retrieval_pause_frequency": "每2-3节一次"
             },
             "stage3_code_guidance": {
                 "code_language": "Python",
@@ -300,7 +327,7 @@ def create_profile_from_text(profile_text: str) -> UserProfile:
 def parse_profile_with_ai_sync(
     profile_text: str, 
     api_function: Callable,
-    max_retries: int = 5
+    max_retries: int = 3
 ) -> Dict[str, Any]:
     """
     使用 AI 解析用户画像文本（同步版本，带重试机制）

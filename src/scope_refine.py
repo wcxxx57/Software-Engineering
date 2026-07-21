@@ -1,10 +1,14 @@
 import re
+import shutil
+import sys
 from pathlib import Path
 import json
 from dataclasses import dataclass
 import subprocess
 from typing import Dict, List, Tuple, Optional, Any
 import logging
+
+from src.delivery import find_scene_class_name, normalize_known_scene_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -338,44 +342,41 @@ class ScopeRefineFixer:
             return False, f"Compilation Error: {e}"
 
     def dry_run_test(self, code: str, section_id: str, output_dir: Path) -> Tuple[bool, Optional[str]]:
-        """Execute dry run test (do not render video)"""
+        """Execute the concrete Scene at low quality so construct() errors are observable."""
         test_file = output_dir / f"test_{section_id}.py"
-
-        # Create test version of code (add quick exit)
-        # 1. 动态获取类名：不要假设类名是 SectionXScene，而是从代码中正则提取
-        class_match = re.search(r"class\s+(\w+)\s*\(", code)
-        if class_match:
-            scene_name = class_match.group(1)
-        else:
-            # Fallback (保底策略)
-            scene_name = f"{section_id.title().replace('_', '')}Scene"
-
-        test_code = code.replace(
-            "def construct(self):",
-            "def construct(self):\n        # Dry run test - quick exit\n        self.wait(0.1)\n        return\n        # Original code below:",
-        )
+        media_dir = output_dir / ".preflight" / section_id
 
         try:
+            test_code, _ = normalize_known_scene_tokens(code)
+            scene_name = find_scene_class_name(test_code)
             with open(test_file, "w", encoding="utf-8") as f:
                 f.write(test_code)
-
-            # 2. 使用提取出的正确类名进行测试
-            cmd = ["python", "-c", f"from test_{section_id} import {scene_name}; scene = {scene_name}(); print('Syntax OK')"]
-
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=output_dir, timeout=20) # 稍微增加一点超时时间到 20s
-
-            test_file.unlink()  # Clean up test file
+            cmd = [
+                sys.executable,
+                "-m",
+                "manim",
+                "render",
+                "-ql",
+                "-s",
+                "--disable_caching",
+                "--media_dir",
+                str(media_dir),
+                str(test_file.name),
+                scene_name,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=output_dir, timeout=60)
 
             if result.returncode == 0:
                 return True, None
-            else:
-                # 返回具体的错误信息
-                return False, f"Dry Run Error for class '{scene_name}': {result.stderr}"
+            return False, f"Dry Run Error for class '{scene_name}': {result.stderr or result.stdout}"
 
         except Exception as e:
+            return False, str(e)
+        finally:
             if test_file.exists():
                 test_file.unlink()
-            return False, str(e)
+            if media_dir.exists():
+                shutil.rmtree(media_dir, ignore_errors=True)
 
     def _clean_code_format(self, code: str) -> Optional[str]:
         """Clean and format code"""
@@ -476,42 +477,17 @@ class ScopeRefineFixer:
         return base_prompt
 
     def fix_code_smart(self, section_id: str, code: str, error_msg: str, output_dir: Path) -> Optional[str]:
-        """Smart fix code, prioritize local fix, fallback to complete rewrite if failed"""
-
-        # Analyze error
-        error_info = self.analyzer.analyze_error(code, error_msg)
-        # Decide on fix scope based on error analysis
-        if error_info["fix_scope"] in ["single_line", "function", "section"]:
-
-            relevant_code = error_info.get("relevant_code_block")
-            if relevant_code:
-                fixed_block = self._fix_code_block(section_id, relevant_code, error_msg, error_info)
-                if fixed_block:
-                    merged_code = self._merge_fixed_block(code, relevant_code, fixed_block, error_info)
-                    if merged_code:
-                        is_valid, syntax_error = self.validate_code_syntax(merged_code)
-                        if is_valid:
-                            is_dry_run_ok, dry_run_error = self.dry_run_test(merged_code, section_id, output_dir)
-                            if is_dry_run_ok:
-                                return merged_code
-                            else:
-                                print(f"⚠️ The dry run failed after local repair: {dry_run_error}")
-                        else:
-                            print(f"⚠️ The syntax error after local repair: {syntax_error}")
-                    else:
-                        print("⚠️ The code block merge failed after local repair")
-                else:
-                    print("⚠️ The local repair failed after local repair")
-            else:
-                print("⚠️ The relevant code block cannot be extracted after local repair")
-        else:
-            print("🔄 The error scope is large, directly use complete repair")
-
-        print("⚠️ The smart repair failed, fallback to complete repair")
-        return self.fix_code_with_multi_stage_validation(section_id, code, error_msg, output_dir)
+        """Produce exactly one repaired code version; the caller owns the three-version budget."""
+        return self.fix_code_with_multi_stage_validation(
+            section_id,
+            code,
+            error_msg,
+            output_dir,
+            max_attempts=1,
+        )
 
     def fix_code_with_multi_stage_validation(
-        self, section_id: str, current_code: str, error_msg: str, output_dir: Path, max_attempts: int = 3
+        self, section_id: str, current_code: str, error_msg: str, output_dir: Path, max_attempts: int = 1
     ) -> Optional[str]:
         """Multi-stage validation code repair"""
         logger.info(f"Start fixing the code errors for {section_id}")
