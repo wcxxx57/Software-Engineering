@@ -11,5 +11,6 @@ RUN useradd --create-home --uid 10001 app
 WORKDIR /app
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels
+COPY --chown=app:app skills ./skills
 USER app
 CMD ["zhiying-core-generation"]

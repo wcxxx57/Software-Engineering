@@ -37,6 +37,7 @@ pub struct Model {
     pub explanation: String,
     pub confidence: Option<PretestConfidence>,
     pub chosen_answer: Option<ProblemAnswer>,
+    pub curriculum_node_id: Option<i32>,
     pub created_at: DateTimeUtc,
 }
 

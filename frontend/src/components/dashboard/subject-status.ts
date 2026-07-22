@@ -1,6 +1,8 @@
 import type { StudySubject } from "@/lib/api/schemas";
 
 export const STATUS_LABEL: Record<StudySubject["status"], string> = {
+  CURRICULUM_QUEUING: "课程大纲排队中",
+  CURRICULUM_FETCHING: "课程大纲检索中",
   PRETEST_QUEUING: "学前测排队中",
   PRETEST_GENERATING: "学前测生成中",
   PRETEST_READY: "学前测就绪",
@@ -12,6 +14,8 @@ export const STATUS_LABEL: Record<StudySubject["status"], string> = {
 };
 
 export const STATUS_TONE: Record<StudySubject["status"], string> = {
+  CURRICULUM_QUEUING: "bg-palette-yellow-light text-brand-dark",
+  CURRICULUM_FETCHING: "bg-palette-yellow-light text-brand-dark",
   PRETEST_QUEUING: "bg-palette-yellow-light text-brand-dark",
   PRETEST_GENERATING: "bg-palette-yellow-light text-brand-dark",
   PRETEST_READY: "bg-palette-orange-lighter text-brand-dark",

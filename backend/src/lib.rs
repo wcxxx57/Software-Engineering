@@ -31,6 +31,7 @@ pub enum StartupError {
 pub async fn build_app(config: Config) -> Result<Router, StartupError> {
     let database = Database::connect(&config.database_url).await?;
     Migrator::up(&database, None).await?;
+    crate::services::curriculum::seed_catalog(&database).await?;
 
     let pool = build_rabbitmq_pool(&config.rabbitmq_url)
         .map_err(|err| StartupError::RabbitMq(err.to_string()))?;
@@ -51,6 +52,7 @@ pub async fn build_app_with_publisher(
 ) -> Result<Router, DbErr> {
     let database = Database::connect(&config.database_url).await?;
     Migrator::up(&database, None).await?;
+    crate::services::curriculum::seed_catalog(&database).await?;
     Ok(routes::build_router(AppState::new(
         config, database, publisher,
     )))
@@ -68,6 +70,7 @@ fn topology_entries(config: &Config) -> Vec<TopologyEntry<'_>> {
         config.code_video_exchange.as_str(),
         config.interactive_html_exchange.as_str(),
         config.knowledge_explanation_exchange.as_str(),
+        config.curriculum_exchange.as_str(),
         config.pretest_exchange.as_str(),
         config.plan_exchange.as_str(),
         config.quiz_exchange.as_str(),

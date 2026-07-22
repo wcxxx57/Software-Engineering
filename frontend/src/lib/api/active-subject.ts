@@ -1,6 +1,8 @@
 import type { StudySubject } from "@/lib/api/schemas";
 
 const STATUS_PRIORITY: Record<StudySubject["status"], number> = {
+  CURRICULUM_QUEUING: 2,
+  CURRICULUM_FETCHING: 2,
   STUDYING: 0,
   PRETEST_READY: 1,
   PRETEST_QUEUING: 2,

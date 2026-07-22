@@ -5,7 +5,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
-    TransactionTrait,
+    QuerySelect, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -13,17 +13,19 @@ use validator::Validate;
 use crate::{
     auth::AuthUser,
     entities::{
-        common::ProblemAnswer, pretest_problem, study_stage, study_subject,
-        study_subject::StudySubjectStatus, study_task, user,
+        common::ProblemAnswer, pretest_problem, study_quiz, study_quiz_problem, study_stage,
+        study_subject, study_subject::StudySubjectStatus, study_task, study_task_curriculum_node,
+        user,
     },
     error::{AppError, BusinessError},
     response::{created, ok},
     routes::study_stages::{StudyStageDetailView, StudyTaskBriefView},
     services::asset_transaction::{self, DIAMOND},
-    services::personalization::LearnerProfileSnapshot,
     services::study_subject::{
-        PlanRequest, PretestRequest, PretestResult, dispatch_plan, dispatch_pretest,
+        CurriculumAcquisitionRequest, LearnerHistorySnapshot, PlanRequest, PretestResult,
+        dispatch_curriculum_acquisition, dispatch_plan,
     },
+    services::{curriculum, personalization::LearnerProfileSnapshot},
     state::AppState,
 };
 
@@ -41,6 +43,8 @@ pub struct StudySubjectView {
     pub diamond_cost: i32,
     pub language: String,
     pub target: String,
+    pub curriculum_template_id: Option<i32>,
+    pub failure_code: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -56,6 +60,8 @@ impl From<study_subject::Model> for StudySubjectView {
             diamond_cost: m.diamond_cost,
             language: m.language,
             target: m.target,
+            curriculum_template_id: m.curriculum_template_id,
+            failure_code: m.failure_code,
             created_at: m.created_at.timestamp_millis(),
             updated_at: m.updated_at.timestamp_millis(),
         }
@@ -75,6 +81,49 @@ pub struct PretestProblemView {
     pub explanation: String,
     pub confidence: Option<pretest_problem::PretestConfidence>,
     pub chosen_answer: Option<ProblemAnswer>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KnowledgeTreeView {
+    pub legacy: bool,
+    pub template: Option<KnowledgeTreeTemplateView>,
+    pub sources: Vec<KnowledgeTreeSourceView>,
+    pub nodes: Vec<KnowledgeTreeNodeView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KnowledgeTreeTemplateView {
+    pub id: i32,
+    pub canonical_name: String,
+    pub version: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KnowledgeTreeSourceView {
+    pub platform: String,
+    pub institution: String,
+    pub source_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct KnowledgeTreeNodeView {
+    pub node_key: String,
+    pub parent_node_key: Option<String>,
+    pub title: String,
+    pub description: String,
+    pub depth: i32,
+    pub sort_order: i32,
+    pub planned: bool,
+    pub progress: i32,
+    pub available: bool,
+    pub tasks: Vec<KnowledgeTreeTaskView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KnowledgeTreeTaskView {
+    pub id: i32,
+    pub title: String,
+    pub status: study_task::StudyTaskStatus,
 }
 
 // ── Payloads ──
@@ -131,6 +180,8 @@ pub async fn create(
         .unwrap_or_default()
         .to_owned();
 
+    let available_templates = curriculum::list_published_summaries(&state.db).await?;
+
     let cost = state
         .config
         .study_subject_diamond_costs
@@ -150,7 +201,6 @@ pub async fn create(
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
-    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
     let new_diamond = existing_user.diamond - cost;
     let mut active_user: user::ActiveModel = existing_user.clone().into();
     active_user.diamond = Set(new_diamond);
@@ -159,12 +209,14 @@ pub async fn create(
     let record = study_subject::ActiveModel {
         user_id: Set(auth_user.user_id),
         subject: Set(subject_text.clone()),
-        status: Set(StudySubjectStatus::PretestQueuing),
+        status: Set(StudySubjectStatus::CurriculumQueuing),
         total_stages: Set(total_stages),
         finished_stages: Set(0),
         diamond_cost: Set(cost),
         language: Set(language.clone()),
         target: Set(target.clone()),
+        curriculum_template_id: Set(None),
+        failure_code: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
@@ -175,29 +227,36 @@ pub async fn create(
     // Newly created subject becomes the user's active subject.
     active_user.active_study_subject_id = Set(Some(record.id));
     active_user.update(&tx).await?;
-    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "创建学习计划").await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        -cost,
+        new_diamond,
+        "创建学习计划",
+    )
+    .await?;
 
     tx.commit().await?;
 
-    let request = PretestRequest {
-        task_id: record.id,
-        prompt: subject_text,
-        total_stages,
-        language,
-        target,
-        learner_profile,
-    };
-    if let Err(err) = dispatch_pretest(
+    let dispatch_result = dispatch_curriculum_acquisition(
         state.publisher.as_ref(),
-        &state.config.pretest_exchange,
-        &request,
+        &state.config.curriculum_exchange,
+        &CurriculumAcquisitionRequest {
+            task_id: record.id,
+            prompt: subject_text,
+            language,
+            target,
+            available_templates,
+        },
     )
-    .await
-    {
+    .await;
+    if let Err(err) = dispatch_result {
         let tx = state.db.begin().await?;
 
         let mut active: study_subject::ActiveModel = record.clone().into();
         active.status = Set(StudySubjectStatus::Failed);
+        active.failure_code = Set(Some("CURRICULUM_DISPATCH_FAILED".to_owned()));
         active.updated_at = Set(Utc::now());
         active.update(&tx).await?;
 
@@ -210,7 +269,15 @@ pub async fn create(
         active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "学习计划生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            refund_user.id,
+            DIAMOND,
+            cost,
+            new_diamond,
+            "学习计划生成失败退款",
+        )
+        .await?;
 
         tx.commit().await?;
         return Err(err);
@@ -358,6 +425,183 @@ pub async fn list_stages(
     Ok(ok(views))
 }
 
+/// GET /api/v1/study-subjects/{id}/knowledge-tree
+pub async fn get_knowledge_tree(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    use crate::entities::{
+        curriculum_node, curriculum_source, curriculum_template, study_task_curriculum_node,
+    };
+    use std::collections::{HashMap, HashSet};
+
+    let subject = study_subject::Entity::find_by_id(id)
+        .filter(study_subject::Column::UserId.eq(auth_user.user_id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::StudySubjectNotFound))?;
+    let Some(template_id) = subject.curriculum_template_id else {
+        return Ok(ok(KnowledgeTreeView {
+            legacy: true,
+            template: None,
+            sources: Vec::new(),
+            nodes: Vec::new(),
+        }));
+    };
+
+    let template = curriculum_template::Entity::find_by_id(template_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::internal("curriculum template missing"))?;
+    let sources = curriculum_source::Entity::find()
+        .filter(curriculum_source::Column::CurriculumTemplateId.eq(template_id))
+        .filter(
+            curriculum_source::Column::Status
+                .eq(curriculum_source::CurriculumSourceStatus::Published),
+        )
+        .all(&state.db)
+        .await?;
+    let nodes = curriculum_node::Entity::find()
+        .filter(curriculum_node::Column::CurriculumTemplateId.eq(template_id))
+        .order_by_asc(curriculum_node::Column::SortOrder)
+        .all(&state.db)
+        .await?;
+
+    let stages = study_stage::Entity::find()
+        .filter(study_stage::Column::StudySubjectId.eq(subject.id))
+        .all(&state.db)
+        .await?;
+    let stage_ids = stages.into_iter().map(|stage| stage.id).collect::<Vec<_>>();
+    let tasks = if stage_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_task::Entity::find()
+            .filter(study_task::Column::StudyStageId.is_in(stage_ids))
+            .all(&state.db)
+            .await?
+    };
+    let task_ids = tasks.iter().map(|task| task.id).collect::<Vec<_>>();
+    let links = if task_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_task_curriculum_node::Entity::find()
+            .filter(study_task_curriculum_node::Column::StudyTaskId.is_in(task_ids))
+            .all(&state.db)
+            .await?
+    };
+    let task_by_id = tasks
+        .into_iter()
+        .map(|task| (task.id, task))
+        .collect::<HashMap<_, _>>();
+    let key_by_node_id = nodes
+        .iter()
+        .map(|node| (node.id, node.node_key.clone()))
+        .collect::<HashMap<_, _>>();
+    let mut direct_task_ids: HashMap<String, Vec<i32>> = HashMap::new();
+    for link in links {
+        if let Some(key) = key_by_node_id.get(&link.curriculum_node_id) {
+            direct_task_ids
+                .entry(key.clone())
+                .or_default()
+                .push(link.study_task_id);
+        }
+    }
+    let mut children: HashMap<String, Vec<String>> = HashMap::new();
+    for node in &nodes {
+        if let Some(parent) = &node.parent_node_key {
+            children
+                .entry(parent.clone())
+                .or_default()
+                .push(node.node_key.clone());
+        }
+    }
+    fn descendants(
+        key: &str,
+        children: &HashMap<String, Vec<String>>,
+        output: &mut HashSet<String>,
+    ) {
+        if !output.insert(key.to_owned()) {
+            return;
+        }
+        if let Some(items) = children.get(key) {
+            for child in items {
+                descendants(child, children, output);
+            }
+        }
+    }
+
+    let node_views = nodes
+        .into_iter()
+        .map(|node| {
+            let mut subtree = HashSet::new();
+            descendants(&node.node_key, &children, &mut subtree);
+            let aggregate_ids = subtree
+                .iter()
+                .flat_map(|key| direct_task_ids.get(key).into_iter().flatten().copied())
+                .collect::<HashSet<_>>();
+            let finished = aggregate_ids
+                .iter()
+                .filter(|task_id| {
+                    task_by_id
+                        .get(task_id)
+                        .is_some_and(|task| task.status == study_task::StudyTaskStatus::Finished)
+                })
+                .count();
+            let available = aggregate_ids.iter().any(|task_id| {
+                task_by_id
+                    .get(task_id)
+                    .is_some_and(|task| task.status == study_task::StudyTaskStatus::Studying)
+            });
+            let progress = if aggregate_ids.is_empty() {
+                0
+            } else {
+                ((finished * 100) / aggregate_ids.len()) as i32
+            };
+            let mut related_tasks = aggregate_ids
+                .iter()
+                .filter_map(|task_id| task_by_id.get(task_id))
+                .map(|task| KnowledgeTreeTaskView {
+                    id: task.id,
+                    title: task.title.clone(),
+                    status: task.status,
+                })
+                .collect::<Vec<_>>();
+            related_tasks.sort_by_key(|task| task.id);
+            KnowledgeTreeNodeView {
+                node_key: node.node_key,
+                parent_node_key: node.parent_node_key,
+                title: node.title,
+                description: node.description,
+                depth: node.depth,
+                sort_order: node.sort_order,
+                planned: !aggregate_ids.is_empty(),
+                progress,
+                available,
+                tasks: related_tasks,
+            }
+        })
+        .collect();
+
+    Ok(ok(KnowledgeTreeView {
+        legacy: false,
+        template: Some(KnowledgeTreeTemplateView {
+            id: template.id,
+            canonical_name: template.canonical_name,
+            version: template.version,
+        }),
+        sources: sources
+            .into_iter()
+            .map(|source| KnowledgeTreeSourceView {
+                platform: source.platform,
+                institution: source.institution,
+                source_url: source.source_url,
+            })
+            .collect(),
+        nodes: node_views,
+    }))
+}
+
 /// PATCH /api/v1/study-subjects/{id}/pretest/{pretest_problem_id}
 pub async fn update_pretest_problem(
     State(state): State<AppState>,
@@ -407,8 +651,17 @@ pub async fn create_plan(
         return Err(AppError::business(BusinessError::InvalidStudySubjectStatus));
     }
 
+    let template_id = match subject.curriculum_template_id {
+        Some(id) => id,
+        None => curriculum::match_legacy_template(&tx, &subject.subject, &subject.language)
+            .await?
+            .map(|template| template.id)
+            .ok_or_else(|| AppError::internal("plan subject is missing curriculum template"))?,
+    };
+
     let mut active: study_subject::ActiveModel = subject.clone().into();
     active.status = Set(StudySubjectStatus::PlanQueuing);
+    active.curriculum_template_id = Set(Some(template_id));
     active.updated_at = Set(Utc::now());
     active.update(&tx).await?;
 
@@ -418,6 +671,15 @@ pub async fn create_plan(
         .order_by_asc(pretest_problem::Column::SortOrder)
         .all(&tx)
         .await?;
+
+    let node_keys_by_id: std::collections::HashMap<i32, String> =
+        crate::entities::curriculum_node::Entity::find()
+            .filter(crate::entities::curriculum_node::Column::CurriculumTemplateId.eq(template_id))
+            .all(&tx)
+            .await?
+            .into_iter()
+            .map(|node| (node.id, node.node_key))
+            .collect();
 
     let pretest_results: Vec<PretestResult> = pretest_problems
         .iter()
@@ -431,8 +693,119 @@ pub async fn create_plan(
             answer: format!("{:?}", pp.answer),
             chosen_answer: pp.chosen_answer.map(|a| format!("{:?}", a)),
             confidence: pp.confidence.map(|c| format!("{:?}", c)),
+            knowledge_node_key: pp
+                .curriculum_node_id
+                .and_then(|id| node_keys_by_id.get(&id).cloned()),
         })
         .collect();
+
+    let existing_user = user::Entity::find_by_id(auth_user.user_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+    let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
+    let user_subjects = study_subject::Entity::find()
+        .filter(study_subject::Column::UserId.eq(auth_user.user_id))
+        .all(&tx)
+        .await?;
+    let completed_subjects = user_subjects
+        .iter()
+        .filter(|item| item.status == StudySubjectStatus::Finished)
+        .map(|item| item.subject.clone())
+        .collect::<Vec<_>>();
+
+    let user_subject_ids = user_subjects.iter().map(|item| item.id).collect::<Vec<_>>();
+    let user_stage_ids = if user_subject_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_stage::Entity::find()
+            .filter(study_stage::Column::StudySubjectId.is_in(user_subject_ids))
+            .all(&tx)
+            .await?
+            .into_iter()
+            .map(|stage| stage.id)
+            .collect::<Vec<_>>()
+    };
+    let user_tasks = if user_stage_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_task::Entity::find()
+            .filter(study_task::Column::StudyStageId.is_in(user_stage_ids))
+            .all(&tx)
+            .await?
+    };
+    let user_task_ids = user_tasks.iter().map(|task| task.id).collect::<Vec<_>>();
+    let finished_task_ids = user_tasks
+        .iter()
+        .filter(|task| task.status == study_task::StudyTaskStatus::Finished)
+        .map(|task| task.id)
+        .collect::<std::collections::HashSet<_>>();
+    let task_node_links = if user_task_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_task_curriculum_node::Entity::find()
+            .filter(study_task_curriculum_node::Column::StudyTaskId.is_in(user_task_ids.clone()))
+            .all(&tx)
+            .await?
+    };
+    let completed_knowledge_node_keys = task_node_links
+        .iter()
+        .filter(|link| finished_task_ids.contains(&link.study_task_id))
+        .filter_map(|link| node_keys_by_id.get(&link.curriculum_node_id).cloned())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let recent_quizzes = if user_task_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_quiz::Entity::find()
+            .filter(study_quiz::Column::StudyTaskId.is_in(user_task_ids))
+            .filter(study_quiz::Column::Status.eq(study_quiz::StudyQuizStatus::Submitted))
+            .order_by_desc(study_quiz::Column::UpdatedAt)
+            .limit(50)
+            .all(&tx)
+            .await?
+    };
+    let quiz_task_by_id = recent_quizzes
+        .iter()
+        .map(|quiz| (quiz.id, quiz.study_task_id))
+        .collect::<std::collections::HashMap<_, _>>();
+    let quiz_ids = recent_quizzes
+        .iter()
+        .map(|quiz| quiz.id)
+        .collect::<Vec<_>>();
+    let wrong_quiz_task_ids = if quiz_ids.is_empty() {
+        std::collections::HashSet::new()
+    } else {
+        study_quiz_problem::Entity::find()
+            .filter(study_quiz_problem::Column::StudyQuizId.is_in(quiz_ids))
+            .all(&tx)
+            .await?
+            .into_iter()
+            .filter(|problem| problem.chosen_answer != Some(problem.answer))
+            .filter_map(|problem| quiz_task_by_id.get(&problem.study_quiz_id).copied())
+            .collect::<std::collections::HashSet<_>>()
+    };
+    let mut weak_knowledge_node_keys = pretest_problems
+        .iter()
+        .filter(|problem| {
+            problem.chosen_answer != Some(problem.answer)
+                || problem.confidence != Some(pretest_problem::PretestConfidence::VerySure)
+        })
+        .filter_map(|problem| {
+            problem
+                .curriculum_node_id
+                .and_then(|node_id| node_keys_by_id.get(&node_id).cloned())
+        })
+        .collect::<std::collections::HashSet<_>>();
+    weak_knowledge_node_keys.extend(
+        task_node_links
+            .iter()
+            .filter(|link| wrong_quiz_task_ids.contains(&link.study_task_id))
+            .filter_map(|link| node_keys_by_id.get(&link.curriculum_node_id).cloned()),
+    );
+    let weak_knowledge_node_keys = weak_knowledge_node_keys.into_iter().collect::<Vec<_>>();
 
     tx.commit().await?;
 
@@ -443,6 +816,13 @@ pub async fn create_plan(
         language: subject.language.clone(),
         target: subject.target.clone(),
         pretest_results,
+        learner_profile,
+        learner_history: LearnerHistorySnapshot {
+            completed_subjects,
+            completed_knowledge_node_keys,
+            weak_knowledge_node_keys,
+        },
+        authoritative_outline: curriculum::load_outline(&state.db, template_id).await?,
     };
 
     if let Err(err) = dispatch_plan(
@@ -456,6 +836,7 @@ pub async fn create_plan(
 
         let mut active: study_subject::ActiveModel = subject.clone().into();
         active.status = Set(StudySubjectStatus::Failed);
+        active.failure_code = Set(Some("PLAN_DISPATCH_FAILED".to_owned()));
         active.updated_at = Set(Utc::now());
         active.update(&tx).await?;
 
@@ -469,7 +850,15 @@ pub async fn create_plan(
         active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "学习计划生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            refund_user.id,
+            DIAMOND,
+            cost,
+            new_diamond,
+            "学习计划生成失败退款",
+        )
+        .await?;
 
         tx.commit().await?;
         return Err(err);

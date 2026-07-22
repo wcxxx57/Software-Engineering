@@ -67,6 +67,7 @@ pub enum ServiceKind {
     CodeVideo,
     InteractiveHtml,
     KnowledgeExplanation,
+    Curriculum,
     Pretest,
     Plan,
     Quiz,
@@ -99,6 +100,8 @@ impl FromRequestParts<AppState> for ServiceAuth {
             ServiceKind::InteractiveHtml
         } else if token == config.knowledge_explanation_api_key {
             ServiceKind::KnowledgeExplanation
+        } else if token == config.curriculum_api_key {
+            ServiceKind::Curriculum
         } else if token == config.pretest_api_key {
             ServiceKind::Pretest
         } else if token == config.plan_api_key {

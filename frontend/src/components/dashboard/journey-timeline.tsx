@@ -1,10 +1,12 @@
 "use client";
 
-import { Check, Lock } from "lucide-react";
+import { BrainCircuit, Check, ListTree, Lock } from "lucide-react";
 import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { KnowledgeTreeView } from "@/components/dashboard/knowledge-tree-view";
 import { useSubjectStages } from "@/lib/query/study-stage";
 import { cn } from "@/lib/utils";
 import type {
@@ -26,6 +28,14 @@ export function JourneyTimeline({ subject }: { subject: StudySubject }) {
 
   return (
     <Card className="flex flex-col gap-6 rounded-3xl border border-border/30 bg-white/70 p-6 shadow-[var(--shadow-soft)] backdrop-blur-sm">
+      <Tabs defaultValue="plan" className="gap-5">
+        <div className="flex justify-end">
+          <TabsList className="bg-palette-yellow-mist">
+            <TabsTrigger value="plan"><ListTree />计划</TabsTrigger>
+            <TabsTrigger value="tree"><BrainCircuit />知识树</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="plan" className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4">
           <h3 className="text-lg font-bold text-brand-dark">
@@ -71,6 +81,11 @@ export function JourneyTimeline({ subject }: { subject: StudySubject }) {
           ))}
         </ol>
       )}
+        </TabsContent>
+        <TabsContent value="tree">
+          <KnowledgeTreeView subjectId={subject.id} />
+        </TabsContent>
+      </Tabs>
     </Card>
   );
 }

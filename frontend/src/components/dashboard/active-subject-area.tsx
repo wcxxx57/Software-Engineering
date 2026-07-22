@@ -15,6 +15,14 @@ export function ActiveSubjectArea({ subject }: { subject: StudySubject }) {
   });
 
   switch (data.status) {
+    case "CURRICULUM_QUEUING":
+    case "CURRICULUM_FETCHING":
+      return (
+        <GeneratingCard
+          title="正在匹配权威课程大纲"
+          description="AI 正在查看知识库中的课程模板；若没有合适模板，将从教育来源白名单补充并入库。"
+        />
+      );
     case "PRETEST_QUEUING":
     case "PRETEST_GENERATING":
       return (

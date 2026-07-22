@@ -7,6 +7,8 @@ export const problemAnswer = z.enum(["A", "B", "C", "D"]);
 export const pretestConfidence = z.enum(["NOT_SURE", "SOMEWHAT_SURE", "VERY_SURE"]);
 
 export const studySubjectStatus = z.enum([
+  "CURRICULUM_QUEUING",
+  "CURRICULUM_FETCHING",
   "PRETEST_QUEUING",
   "PRETEST_GENERATING",
   "PRETEST_READY",
@@ -132,6 +134,8 @@ export const studySubjectSchema = z.object({
   diamond_cost: z.number().int(),
   language: z.string(),
   target: z.string(),
+  curriculum_template_id: z.number().int().nullable(),
+  failure_code: z.string().nullable(),
   created_at: z.number().int(),
   updated_at: z.number().int(),
 });
@@ -261,6 +265,34 @@ export const studyStageDetailSchema = z.object({
 });
 export type StudyStageDetail = z.infer<typeof studyStageDetailSchema>;
 export const studyStageListSchema = z.array(studyStageDetailSchema);
+
+export const knowledgeTreeTaskSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  status: studyTaskStatus,
+});
+
+export const knowledgeTreeNodeSchema = z.object({
+  node_key: z.string(),
+  parent_node_key: z.string().nullable(),
+  title: z.string(),
+  description: z.string(),
+  depth: z.number().int(),
+  sort_order: z.number().int(),
+  planned: z.boolean(),
+  progress: z.number().int().min(0).max(100),
+  available: z.boolean(),
+  tasks: z.array(knowledgeTreeTaskSchema),
+});
+
+export const knowledgeTreeSchema = z.object({
+  legacy: z.boolean(),
+  template: z.object({ id: z.number().int(), canonical_name: z.string(), version: z.number().int() }).nullable(),
+  sources: z.array(z.object({ platform: z.string(), institution: z.string(), source_url: z.string() })),
+  nodes: z.array(knowledgeTreeNodeSchema),
+});
+export type KnowledgeTree = z.infer<typeof knowledgeTreeSchema>;
+export type KnowledgeTreeNode = z.infer<typeof knowledgeTreeNodeSchema>;
 
 export const studyTaskSchema = z.object({
   id: z.number().int(),

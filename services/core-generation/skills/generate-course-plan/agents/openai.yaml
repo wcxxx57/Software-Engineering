@@ -1,0 +1,4 @@
+interface:
+  display_name: "Authoritative Course Planner"
+  short_description: "Generate grounded plans with curriculum node mappings"
+  default_prompt: "Use $generate-course-plan to generate a personalized plan grounded in a published curriculum outline."

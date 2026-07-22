@@ -15,12 +15,13 @@ RUN apt-get update \
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
-RUN cargo build --release --bin zhiying-backend
+RUN cargo build --release --bins
 
 # ---------- 3. runtime: distroless ----------
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/zhiying-backend /usr/local/bin/zhiying-backend
+COPY --from=builder /app/target/release/curriculum_review /usr/local/bin/curriculum_review
 EXPOSE 9000
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/zhiying-backend"]

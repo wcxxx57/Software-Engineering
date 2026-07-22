@@ -12,10 +12,29 @@ from pydantic import BaseModel, ValidationError
 from .callback import CallbackClient
 from .config import Settings
 from .llm import LlmClient
-from .models import KnowledgeExplanationRequest, PlanRequest, PretestRequest, QuizRequest
+from .models import (
+    CurriculumAcquisitionRequest,
+    KnowledgeExplanationRequest,
+    PlanRequest,
+    PretestRequest,
+    QuizRequest,
+)
 
 log = logging.getLogger(__name__)
 Generator = Callable[[LlmClient, Settings, BaseModel], Awaitable[dict]]
+
+
+def _failure_code(spec: WorkerSpec, exc: Exception) -> str:
+    if spec.name != "curriculum":
+        return f"{spec.name.upper()}_GENERATION_FAILED"
+    detail = str(exc)
+    if "TAVILY_API_KEY" in detail:
+        return "CURRICULUM_SEARCH_NOT_CONFIGURED"
+    if "no curriculum pages" in detail:
+        return "CURRICULUM_SOURCE_NOT_FOUND"
+    if "unknown template id" in detail:
+        return "CURRICULUM_TEMPLATE_SELECTION_INVALID"
+    return "CURRICULUM_ACQUISITION_FAILED"
 
 
 @dataclass(frozen=True)
@@ -70,7 +89,7 @@ async def start_worker(
                 log.info("task finished service=%s task_id=%s", spec.name, task_id)
             except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
                 log.error("invalid message service=%s error=%s", spec.name, exc)
-            except Exception:
+            except Exception as exc:
                 log.exception("task failed service=%s task_id=%s", spec.name, task_id)
                 if task_id is not None:
                     try:
@@ -78,7 +97,7 @@ async def start_worker(
                             method=spec.callback_method,
                             path=spec.callback_path.format(task_id=task_id),
                             api_key=getattr(settings, spec.api_key_attr),
-                            payload={"status": "FAILED"},
+                            payload={"status": "FAILED", "failure_code": _failure_code(spec, exc)},
                         )
                     except Exception:
                         log.exception(
@@ -92,6 +111,7 @@ async def start_worker(
 
 def specs() -> list[WorkerSpec]:
     from .generators import (
+        generate_curriculum_acquisition,
         generate_knowledge_explanation,
         generate_plan,
         generate_pretest,
@@ -99,6 +119,16 @@ def specs() -> list[WorkerSpec]:
     )
 
     return [
+        WorkerSpec(
+            name="curriculum",
+            exchange="zhiying.curriculum",
+            queue="zhiying.curriculum.generate",
+            request_model=CurriculumAcquisitionRequest,
+            callback_method="POST",
+            callback_path="/internal/curriculum-acquisitions/{task_id}",
+            api_key_attr="curriculum_api_key",
+            generator=generate_curriculum_acquisition,
+        ),
         WorkerSpec(
             name="pretest",
             exchange="zhiying.pretest",

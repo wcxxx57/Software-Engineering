@@ -1,6 +1,9 @@
 pub mod asset_transaction;
 pub mod code_video;
 pub mod common;
+pub mod curriculum_node;
+pub mod curriculum_source;
+pub mod curriculum_template;
 pub mod interactive_html;
 pub mod knowledge_explanation;
 pub mod knowledge_video;
@@ -10,6 +13,7 @@ pub mod study_quiz_problem;
 pub mod study_stage;
 pub mod study_subject;
 pub mod study_task;
+pub mod study_task_curriculum_node;
 pub mod user;
 pub mod user_checkin;
 pub mod user_code_video_link;

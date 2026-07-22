@@ -14,15 +14,21 @@ use std::collections::HashSet;
 use crate::{
     auth::{ServiceAuth, ServiceKind},
     entities::{
-        code_video, common::ProblemAnswer, interactive_html, knowledge_explanation,
-        knowledge_video, pretest_problem, study_quiz, study_quiz::StudyQuizStatus,
-        study_quiz_problem, study_stage, study_stage::StudyStageStatus, study_subject,
-        study_subject::StudySubjectStatus, study_task, study_task::StudyTaskStatus, user,
+        code_video, common::ProblemAnswer, curriculum_node, interactive_html,
+        knowledge_explanation, knowledge_video, pretest_problem, study_quiz,
+        study_quiz::StudyQuizStatus, study_quiz_problem, study_stage,
+        study_stage::StudyStageStatus, study_subject, study_subject::StudySubjectStatus,
+        study_task, study_task::StudyTaskStatus, study_task_curriculum_node, user,
         user_code_video_link, user_interactive_html_link, user_knowledge_video_link,
     },
     error::{AppError, BusinessError},
     response::ok,
-    services::asset_transaction::{self, DIAMOND, GOLD},
+    services::{
+        asset_transaction::{self, DIAMOND, GOLD},
+        curriculum,
+        personalization::LearnerProfileSnapshot,
+        study_subject::{PretestRequest, dispatch_pretest},
+    },
     state::AppState,
 };
 
@@ -43,6 +49,10 @@ pub fn router() -> Router<AppState> {
             patch(update_knowledge_explanation),
         )
         .route("/study-subjects/{id}", post(callback_study_subject))
+        .route(
+            "/curriculum-acquisitions/{id}",
+            post(callback_curriculum_acquisition),
+        )
         .route("/study-quizzes/{id}", post(callback_study_quiz))
         .route("/users/{id}/balance", post(recharge_balance))
 }
@@ -353,7 +363,15 @@ async fn update_knowledge_video(
             active_user.diamond = Set(new_diamond);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
-            asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "知识视频生成失败退款").await?;
+            asset_transaction::record(
+                &tx,
+                existing_user.id,
+                DIAMOND,
+                cost,
+                new_diamond,
+                "知识视频生成失败退款",
+            )
+            .await?;
         } else {
             tracing::warn!(
                 resource_id = id,
@@ -436,7 +454,15 @@ async fn update_code_video(
             active_user.diamond = Set(new_diamond);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
-            asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "代码视频生成失败退款").await?;
+            asset_transaction::record(
+                &tx,
+                existing_user.id,
+                DIAMOND,
+                cost,
+                new_diamond,
+                "代码视频生成失败退款",
+            )
+            .await?;
         } else {
             tracing::warn!(
                 resource_id = id,
@@ -517,7 +543,15 @@ async fn update_interactive_html(
             active_user.diamond = Set(new_diamond);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
-            asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "2D 交互生成失败退款").await?;
+            asset_transaction::record(
+                &tx,
+                existing_user.id,
+                DIAMOND,
+                cost,
+                new_diamond,
+                "2D 交互生成失败退款",
+            )
+            .await?;
         } else {
             tracing::warn!(
                 resource_id = id,
@@ -598,7 +632,15 @@ async fn update_knowledge_explanation(
         active_user.gold = Set(new_gold);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, existing_user.id, GOLD, record.cost, new_gold, "知识解析生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            existing_user.id,
+            GOLD,
+            record.cost,
+            new_gold,
+            "知识解析生成失败退款",
+        )
+        .await?;
     }
 
     active.update(&tx).await?;
@@ -637,8 +679,189 @@ fn validate_knowledge_explanation_transition(
 // --- study_subject callback ---
 
 #[derive(Debug, Deserialize)]
+struct CurriculumAcquisitionCallbackRequest {
+    status: String,
+    #[serde(default)]
+    failure_code: Option<String>,
+    #[serde(default)]
+    curriculum: Option<curriculum::AcquiredCurriculum>,
+    #[serde(default)]
+    existing_template_id: Option<i32>,
+}
+
+async fn fail_curriculum_subject(
+    state: &AppState,
+    subject: &study_subject::Model,
+    failure_code: &str,
+    refund_reason: &str,
+) -> Result<(), AppError> {
+    let tx = state.db.begin().await?;
+    let mut active: study_subject::ActiveModel = subject.clone().into();
+    active.status = Set(StudySubjectStatus::Failed);
+    active.failure_code = Set(Some(failure_code.to_owned()));
+    active.updated_at = Set(Utc::now());
+    active.update(&tx).await?;
+
+    let existing_user = user::Entity::find_by_id(subject.user_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+    let new_diamond = existing_user.diamond + subject.diamond_cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.diamond = Set(new_diamond);
+    active_user.updated_at = Set(Utc::now());
+    active_user.update(&tx).await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        subject.diamond_cost,
+        new_diamond,
+        refund_reason,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn callback_curriculum_acquisition(
+    State(state): State<AppState>,
+    service_auth: ServiceAuth,
+    Path(id): Path<i32>,
+    Json(payload): Json<CurriculumAcquisitionCallbackRequest>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    if service_auth.service != ServiceKind::Curriculum {
+        return Err(AppError::business(BusinessError::InvalidApiKey));
+    }
+
+    let subject = study_subject::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::StudySubjectNotFound))?;
+
+    if payload.status == "GENERATING" {
+        if subject.status != StudySubjectStatus::CurriculumQueuing {
+            return Err(AppError::business(BusinessError::InvalidStudySubjectStatus));
+        }
+        let mut active: study_subject::ActiveModel = subject.into();
+        active.status = Set(StudySubjectStatus::CurriculumFetching);
+        active.updated_at = Set(Utc::now());
+        active.update(&state.db).await?;
+        return Ok(ok(serde_json::json!({"success": true})));
+    }
+
+    if !matches!(
+        subject.status,
+        StudySubjectStatus::CurriculumQueuing | StudySubjectStatus::CurriculumFetching
+    ) {
+        return Err(AppError::business(BusinessError::InvalidStudySubjectStatus));
+    }
+
+    if payload.status == "FAILED" {
+        let code = payload
+            .failure_code
+            .unwrap_or_else(|| "CURRICULUM_ACQUISITION_FAILED".to_owned());
+        fail_curriculum_subject(&state, &subject, &code, "课程大纲采集失败退款").await?;
+        return Ok(ok(serde_json::json!({"success": true})));
+    }
+
+    if payload.status != "FINISHED" {
+        return Err(AppError::business(BusinessError::InvalidContentStatus));
+    }
+    let template_id = if let Some(template_id) = payload.existing_template_id {
+        let template = crate::entities::curriculum_template::Entity::find_by_id(template_id)
+            .one(&state.db)
+            .await?
+            .filter(|template| {
+                template.status
+                    == crate::entities::curriculum_template::CurriculumTemplateStatus::Published
+            })
+            .ok_or_else(|| {
+                AppError::internal("curriculum selector returned an unavailable template")
+            })?;
+        template.id
+    } else {
+        let curriculum_payload = payload
+            .curriculum
+            .ok_or_else(|| AppError::internal("curriculum FINISHED callback missing data"))?;
+        if let Some(existing_id) =
+            curriculum::published_template_id_by_hash(&state.db, &curriculum_payload.content_hash)
+                .await?
+        {
+            existing_id
+        } else {
+            if let Err(code) = curriculum::validate_acquired(
+                &curriculum_payload,
+                &state.config.curriculum_source_domains,
+                state.config.curriculum_auto_publish_min_score,
+            ) {
+                if curriculum::source_is_allowed(
+                    &curriculum_payload.source_url,
+                    &state.config.curriculum_source_domains,
+                ) {
+                    curriculum::persist_pending_review(&state.db, &curriculum_payload, code)
+                        .await?;
+                }
+                fail_curriculum_subject(&state, &subject, code, "课程大纲待审核退款").await?;
+                return Ok(ok(
+                    serde_json::json!({"success": true, "review_required": true}),
+                ));
+            }
+            curriculum::persist_acquired(&state.db, &curriculum_payload).await?
+        }
+    };
+    let authoritative_outline = curriculum::load_outline(&state.db, template_id).await?;
+    let existing_user = user::Entity::find_by_id(subject.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+    let mut active: study_subject::ActiveModel = subject.clone().into();
+    active.status = Set(StudySubjectStatus::PretestQueuing);
+    active.curriculum_template_id = Set(Some(template_id));
+    active.failure_code = Set(None);
+    active.updated_at = Set(Utc::now());
+    active.update(&state.db).await?;
+
+    let request = PretestRequest {
+        task_id: subject.id,
+        prompt: subject.subject,
+        total_stages: subject.total_stages,
+        language: subject.language,
+        target: subject.target,
+        learner_profile: LearnerProfileSnapshot::from_user(&existing_user),
+        authoritative_outline,
+    };
+    if dispatch_pretest(
+        state.publisher.as_ref(),
+        &state.config.pretest_exchange,
+        &request,
+    )
+    .await
+    .is_err()
+    {
+        let pinned_subject = study_subject::Entity::find_by_id(subject.id)
+            .one(&state.db)
+            .await?
+            .ok_or_else(|| AppError::business(BusinessError::StudySubjectNotFound))?;
+        fail_curriculum_subject(
+            &state,
+            &pinned_subject,
+            "PRETEST_DISPATCH_FAILED",
+            "课前测入队失败退款",
+        )
+        .await?;
+        return Ok(ok(serde_json::json!({"success": false})));
+    }
+    Ok(ok(
+        serde_json::json!({"success": true, "curriculum_template_id": template_id}),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
 struct StudySubjectCallbackRequest {
     status: String,
+    #[serde(default)]
+    failure_code: Option<String>,
     #[serde(default)]
     problems: Option<Vec<CallbackProblem>>,
     #[serde(default)]
@@ -654,6 +877,8 @@ struct CallbackProblem {
     choice_d: String,
     answer: String,
     explanation: String,
+    #[serde(default)]
+    knowledge_node_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -667,6 +892,8 @@ struct CallbackStage {
 struct CallbackTask {
     title: String,
     description: String,
+    #[serde(default)]
+    knowledge_node_keys: Vec<String>,
 }
 
 async fn callback_study_subject(
@@ -722,6 +949,13 @@ async fn callback_study_subject(
 
     // Handle FAILED → refund
     if new_status == StudySubjectStatus::Failed {
+        active.failure_code = Set(Some(payload.failure_code.clone().unwrap_or_else(|| {
+            if is_pretest {
+                "PRETEST_GENERATION_FAILED".to_owned()
+            } else {
+                "PLAN_GENERATION_FAILED".to_owned()
+            }
+        })));
         let cost = subject.diamond_cost;
         let existing_user = user::Entity::find_by_id(subject.user_id)
             .one(&tx)
@@ -732,7 +966,15 @@ async fn callback_study_subject(
         active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "学习计划生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            existing_user.id,
+            DIAMOND,
+            cost,
+            new_diamond,
+            "学习计划生成失败退款",
+        )
+        .await?;
     }
 
     // Handle Pretest FINISHED → create problems
@@ -741,8 +983,30 @@ async fn callback_study_subject(
             .problems
             .ok_or_else(|| AppError::internal("pretest FINISHED callback missing problems data"))?;
 
+        let node_ids_by_key: std::collections::HashMap<String, i32> =
+            if let Some(template_id) = subject.curriculum_template_id {
+                curriculum_node::Entity::find()
+                    .filter(curriculum_node::Column::CurriculumTemplateId.eq(template_id))
+                    .all(&tx)
+                    .await?
+                    .into_iter()
+                    .map(|node| (node.node_key, node.id))
+                    .collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+
         for (i, p) in problems.into_iter().enumerate() {
             let answer = parse_problem_answer(&p.answer)?;
+            let curriculum_node_id = p
+                .knowledge_node_key
+                .as_ref()
+                .and_then(|key| node_ids_by_key.get(key).copied());
+            if subject.curriculum_template_id.is_some() && curriculum_node_id.is_none() {
+                return Err(AppError::internal(
+                    "pretest referenced an unknown curriculum node",
+                ));
+            }
             pretest_problem::ActiveModel {
                 study_subject_id: Set(subject.id),
                 sort_order: Set(i as i32),
@@ -755,6 +1019,7 @@ async fn callback_study_subject(
                 explanation: Set(p.explanation),
                 confidence: Set(None),
                 chosen_answer: Set(None),
+                curriculum_node_id: Set(curriculum_node_id),
                 created_at: Set(now),
                 ..Default::default()
             }
@@ -769,6 +1034,29 @@ async fn callback_study_subject(
         let stages = payload
             .stages
             .ok_or_else(|| AppError::internal("plan FINISHED callback missing stages data"))?;
+        if subject.curriculum_template_id.is_some()
+            && (stages.len() != subject.total_stages as usize
+                || stages
+                    .iter()
+                    .any(|stage| stage.tasks.len() != state.config.plan_tasks_per_stage as usize))
+        {
+            return Err(AppError::internal(
+                "plan stage or task count does not match the requested shape",
+            ));
+        }
+
+        let node_ids_by_key: std::collections::HashMap<String, i32> =
+            if let Some(template_id) = subject.curriculum_template_id {
+                curriculum_node::Entity::find()
+                    .filter(curriculum_node::Column::CurriculumTemplateId.eq(template_id))
+                    .all(&tx)
+                    .await?
+                    .into_iter()
+                    .map(|node| (node.node_key, node.id))
+                    .collect()
+            } else {
+                std::collections::HashMap::new()
+            };
 
         for (si, s) in stages.into_iter().enumerate() {
             let is_first_stage = si == 0;
@@ -803,6 +1091,20 @@ async fn callback_study_subject(
                 };
 
                 let prompt = format!("{}\n\n{}", t.title, t.description);
+                let knowledge_node_ids = t
+                    .knowledge_node_keys
+                    .iter()
+                    .map(|key| {
+                        node_ids_by_key.get(key).copied().ok_or_else(|| {
+                            AppError::internal("plan referenced an unknown curriculum node")
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                if subject.curriculum_template_id.is_some() && knowledge_node_ids.is_empty() {
+                    return Err(AppError::internal(
+                        "plan task is missing curriculum node mapping",
+                    ));
+                }
                 let ke_record = knowledge_explanation::ActiveModel {
                     user_id: Set(subject.user_id),
                     status: Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing),
@@ -818,7 +1120,7 @@ async fn callback_study_subject(
                 .await?;
                 explanations_to_dispatch.push((ke_record.id, prompt));
 
-                study_task::ActiveModel {
+                let task_record = study_task::ActiveModel {
                     study_stage_id: Set(stage_record.id),
                     title: Set(t.title),
                     description: Set(t.description),
@@ -833,6 +1135,15 @@ async fn callback_study_subject(
                 }
                 .insert(&tx)
                 .await?;
+                for curriculum_node_id in knowledge_node_ids {
+                    study_task_curriculum_node::ActiveModel {
+                        study_task_id: Set(task_record.id),
+                        curriculum_node_id: Set(curriculum_node_id),
+                        ..Default::default()
+                    }
+                    .insert(&tx)
+                    .await?;
+                }
             }
         }
     }
@@ -955,7 +1266,15 @@ async fn callback_study_quiz(
         active_user.gold = Set(new_gold);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, existing_user.id, GOLD, quiz.cost, new_gold, "知识点测验生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            existing_user.id,
+            GOLD,
+            quiz.cost,
+            new_gold,
+            "知识点测验生成失败退款",
+        )
+        .await?;
     }
 
     // Handle FINISHED → create problems
@@ -1045,7 +1364,15 @@ async fn recharge_balance(
     active.updated_at = Set(Utc::now());
     active.update(&tx).await?;
     asset_transaction::record(&tx, existing.id, GOLD, gold_delta, new_gold, "系统调整").await?;
-    asset_transaction::record(&tx, existing.id, DIAMOND, diamond_delta, new_diamond, "系统调整").await?;
+    asset_transaction::record(
+        &tx,
+        existing.id,
+        DIAMOND,
+        diamond_delta,
+        new_diamond,
+        "系统调整",
+    )
+    .await?;
 
     tx.commit().await?;
 

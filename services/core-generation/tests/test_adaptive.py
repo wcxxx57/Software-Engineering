@@ -5,12 +5,27 @@ from zhiying_core_generation.adaptive import (
     select_pretest_problem_count,
 )
 from zhiying_core_generation.config import Settings
-from zhiying_core_generation.generators import generate_knowledge_explanation, generate_pretest
+from zhiying_core_generation.generators import (
+    generate_curriculum_acquisition,
+    generate_knowledge_explanation,
+    generate_plan,
+    generate_pretest,
+)
 from zhiying_core_generation.models import (
+    CurriculumAcquisitionRequest,
+    CurriculumNode,
+    CurriculumOutline,
+    CurriculumSelectionPayload,
+    CurriculumSource,
+    CurriculumTemplateSummary,
     ExplanationPayload,
     ExplanationSizingPayload,
     KnowledgeExplanationRequest,
     LearnerProfile,
+    PlanPayload,
+    PlanRequest,
+    PlanStage,
+    PlanTask,
     PretestRequest,
     PretestSizingPayload,
     Problem,
@@ -23,11 +38,35 @@ def settings(**overrides: object) -> Settings:
         "llm_api_key": "test-key",
         "pretest_api_key": "sk-pretest-test",
         "plan_api_key": "sk-plan-test",
+        "curriculum_api_key": "sk-curriculum-test",
         "quiz_api_key": "sk-quiz-test",
         "knowledge_explanation_api_key": "sk-explanation-test",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
+
+
+def outline() -> CurriculumOutline:
+    return CurriculumOutline(
+        template_id=1,
+        canonical_name="Rust 语言基础",
+        version=1,
+        sources=[
+            CurriculumSource(
+                platform="MOOC",
+                institution="示例高校",
+                source_url="https://www.icourse163.org/course/example",
+            )
+        ],
+        nodes=[
+            CurriculumNode(
+                node_key="root",
+                title="Rust 语言基础",
+                depth=0,
+                sort_order=0,
+            )
+        ],
+    )
 
 
 class FakeClient:
@@ -54,6 +93,7 @@ def problems(count: int) -> ProblemsPayload:
                 choice_d=f"干扰选项 D{index}",
                 answer="A",
                 explanation="用于诊断对应知识层级。",
+                knowledge_node_key="root",
             )
             for index in range(count)
         ]
@@ -61,6 +101,69 @@ def problems(count: int) -> ProblemsPayload:
 
 
 class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_plan_skill_runner_enforces_authoritative_node_mapping(self) -> None:
+        client = FakeClient(
+            PlanPayload(
+                stages=[
+                    PlanStage(
+                        title="基础阶段",
+                        description="掌握核心概念",
+                        tasks=[
+                            PlanTask(
+                                title=f"任务 {index}",
+                                description="完成概念学习和练习",
+                                knowledge_node_keys=["root"],
+                            )
+                            for index in range(3)
+                        ],
+                    )
+                ]
+            )
+        )
+        request = PlanRequest(
+            task_id=2,
+            prompt="Rust 基础",
+            total_stages=1,
+            language="RUST",
+            target="掌握所有权",
+            pretest_results=[],
+            authoritative_outline=outline(),
+        )
+
+        result = await generate_plan(client, settings(), request)  # type: ignore[arg-type]
+
+        self.assertEqual(result["stages"][0]["tasks"][0]["knowledge_node_keys"], ["root"])
+        self.assertIn("权威课程大纲", client.calls[0]["user"])
+
+    async def test_curriculum_ai_selects_from_current_database_without_web_search(self) -> None:
+        client = FakeClient(
+            CurriculumSelectionPayload(
+                existing_template_id=17,
+                reason="知识点与 Python 基础模板一致",
+            )
+        )
+        request = CurriculumAcquisitionRequest(
+            task_id=1,
+            prompt="Python basics",
+            language="PYTHON",
+            target="从零掌握语法和函数",
+            available_templates=[
+                CurriculumTemplateSummary(
+                    template_id=17,
+                    canonical_name="Python 语言基础",
+                    version=1,
+                    language="PYTHON",
+                    aliases=["Python基础", "Python basics"],
+                    knowledge_points=["变量、类型与运算", "函数与模块"],
+                )
+            ],
+        )
+
+        result = await generate_curriculum_acquisition(client, settings(), request)  # type: ignore[arg-type]
+
+        self.assertEqual(result["existing_template_id"], 17)
+        self.assertEqual(len(client.calls), 1)
+
     async def test_pretest_uses_ai_selected_count_in_generation(self) -> None:
         client = FakeClient(
             PretestSizingPayload(problem_count=8, reason="学习目标聚焦但需要覆盖基础与应用"),
@@ -73,6 +176,7 @@ class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
             language="RUST",
             target="能够解释借用检查",
             learner_profile=LearnerProfile(introduction="有 C 语言基础"),
+            authoritative_outline=outline(),
         )
 
         result = await generate_pretest(client, settings(), request)  # type: ignore[arg-type]
@@ -92,6 +196,7 @@ class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
                 total_stages=3,
                 language="PYTHON",
                 target="掌握边界处理",
+                authoritative_outline=outline(),
             ),
         )
 

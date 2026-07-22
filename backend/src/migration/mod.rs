@@ -1,6 +1,7 @@
 mod m0001_init_schema;
 mod m0002_asset_transaction;
 mod m0003_asset_opening_balances;
+mod m0004_curriculum_knowledge;
 
 use sea_orm_migration::prelude::*;
 
@@ -13,6 +14,7 @@ impl MigratorTrait for Migrator {
             Box::new(m0001_init_schema::Migration),
             Box::new(m0002_asset_transaction::Migration),
             Box::new(m0003_asset_opening_balances::Migration),
+            Box::new(m0004_curriculum_knowledge::Migration),
         ]
     }
 }

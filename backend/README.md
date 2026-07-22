@@ -93,6 +93,7 @@
 |------|------|------|
 | `PATCH` | `/internal/{content-resource}/{id}` | 内容生成微服务回调 |
 | `POST` | `/internal/study-subjects/{id}` | 学习主题回调（pretest / plan） |
+| `POST` | `/internal/curriculum-acquisitions/{id}` | AI 模板选择 / 课程大纲采集回调 |
 | `POST` | `/internal/study-quizzes/{id}` | 小测回调 |
 | `POST` | `/internal/users/{id}/balance` | 充值（增减金币/钻石，API_KEY 鉴权） |
 
@@ -143,6 +144,16 @@ src/
 
 - [AGENTS.md](AGENTS.md)：协作约定与长期规则
 - [PROGRESS.md](PROGRESS.md)：当前实现进度与后续计划
+
+## 课程大纲审核
+
+低置信度或结构校验未通过的白名单课程会保存为 `PENDING_REVIEW`。离线审核命令：
+
+```bash
+cargo run --bin curriculum_review -- list
+cargo run --bin curriculum_review -- publish <template_id>
+cargo run --bin curriculum_review -- reject <template_id>
+```
 
 ## 开发说明
 

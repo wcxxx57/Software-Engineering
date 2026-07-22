@@ -121,6 +121,10 @@ fn api_router() -> Router<AppState> {
             "/study-subjects/{id}/stages",
             get(study_subjects::list_stages),
         )
+        .route(
+            "/study-subjects/{id}/knowledge-tree",
+            get(study_subjects::get_knowledge_tree),
+        )
         // Study stages
         .route("/study-stages/{id}", get(study_stages::get_by_id))
         // Study tasks

@@ -1,8 +1,25 @@
 use serde::Serialize;
 
 use crate::error::AppError;
+use crate::services::curriculum::{CurriculumTemplateSummary, OutlineSnapshot};
 use crate::services::message_queue::{MessagePublisher, ROUTING_KEY_GENERATE};
 use crate::services::personalization::LearnerProfileSnapshot;
+
+#[derive(Debug, Serialize)]
+pub struct CurriculumAcquisitionRequest {
+    pub task_id: i32,
+    pub prompt: String,
+    pub language: String,
+    pub target: String,
+    pub available_templates: Vec<CurriculumTemplateSummary>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct LearnerHistorySnapshot {
+    pub completed_subjects: Vec<String>,
+    pub completed_knowledge_node_keys: Vec<String>,
+    pub weak_knowledge_node_keys: Vec<String>,
+}
 
 #[derive(Debug, Serialize)]
 pub struct PretestRequest {
@@ -12,6 +29,7 @@ pub struct PretestRequest {
     pub language: String,
     pub target: String,
     pub learner_profile: LearnerProfileSnapshot,
+    pub authoritative_outline: OutlineSnapshot,
 }
 
 #[derive(Debug, Serialize)]
@@ -22,6 +40,9 @@ pub struct PlanRequest {
     pub language: String,
     pub target: String,
     pub pretest_results: Vec<PretestResult>,
+    pub learner_profile: LearnerProfileSnapshot,
+    pub learner_history: LearnerHistorySnapshot,
+    pub authoritative_outline: OutlineSnapshot,
 }
 
 #[derive(Debug, Serialize)]
@@ -35,6 +56,7 @@ pub struct PretestResult {
     pub answer: String,
     pub chosen_answer: Option<String>,
     pub confidence: Option<String>,
+    pub knowledge_node_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,6 +83,14 @@ pub async fn dispatch_pretest(
     publisher: &dyn MessagePublisher,
     exchange: &str,
     request: &PretestRequest,
+) -> Result<(), AppError> {
+    dispatch(publisher, exchange, request).await
+}
+
+pub async fn dispatch_curriculum_acquisition(
+    publisher: &dyn MessagePublisher,
+    exchange: &str,
+    request: &CurriculumAcquisitionRequest,
 ) -> Result<(), AppError> {
     dispatch(publisher, exchange, request).await
 }

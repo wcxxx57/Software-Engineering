@@ -15,6 +15,8 @@ export { studySubjectListQueryKey, studySubjectQueryKey };
 const POLL_INTERVAL_MS = 2000;
 
 const POLLING_STATUSES = new Set<StudySubject["status"]>([
+  "CURRICULUM_QUEUING",
+  "CURRICULUM_FETCHING",
   "PRETEST_QUEUING",
   "PRETEST_GENERATING",
   "PLAN_QUEUING",

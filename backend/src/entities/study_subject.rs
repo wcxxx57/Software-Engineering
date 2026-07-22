@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
     enum_name = "study_subject_status"
 )]
 pub enum StudySubjectStatus {
+    #[sea_orm(string_value = "CURRICULUM_QUEUING")]
+    CurriculumQueuing,
+    #[sea_orm(string_value = "CURRICULUM_FETCHING")]
+    CurriculumFetching,
     #[sea_orm(string_value = "PRETEST_QUEUING")]
     PretestQueuing,
     #[sea_orm(string_value = "PRETEST_GENERATING")]
@@ -42,6 +46,8 @@ pub struct Model {
     pub language: String,
     #[sea_orm(column_type = "Text")]
     pub target: String,
+    pub curriculum_template_id: Option<i32>,
+    pub failure_code: Option<String>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

@@ -41,10 +41,15 @@ pub struct Config {
 
     // Study subject: total_stages → diamond_cost
     pub study_subject_diamond_costs: BTreeMap<i32, i32>,
+    pub curriculum_exchange: String,
+    pub curriculum_api_key: String,
+    pub curriculum_source_domains: Vec<String>,
+    pub curriculum_auto_publish_min_score: f64,
     pub pretest_exchange: String,
     pub pretest_api_key: String,
     pub plan_exchange: String,
     pub plan_api_key: String,
+    pub plan_tasks_per_stage: i32,
     pub quiz_exchange: String,
     pub quiz_api_key: String,
     pub study_quiz_free_limit_per_task: i32,
@@ -132,8 +137,7 @@ impl Config {
         let checkin_exp_reward = parse_non_negative_i32("CHECKIN_EXP_REWARD", "5")?;
         let study_task_exp_reward = parse_non_negative_i32("STUDY_TASK_EXP_REWARD", "10")?;
         let study_quiz_exp_reward = parse_non_negative_i32("STUDY_QUIZ_EXP_REWARD", "15")?;
-        let study_subject_exp_reward =
-            parse_non_negative_i32("STUDY_SUBJECT_EXP_REWARD", "200")?;
+        let study_subject_exp_reward = parse_non_negative_i32("STUDY_SUBJECT_EXP_REWARD", "200")?;
         let study_subject_completion_refund_percent =
             parse_non_negative_i32("STUDY_SUBJECT_COMPLETION_REFUND_PERCENT", "50")?;
         if study_subject_completion_refund_percent > 100 {
@@ -185,6 +189,29 @@ impl Config {
                 .unwrap_or_else(|_| "3:10,7:20,15:40,30:80".to_owned()),
         )?;
 
+        let curriculum_exchange =
+            env::var("CURRICULUM_EXCHANGE").unwrap_or_else(|_| "zhiying.curriculum".to_owned());
+        let curriculum_api_key =
+            env::var("CURRICULUM_API_KEY").unwrap_or_else(|_| "sk-curriculum-dev".to_owned());
+        let curriculum_source_domains = env::var("CURRICULUM_SOURCE_DOMAINS")
+            .unwrap_or_else(|_| "icourse163.org,shuishan.net.cn".to_owned())
+            .split(',')
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+        if curriculum_source_domains.is_empty() {
+            return Err(AppError::internal("CURRICULUM_SOURCE_DOMAINS is empty"));
+        }
+        let curriculum_auto_publish_min_score = env::var("CURRICULUM_AUTO_PUBLISH_MIN_SCORE")
+            .unwrap_or_else(|_| "0.85".to_owned())
+            .parse::<f64>()
+            .map_err(|_| AppError::internal("CURRICULUM_AUTO_PUBLISH_MIN_SCORE is invalid"))?;
+        if !(0.0..=1.0).contains(&curriculum_auto_publish_min_score) {
+            return Err(AppError::internal(
+                "CURRICULUM_AUTO_PUBLISH_MIN_SCORE must be between 0 and 1",
+            ));
+        }
+
         let pretest_exchange =
             env::var("PRETEST_EXCHANGE").unwrap_or_else(|_| "zhiying.pretest".to_owned());
         let pretest_api_key =
@@ -192,6 +219,13 @@ impl Config {
 
         let plan_exchange = env::var("PLAN_EXCHANGE").unwrap_or_else(|_| "zhiying.plan".to_owned());
         let plan_api_key = env::var("PLAN_API_KEY").unwrap_or_else(|_| "sk-plan-dev".to_owned());
+        let plan_tasks_per_stage = env::var("PLAN_TASKS_PER_STAGE")
+            .unwrap_or_else(|_| "3".to_owned())
+            .parse::<i32>()
+            .map_err(|_| AppError::internal("PLAN_TASKS_PER_STAGE is invalid"))?;
+        if plan_tasks_per_stage <= 0 {
+            return Err(AppError::internal("PLAN_TASKS_PER_STAGE must be positive"));
+        }
 
         let quiz_exchange = env::var("QUIZ_EXCHANGE").unwrap_or_else(|_| "zhiying.quiz".to_owned());
         let quiz_api_key = env::var("QUIZ_API_KEY").unwrap_or_else(|_| "sk-quiz-dev".to_owned());
@@ -254,10 +288,15 @@ impl Config {
             interactive_html_api_key,
             knowledge_explanation_api_key,
             study_subject_diamond_costs,
+            curriculum_exchange,
+            curriculum_api_key,
+            curriculum_source_domains,
+            curriculum_auto_publish_min_score,
             pretest_exchange,
             pretest_api_key,
             plan_exchange,
             plan_api_key,
+            plan_tasks_per_stage,
             quiz_exchange,
             quiz_api_key,
             study_quiz_free_limit_per_task,
@@ -280,9 +319,7 @@ fn parse_non_negative_i32(name: &str, default: &str) -> Result<i32, AppError> {
         .parse::<i32>()
         .map_err(|_| AppError::internal(format!("{name} is invalid")))?;
     if value < 0 {
-        return Err(AppError::internal(format!(
-            "{name} must be non-negative"
-        )));
+        return Err(AppError::internal(format!("{name} must be non-negative")));
     }
     Ok(value)
 }

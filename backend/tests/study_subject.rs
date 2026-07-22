@@ -129,7 +129,7 @@ async fn study_subject_pretest_callback_creates_problems() {
     let (status, _) = app
         .request(
             "POST",
-            "/api/v1/internal/study-subjects/1",
+            "/internal/study-subjects/1",
             Some(api_key),
             Some(json!({
                 "status": "FINISHED",
@@ -155,7 +155,7 @@ async fn study_subject_pretest_callback_creates_problems() {
         .request("GET", "/api/v1/study-subjects/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], "PretestReady");
+    assert_eq!(body["data"]["status"], "PRETEST_READY");
 
     // Verify pretest has 2 problems
     let (status, body) = app
@@ -171,7 +171,7 @@ async fn study_subject_pretest_callback_creates_problems() {
     assert_eq!(problems.len(), 2);
     assert_eq!(problems[0]["sort_order"], 0);
     assert_eq!(problems[1]["sort_order"], 1);
-    assert_eq!(problems[0]["problem"]["content"], "What is 1+1?");
+    assert_eq!(problems[0]["content"], "What is 1+1?");
 }
 
 #[tokio::test]
@@ -186,7 +186,7 @@ async fn study_subject_pretest_answer_works() {
     // Create pretest via callback
     app.request(
         "POST",
-        "/api/v1/internal/study-subjects/1",
+        "/internal/study-subjects/1",
         Some(api_key),
         Some(json!({
             "status": "FINISHED",
@@ -215,7 +215,7 @@ async fn study_subject_pretest_answer_works() {
             "PATCH",
             &format!("/api/v1/study-subjects/1/pretest/{pp_id}"),
             Some(&token),
-            Some(json!({"chosen_answer": "A", "confidence": "VerySure"})),
+            Some(json!({"chosen_answer": "A", "confidence": "VERY_SURE"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -230,7 +230,7 @@ async fn study_subject_pretest_answer_works() {
         )
         .await;
     assert_eq!(pretest_body["data"][0]["chosen_answer"], "A");
-    assert_eq!(pretest_body["data"][0]["confidence"], "VerySure");
+    assert_eq!(pretest_body["data"][0]["confidence"], "VERY_SURE");
 }
 
 #[tokio::test]
@@ -247,7 +247,7 @@ async fn study_subject_pretest_answer_not_ready_returns_400() {
             "PATCH",
             "/api/v1/study-subjects/1/pretest/1",
             Some(&token),
-            Some(json!({"chosen_answer": "A", "confidence": "NotSure"})),
+            Some(json!({"chosen_answer": "A", "confidence": "NOT_SURE"})),
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -267,7 +267,7 @@ async fn study_subject_pretest_answer_invalid_problem_returns_404() {
             "PATCH",
             "/api/v1/study-subjects/1/pretest/999",
             Some(&token),
-            Some(json!({"chosen_answer": "A", "confidence": "NotSure"})),
+            Some(json!({"chosen_answer": "A", "confidence": "NOT_SURE"})),
         )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -319,7 +319,7 @@ async fn study_subject_plan_callback_creates_stages_and_tasks() {
     let (status, _) = app
         .request(
             "POST",
-            "/api/v1/internal/study-subjects/1",
+            "/internal/study-subjects/1",
             Some(api_key),
             Some(json!({
                 "status": "FINISHED",
@@ -350,7 +350,7 @@ async fn study_subject_plan_callback_creates_stages_and_tasks() {
         .request("GET", "/api/v1/study-subjects/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
     assert_eq!(body["data"]["total_stages"], 2);
 
     // Stage 1 should be STUDYING with 2 tasks
@@ -358,19 +358,19 @@ async fn study_subject_plan_callback_creates_stages_and_tasks() {
         .request("GET", "/api/v1/study-stages/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
     assert_eq!(body["data"]["title"], "Basics");
     let tasks = body["data"]["tasks"].as_array().expect("tasks");
     assert_eq!(tasks.len(), 2);
-    assert_eq!(tasks[0]["status"], "Studying"); // first task unlocked
-    assert_eq!(tasks[1]["status"], "Locked"); // second task locked
+    assert_eq!(tasks[0]["status"], "STUDYING"); // first task unlocked
+    assert_eq!(tasks[1]["status"], "LOCKED"); // second task locked
 
     // Stage 2 should be LOCKED
     let (status, body) = app
         .request("GET", "/api/v1/study-stages/2", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], "Locked");
+    assert_eq!(body["data"]["status"], "LOCKED");
 }
 
 #[tokio::test]
@@ -388,7 +388,7 @@ async fn study_subject_plan_callback_failed_refunds_diamond() {
     let (status, _) = app
         .request(
             "POST",
-            "/api/v1/internal/study-subjects/1",
+            "/internal/study-subjects/1",
             Some(api_key),
             Some(json!({"status": "FAILED"})),
         )
@@ -418,7 +418,7 @@ async fn study_subject_pretest_callback_failed_refunds_diamond() {
     let (status, _) = app
         .request(
             "POST",
-            "/api/v1/internal/study-subjects/1",
+            "/internal/study-subjects/1",
             Some(api_key),
             Some(json!({"status": "FAILED"})),
         )
@@ -453,7 +453,7 @@ async fn study_subject_pretest_answer_already_answered_overwrites() {
     // Create pretest via callback
     app.request(
         "POST",
-        "/api/v1/internal/study-subjects/1",
+        "/internal/study-subjects/1",
         Some(api_key),
         Some(json!({
             "status": "FINISHED",
@@ -480,7 +480,7 @@ async fn study_subject_pretest_answer_already_answered_overwrites() {
         "PATCH",
         &format!("/api/v1/study-subjects/1/pretest/{pp_id}"),
         Some(&token),
-        Some(json!({"chosen_answer": "A", "confidence": "VerySure"})),
+        Some(json!({"chosen_answer": "A", "confidence": "VERY_SURE"})),
     )
     .await;
 
@@ -490,7 +490,7 @@ async fn study_subject_pretest_answer_already_answered_overwrites() {
             "PATCH",
             &format!("/api/v1/study-subjects/1/pretest/{pp_id}"),
             Some(&token),
-            Some(json!({"chosen_answer": "C", "confidence": "NotSure"})),
+            Some(json!({"chosen_answer": "C", "confidence": "NOT_SURE"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -505,7 +505,7 @@ async fn study_subject_pretest_answer_already_answered_overwrites() {
         )
         .await;
     assert_eq!(pretest_body["data"][0]["chosen_answer"], "C");
-    assert_eq!(pretest_body["data"][0]["confidence"], "NotSure");
+    assert_eq!(pretest_body["data"][0]["confidence"], "NOT_SURE");
 }
 
 #[tokio::test]
@@ -545,7 +545,7 @@ async fn study_subject_get_pretest_other_user_returns_404() {
     // Create pretest
     app.request(
         "POST",
-        "/api/v1/internal/study-subjects/1",
+        "/internal/study-subjects/1",
         Some(api_key),
         Some(json!({
             "status": "FINISHED",
@@ -583,7 +583,7 @@ async fn study_subject_callback_wrong_service_key_rejected() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/study-subjects/1",
+            "/internal/study-subjects/1",
             Some(wrong_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -600,7 +600,7 @@ async fn study_subject_callback_nonexistent_returns_404() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/study-subjects/999",
+            "/internal/study-subjects/999",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -651,18 +651,22 @@ async fn study_subject_create_with_total_stages_seven_charges_twenty_diamonds() 
         .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["data"]["diamond_cost"], 20);
-    assert_eq!(body["data"]["status"], "PretestQueuing");
+    assert_eq!(body["data"]["status"], "CURRICULUM_QUEUING");
 
-    let payload = app.published_json(&app.config.pretest_exchange);
+    let payload = app.published_json(&app.config.curriculum_exchange);
     assert_eq!(payload["task_id"], 1);
     assert_eq!(payload["prompt"], "Rust 进阶");
-    assert_eq!(payload["total_stages"], 7);
     assert_eq!(payload["language"], "RUST");
     assert_eq!(payload["target"], "能独立写一个 web 服务");
-    assert_eq!(payload["learner_profile"]["age"], serde_json::Value::Null);
-    assert_eq!(payload["learner_profile"]["introduction"], "");
-    assert_eq!(payload["learner_profile"]["experience_points"], 0);
-    assert_eq!(payload["learner_profile"]["total_checkins"], 0);
+    let templates = payload["available_templates"]
+        .as_array()
+        .expect("templates");
+    assert_eq!(templates.len(), 16);
+    assert!(
+        templates
+            .iter()
+            .any(|template| template["canonical_name"] == "Rust 所有权、并发与项目实践")
+    );
 
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
     assert_eq!(me_body["data"]["diamond"], 80);
@@ -677,7 +681,7 @@ async fn study_subject_create_with_total_stages_seven_charges_twenty_diamonds() 
     assert_eq!(items[0]["language"], "RUST");
     assert_eq!(items[0]["target"], "能独立写一个 web 服务");
     assert_eq!(items[0]["subject"], "Rust 进阶");
-    assert_eq!(items[0]["status"], "PretestQueuing");
+    assert_eq!(items[0]["status"], "CURRICULUM_QUEUING");
 }
 
 #[tokio::test]
@@ -712,7 +716,73 @@ async fn study_subject_create_dispatch_failure_refunds_twenty_diamonds() {
     let items = list_body["data"].as_array().expect("array");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0]["diamond_cost"], 20);
-    assert_eq!(items[0]["status"], "Failed");
+    assert_eq!(items[0]["status"], "FAILED");
+}
+
+#[tokio::test]
+async fn curriculum_ai_selection_pins_existing_template_and_continues_pretest() {
+    let app = TestApp::new().await;
+    let token = app.create_user_and_login("alice", "password123").await;
+    let db = app.db().await;
+    let now = Utc::now();
+    study_subject::ActiveModel {
+        user_id: Set(1),
+        subject: Set("Python basics".to_owned()),
+        status: Set(study_subject::StudySubjectStatus::CurriculumQueuing),
+        total_stages: Set(3),
+        finished_stages: Set(0),
+        diamond_cost: Set(10),
+        language: Set("PYTHON".to_owned()),
+        target: Set("掌握语法与函数".to_owned()),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .expect("insert subject");
+
+    let (status, _) = app
+        .request(
+            "POST",
+            "/internal/curriculum-acquisitions/1",
+            Some(&app.config.curriculum_api_key),
+            Some(json!({"status": "FINISHED", "existing_template_id": 1})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, body) = app
+        .request("GET", "/api/v1/study-subjects/1", Some(&token), None)
+        .await;
+    assert_eq!(body["data"]["status"], "PRETEST_QUEUING");
+    assert_eq!(body["data"]["curriculum_template_id"], 1);
+
+    let payload = app.published_json(&app.config.pretest_exchange);
+    assert_eq!(
+        payload["authoritative_outline"]["canonical_name"],
+        "Python 语言基础"
+    );
+    assert_eq!(payload["authoritative_outline"]["version"], 1);
+    assert_eq!(
+        payload["authoritative_outline"]["nodes"]
+            .as_array()
+            .map(Vec::len),
+        Some(6)
+    );
+
+    let (status, tree) = app
+        .request(
+            "GET",
+            "/api/v1/study-subjects/1/knowledge-tree",
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(tree["data"]["legacy"], false);
+    assert_eq!(tree["data"]["nodes"].as_array().map(Vec::len), Some(6));
+    assert_eq!(tree["data"]["nodes"][0]["planned"], false);
 }
 
 #[tokio::test]
@@ -761,31 +831,25 @@ async fn study_subject_plan_dispatch_payload_includes_pretest_results() {
     let (status, body) = app
         .request("POST", "/api/v1/study-subjects/1/plan", Some(&token), None)
         .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["data"]["status"], "PLAN_QUEUING");
 
     let payload = app.published_json(&app.config.plan_exchange);
+    assert_eq!(payload["task_id"], 1);
+    assert_eq!(payload["prompt"], "Python");
+    assert_eq!(payload["total_stages"], 7);
+    assert_eq!(payload["pretest_results"][0]["chosen_answer"], "A");
     assert_eq!(
-        payload,
-        json!({
-            "task_id": 1,
-            "prompt": "Python",
-            "total_stages": 7,
-            "language": "PYTHON",
-            "target": "通过课前测定制计划",
-            "pretest_results": [{
-                "problem_id": 1,
-                "content": "什么是所有权？",
-                "choice_a": "变量绑定规则",
-                "choice_b": "垃圾回收",
-                "choice_c": "线程模型",
-                "choice_d": "网络协议",
-                "answer": "A",
-                "chosen_answer": "A",
-                "confidence": "VerySure"
-            }]
-        })
+        payload["authoritative_outline"]["canonical_name"],
+        "Python 语言基础"
     );
+    assert_eq!(payload["authoritative_outline"]["version"], 1);
+    assert!(
+        payload["authoritative_outline"]["nodes"]
+            .as_array()
+            .is_some_and(|nodes| nodes.len() >= 6)
+    );
+    assert_eq!(payload["learner_history"]["completed_subjects"], json!([]));
 }
 
 #[tokio::test]
