@@ -5,8 +5,10 @@ from src.agent import RunConfig, TeachingVideoAgent
 from src.delivery import (
     estimate_native_4k_seconds,
     find_scene_class_name,
+    generate_fallback_scene_code,
     normalize_known_scene_tokens,
 )
+from prompts.base_class import base_class
 from src.rendering import get_render_profile
 
 
@@ -41,6 +43,24 @@ def test_retry_defaults_are_initial_plus_two_repairs():
     assert cfg.max_fix_bug_tries == 3
     assert cfg.feedback_rounds == 2
     assert cfg.max_feedback_gen_code_tries == 1
+    assert cfg.pipeline_budget_seconds == 3000
+
+
+def test_sync_sse_progress_uses_the_celery_task_id():
+    from src.api.utils.sse import SyncTaskProgressCallback
+
+    class FakeRedis:
+        def __init__(self):
+            self.events = []
+
+        def publish(self, channel, event):
+            self.events.append((channel, event))
+
+    redis = FakeRedis()
+    callback = SyncTaskProgressCallback(redis, "progress", "celery-task-id")
+
+    assert callback.on_stage_start("profile", "Parsing profile") == "celery-task-id"
+    assert '"task_id": "celery-task-id"' in redis.events[0][1]
 
 
 def test_duration_miss_returns_steps_with_warning_after_three_attempts(tmp_path):
@@ -105,3 +125,25 @@ class Lesson(TeachingScene):
 
 def test_native_estimate_uses_measured_preview_cost():
     assert estimate_native_4k_seconds([10, 20], workers=1) == 240
+
+
+def test_code_fallback_uses_standard_code_block_not_text_excerpt():
+    code = generate_fallback_scene_code(
+        section_id="section_3",
+        title="代码精讲",
+        section_steps=[
+            {
+                "page_index": 0,
+                "page_screen_texts": ["讲解"],
+                "page_line_indices": [0],
+                "screen_texts": ["讲解"],
+                "highlight_indices": [0],
+                "audio_path": "/tmp/step.wav",
+                "audio_duration": 1.0,
+            }
+        ],
+        base_class=base_class,
+        code_snippets=["if height[left] <= height[right]:\n    left += 1"],
+    )
+    assert "self.create_code_block(snippet_0, language=\"python\")" in code
+    assert "Text(snippet_0" not in code

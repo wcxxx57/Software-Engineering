@@ -132,14 +132,18 @@ def generate_fallback_scene_code(
     section_steps: list[dict[str, Any]],
     base_class: str,
     solution_code: str = "",
+    code_snippets: list[str] | None = None,
 ) -> str:
     if not section_steps:
         raise ValueError(f"{section_id} has no narration steps for fallback rendering")
     scene_name = f"{section_id.title().replace('_', '')}Scene"
     title_json = json.dumps(_safe_text(title, 48), ensure_ascii=False)
-    code_lines = [line.rstrip() for line in str(solution_code or "").splitlines() if line.strip()][:14]
-    code_excerpt = "\n".join(code_lines)
-    code_json = json.dumps(code_excerpt, ensure_ascii=False)
+    snippets = [str(snippet) for snippet in (code_snippets or []) if str(snippet).strip()]
+    if not snippets:
+        code_lines = [line.rstrip() for line in str(solution_code or "").splitlines() if line.strip()][:14]
+        snippets = ["\n".join(code_lines)] if code_lines else []
+    snippets_json = json.dumps(snippets, ensure_ascii=False)
+    steps_json = json.dumps(section_steps, ensure_ascii=False)
 
     blocks: list[str] = []
     previous_page: Any = None
@@ -155,13 +159,14 @@ def generate_fallback_scene_code(
         screen_json = json.dumps(_safe_text(screen_text, 42), ensure_ascii=False)
         remove = f"[visual_{index - 1}]" if index else "[]"
         excerpt_block = ""
-        if code_excerpt:
-            excerpt_block = f'''        excerpt_{index} = Text(code_excerpt, font="Noto Sans CJK SC", font_size=13, color="#2C1608", line_spacing=0.75)
-        excerpt_{index}.scale_to_fit_width(5.2)
-        if excerpt_{index}.height > 2.8:
-            excerpt_{index}.scale_to_fit_height(2.8)
-        excerpt_{index}.next_to(progress_{index}, DOWN, buff=0.35)
-        visual_{index} = VGroup(progress_{index}, excerpt_{index})
+        if snippets:
+            excerpt_block = f'''        snippet_{index} = code_pages[min({int(page_index)}, len(code_pages) - 1)]
+        code_{index} = self.create_code_block(snippet_{index}, language="python")
+        code_{index}.scale_to_fit_width(5.2)
+        if code_{index}.height > 2.8:
+            code_{index}.scale_to_fit_height(2.8)
+        code_{index}.next_to(progress_{index}, DOWN, buff=0.35)
+        visual_{index} = VGroup(progress_{index}, code_{index})
         self.fit_in_right_region(visual_{index})
 '''
         else:
@@ -173,7 +178,7 @@ def generate_fallback_scene_code(
         progress_title_{index}.move_to(progress_bg_{index}.get_center() + UP * 0.35)
         summary_{index}.next_to(progress_title_{index}, DOWN, buff=0.24)
         self.fit_in_right_region(progress_{index})
-{excerpt_block}        self.play_synced_step({json.dumps(step.get("highlight_indices") or [])}, {json.dumps(str(step.get("audio_path") or ""), ensure_ascii=False)}, {float(step.get("audio_duration") or 0.1)}, remove_at_start={remove}, show_at_start=[visual_{index}])
+{excerpt_block}        self.play_synced_step(steps[{index}]["highlight_indices"], steps[{index}]["audio_path"], steps[{index}]["audio_duration"], remove_at_start={remove}, show_at_start=[visual_{index}])
 ''')
         previous_page = page_index
 
@@ -182,8 +187,16 @@ def generate_fallback_scene_code(
 {base_class}
 
 class {scene_name}(TeachingScene):
+    def fit_in_right_region(self, mob):
+        mob.scale_to_fit_width(min(getattr(self, "RIGHT_MAX_WIDTH", 6.0), 5.8))
+        if mob.height > getattr(self, "RIGHT_MAX_HEIGHT", 5.5):
+            mob.scale_to_fit_height(getattr(self, "RIGHT_MAX_HEIGHT", 5.5))
+        mob.move_to(getattr(self, "RIGHT_CENTER", ORIGIN + RIGHT * 3.4 + DOWN * 0.25))
+        return mob
+
     def construct(self):
         self.setup_layout({title_json}, {json.dumps(first.get("page_screen_texts") or [], ensure_ascii=False)}, {json.dumps(first.get("page_line_indices") or [], ensure_ascii=False)})
-        code_excerpt = {code_json}
+        steps = {steps_json}
+        code_pages = {snippets_json}
 {''.join(blocks)}
 '''

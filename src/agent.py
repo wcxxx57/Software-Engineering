@@ -1,19 +1,17 @@
-import sys
+﻿import sys
 import os
 import imageio_ffmpeg
 
 # Add project root to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 安全地设置编码（兼容 Celery Worker 环境）
 try:
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8')
 except Exception:
-    pass  # 在 Celery Worker 中可能会失败，忽略即可
-
+    pass  # 鍦?Celery Worker 涓彲鑳戒細澶辫触锛屽拷鐣ュ嵆鍙?
 # Ensure ffmpeg is in PATH for Manim and other subprocesses
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 FFMPEG_DIR = os.path.dirname(FFMPEG_PATH)
@@ -90,7 +88,7 @@ class Section:
     title: str
     lecture_lines: List[str]
     animations: List[str]
-    estimated_duration: Optional[int] = None  # 预计时长（秒）
+    estimated_duration: Optional[int] = None
     highlight_groups: Optional[List[List[int]]] = None
     evidence_lines_indices: Optional[List[int]] = None
     zpd_check_line_index: Optional[int] = None
@@ -131,7 +129,6 @@ class RunConfig:
     feedback_rounds: int = 2
     iconfinder_api_key: str = ""
     max_code_token_length: int = 10000
-    # 兼容旧调用方保留下面四个字段；所有实际尝试都会被统一预算限制。
     max_fix_bug_tries: int = 3
     max_regenerate_tries: int = 3
     max_feedback_gen_code_tries: int = 1
@@ -140,14 +137,13 @@ class RunConfig:
     duration: Optional[int] = None
     render_profile: str = "4k30"
     preview_render_profile: str = "1080p30"
-    pipeline_budget_seconds: int = 2400
+    pipeline_budget_seconds: int = 3000
     finalize_reserve_seconds: int = 240
     pipeline_started_at: Optional[float] = None
-    # 用户个性化配置
+    # 鐢ㄦ埛涓€у寲閰嶇疆
     user_profile: Optional[UserProfile] = None
-    # 强制大纲难度（入门/中等/进阶），若为空则由画像推断
     forced_difficulty_level: Optional[str] = None
-    # 编程题目相关
+    # 缂栫▼棰樼洰鐩稿叧
     problem_description: str = ""
     solution_code: str = ""
 
@@ -161,25 +157,25 @@ class TeachingVideoAgent:
         problem_description: str = "",
         solution_code: str = "",
     ):
-        """1. Global parameter"""
-        # 编程题目相关：优先使用直接传入的参数，其次使用 cfg 中的配置
+        # 1. Global parameter
+        # 缂栫▼棰樼洰鐩稿叧锛氫紭鍏堜娇鐢ㄧ洿鎺ヤ紶鍏ョ殑鍙傛暟锛屽叾娆′娇鐢?cfg 涓殑閰嶇疆
         self.problem_description = problem_description or (cfg.problem_description if cfg else "")
         self.solution_code = solution_code or (cfg.solution_code if cfg else "")
         
-        # learning_topic 用于目录命名和日志，从题目描述中提取简短标题
+        # Extract a short title for output directory names and logs.
         if self.problem_description:
             first_line = self.problem_description.split('\n')[0].strip()
             first_sentence = re.split(r"[。；;\n]|示例\d+[:：]|限制[:：]", first_line, maxsplit=1)[0].strip()
             main_title = re.split(r"[:：]", first_sentence, maxsplit=1)[0].strip()
             self.learning_topic = main_title[:50] if len(main_title) > 50 else main_title
         else:
-            self.learning_topic = "未命名题目"
+            self.learning_topic = "untitled_problem"
         self.idx = idx
         self.cfg = cfg or RunConfig()
-        self.folder = folder  # 修复：保存 folder 路径，供 get_serializable_state 使用
+        self.folder = folder  # 淇锛氫繚瀛?folder 璺緞锛屼緵 get_serializable_state 浣跨敤
 
         if not self.cfg.api:
-            raise ValueError(f"❌ 错误: TeachingVideoAgent 初始化失败。必须在 RunConfig 中提供有效的 'api' 回调函数。")
+            raise ValueError("TeachingVideoAgent initialization failed: cfg.api is required")
 
         cfg = self.cfg
         self.use_feedback = cfg.use_feedback
@@ -217,21 +213,21 @@ class TeachingVideoAgent:
         self.section_fallbacks: Dict[str, Dict[str, Any]] = {}
         self.preview_render_seconds: List[float] = []
         
-        # 用户个性化配置
+        # 鐢ㄦ埛涓€у寲閰嶇疆
         self.user_profile = cfg.user_profile or get_default_profile()
 
-        """2. Path for output"""
+        # 2. Path for output
         self.output_dir = get_output_dir(idx=idx, knowledge_point=self.learning_topic, base_dir=folder)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.assets_dir = Path(*self.output_dir.parts[: self.output_dir.parts.index("CASES")]) / "assets" / "icon"
         self.assets_dir.mkdir(exist_ok=True)
 
-        """3. ScopeRefine & Anchor Visual"""
+        # 3. ScopeRefine & Anchor Visual
         self.scope_refine_fixer = ScopeRefineFixer(self.API, self.max_code_token_length)
         self.extractor = GridPositionExtractor()
 
-        """4. External Database"""
+        # 4. External Database
         knowledge_ref_mapping_path = (
             Path(*self.output_dir.parts[: self.output_dir.parts.index("CASES")]) / "json_files" / "long_video_ref_mapping.json"
         )
@@ -242,7 +238,7 @@ class TeachingVideoAgent:
         )
         self.GRID_IMG_PATH = self.knowledge_ref_img_folder / "GRID.png"
 
-        """5. Data structure"""
+        # 5. Data structure
         self.outline = None
         self.enhanced_storyboard = None
         self.sections = []
@@ -254,7 +250,7 @@ class TeachingVideoAgent:
         self.visual_quality_results: Dict[str, Any] = {}
         self.pinned_final_reused: set[str] = set()
 
-        """6. For Efficiency"""
+        # 6. For Efficiency
         self.token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         legacy_limits = {
@@ -264,7 +260,7 @@ class TeachingVideoAgent:
             "max_mllm_fix_bugs_tries": cfg.max_mllm_fix_bugs_tries,
         }
         if any(int(value) > self.max_attempts for value in legacy_limits.values()):
-            print("⚠️ 旧重试参数已弃用；当前统一为首次尝试 + 最多 2 次修复")
+            print("Legacy retry settings are capped at first attempt plus two repairs.")
 
     def _add_warning(self, code: str, message: str, **details: Any) -> None:
         warning = {"code": code, "message": message}
@@ -325,6 +321,7 @@ class TeachingVideoAgent:
             section_steps=steps,
             base_class=base_class,
             solution_code=self.solution_code,
+            code_snippets=section.code_snippets,
         )
         code_path = self.output_dir / f"{section.id}.py"
         code_path.write_text(code, encoding="utf-8")
@@ -332,13 +329,13 @@ class TeachingVideoAgent:
         self.section_fallbacks[section.id] = {"reason": reason, "template": "code_progress"}
         self._add_warning(
             "section_template_fallback",
-            f"{section.id} 三个代码版本均不可用，已采用稳定保底模板",
+            f"{section.id} 涓変釜浠ｇ爜鐗堟湰鍧囦笉鍙敤锛屽凡閲囩敤绋冲畾淇濆簳妯℃澘",
             section_id=section.id,
             reason=reason,
         )
 
     def _request_api_and_track_tokens(self, prompt, max_tokens=10000):
-        """packages API requests and automatically accumulates token usage"""
+        # Packages API requests and automatically accumulates token usage.
         response, usage = self.API(prompt, max_tokens=max_tokens)
         if usage:
             self.token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
@@ -359,7 +356,7 @@ class TeachingVideoAgent:
             maximum=15,
             fallback=10,
         )
-        print(f"⏱️ 视频目标时长：{self.duration} 分钟（{self.duration_source}）")
+        print(f"Video target duration: {self.duration} minutes ({self.duration_source})")
 
     def _validate_outline_payload(self, payload):
         return validate_outline(
@@ -377,8 +374,100 @@ class TeachingVideoAgent:
             solution_code=self.solution_code,
         )
 
+    def _repair_storyboard_payload(self, storyboard_data):
+        # Repair recoverable storyboard schema drift before validation.
+        if not isinstance(storyboard_data, dict):
+            return storyboard_data
+        sections = storyboard_data.get("sections")
+        if not isinstance(sections, list):
+            return storyboard_data
+
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+
+            lines = section.get("lecture_lines")
+            if not isinstance(lines, list):
+                continue
+            line_count = len(lines)
+            layout_mode = str(section.get("layout_mode") or "no_code")
+            section_index = section.get("id") or section.get("title") or "section"
+
+            groups = section.get("highlight_groups")
+            repaired_groups: List[List[int]] = []
+            used = set()
+            if isinstance(groups, list):
+                for group in groups:
+                    if not isinstance(group, list):
+                        continue
+                    valid_indices: List[int] = []
+                    for raw_index in group:
+                        if (
+                            isinstance(raw_index, int)
+                            and not isinstance(raw_index, bool)
+                            and 0 <= raw_index < line_count
+                        ):
+                            if raw_index not in valid_indices:
+                                valid_indices.append(raw_index)
+                                used.add(raw_index)
+                    valid_indices.sort()
+                    if valid_indices:
+                        repaired_groups.append(valid_indices)
+            if not repaired_groups and line_count > 0:
+                repaired_groups = [[index] for index in range(line_count)]
+
+            if line_count > 0 and used:
+                for index in range(line_count):
+                    if index not in used:
+                        repaired_groups.append([index])
+            if line_count == 0:
+                section["highlight_groups"] = []
+            elif repaired_groups:
+                repaired_groups.sort(key=lambda g: g[0] if g else 0)
+                section["highlight_groups"] = repaired_groups
+
+            new_terms = section.get("new_terms_introduced")
+            if isinstance(new_terms, list):
+                section["new_terms_introduced"] = [
+                    item.strip()
+                    for item in new_terms
+                    if isinstance(item, str) and item.strip()
+                ]
+            else:
+                section["new_terms_introduced"] = []
+            if not section["new_terms_introduced"]:
+                fallback_term = str(section_index).replace("_", " ").replace("-", " ").strip()
+                section["new_terms_introduced"] = [fallback_term]
+
+            snippets = section.get("code_snippets")
+            if isinstance(snippets, list):
+                section["code_snippets"] = [
+                    str(item).strip()
+                    for item in snippets
+                    if isinstance(item, str) and str(item).strip()
+                ]
+            else:
+                section["code_snippets"] = []
+
+            if layout_mode == "full_code" and self.solution_code:
+                full_code_lines = self.solution_code.splitlines(keepends=True)
+                full_code_pages: List[str] = []
+                for start in range(0, len(full_code_lines), 12):
+                    full_code_pages.append("".join(full_code_lines[start : start + 12]))
+                if full_code_pages and "".join(section["code_snippets"]) != self.solution_code:
+                    section["code_snippets"] = full_code_pages
+
+            if layout_mode in {"with_code", "full_code"} and self.solution_code:
+                valid_snippets = [
+                    snippet for snippet in section["code_snippets"]
+                    if isinstance(snippet, str) and snippet in self.solution_code
+                ]
+                section["code_snippets"] = valid_snippets or [self.solution_code]
+
+        return storyboard_data
+
     def _request_video_api_and_track_tokens(self, prompt, video_path):
-        """Wraps video API requests and accumulates token usage automatically"""
+        # Wrap video API requests and accumulate token usage automatically.
         response, usage = request_gemini_video_img_token(prompt=prompt, video_path=video_path, image_path=self.GRID_IMG_PATH)
 
         if usage:
@@ -449,7 +538,7 @@ class TeachingVideoAgent:
         return fixed_video_path
 
     def get_serializable_state(self):
-        """返回可以序列化保存的Agent状态"""
+        # Return serializable agent state.
         return {
             "idx": self.idx,
             "folder": self.folder,
@@ -539,6 +628,19 @@ class TeachingVideoAgent:
             tree = ast.parse(code)
         except SyntaxError as exc:
             return False, f"SyntaxError during code literal validation: {exc}"
+        uses_standard_code_block = any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+            and node.func.attr == "create_code_block"
+            for node in ast.walk(tree)
+        )
+        if not uses_standard_code_block:
+            return False, (
+                "with_code/full_code scenes must render snippets through "
+                "self.create_code_block(), not Text()"
+            )
         string_literals = [
             node.value for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str)
@@ -583,20 +685,20 @@ class TeachingVideoAgent:
         outline_data = None
 
         if outline_file.exists():
-            print("📂 正在读取大纲...")
+            print("馃搨 姝ｅ湪璇诲彇澶х翰...")
             try:
                 with open(outline_file, "r", encoding="utf-8") as f:
                     cached_outline = json.load(f)
                 cached_outline, cache_errors = self._validate_outline_payload(cached_outline)
                 if cache_errors:
-                    print("♻️ 旧大纲缓存已过期，将重新生成：" + "; ".join(cache_errors))
+                    print("Outline cache is stale; regenerating: " + "; ".join(cache_errors))
                 else:
                     outline_data = cached_outline
             except Exception as exc:
-                print(f"♻️ 大纲缓存不可用，将重新生成：{exc}")
+                print(f"鈾伙笍 澶х翰缂撳瓨涓嶅彲鐢紝灏嗛噸鏂扮敓鎴愶細{exc}")
 
         if outline_data is None:
-            """Step 1: Generate teaching outline from topic"""
+            # Step 1: Generate teaching outline from topic
             refer_img_path = (
                 self.knowledge_ref_img_folder / img_name
                 if (img_name := self.KNOWLEDGE2PATH.get(self.learning_topic)) is not None
@@ -611,19 +713,19 @@ class TeachingVideoAgent:
                 forced_difficulty_level=self.forced_difficulty_level,
             )
 
-            print(f"📝 正在生成大纲...")
+            print(f"馃摑 姝ｅ湪鐢熸垚澶х翰...")
 
             for attempt in range(1, self.max_regenerate_tries + 1):
                 self.retry_summary["outline_attempts"] = attempt
                 api_func = self._request_api_and_track_tokens if refer_img_path else self._request_api_and_track_tokens
                 validation_note = ""
                 if attempt > 1 and 'outline_errors' in locals() and outline_errors:
-                    validation_note = "\n\n上一次输出未通过校验，请逐项修正：\n- " + "\n- ".join(outline_errors)
+                    validation_note = "\n\n涓婁竴娆¤緭鍑烘湭閫氳繃鏍￠獙锛岃閫愰」淇锛歕n- " + "\n- ".join(outline_errors)
                 response = api_func(prompt1 + validation_note, max_tokens=self.max_code_token_length)
                 if response is None:
-                    print(f"⚠️ 第 {attempt} 次尝试失败，正在重试...")
+                    print(f"鈿狅笍 绗?{attempt} 娆″皾璇曞け璐ワ紝姝ｅ湪閲嶈瘯...")
                     if attempt == self.max_regenerate_tries:
-                        raise ValueError("API 请求多次失败")
+                        raise ValueError("API 璇锋眰澶氭澶辫触")
                     continue
                 try:
                     content = response.candidates[0].content.parts[0].text
@@ -637,18 +739,18 @@ class TeachingVideoAgent:
                     candidate = json.loads(content)
                     outline_data, outline_errors = self._validate_outline_payload(candidate)
                     if outline_errors:
-                        print(f"⚠️ 第 {attempt} 次大纲结构校验失败：" + "; ".join(outline_errors))
+                        print(f"鈿狅笍 绗?{attempt} 娆″ぇ绾茬粨鏋勬牎楠屽け璐ワ細" + "; ".join(outline_errors))
                         outline_data = None
                         if attempt == self.max_regenerate_tries:
-                            raise ValueError("大纲结构多次无效：" + "; ".join(outline_errors))
+                            raise ValueError("Outline schema remained invalid: " + "; ".join(outline_errors))
                         continue
                     with open(self.output_dir / "outline.json", "w", encoding="utf-8") as f:
                         json.dump(outline_data, f, ensure_ascii=False, indent=2)
                     break
                 except json.JSONDecodeError:
-                    print(f"⚠️ 第 {attempt} 次尝试大纲格式无效，正在重试...")
+                    print(f"鈿狅笍 绗?{attempt} 娆″皾璇曞ぇ绾叉牸寮忔棤鏁堬紝姝ｅ湪閲嶈瘯...")
                     if attempt == self.max_regenerate_tries:
-                        raise ValueError("大纲格式多次无效，请检查提示词或 API 响应")
+                        raise ValueError("澶х翰鏍煎紡澶氭鏃犳晥锛岃妫€鏌ユ彁绀鸿瘝鎴?API 鍝嶅簲")
 
         self.outline = TeachingOutline(
             topic=outline_data["topic"],
@@ -659,13 +761,13 @@ class TeachingVideoAgent:
             scaffold_map=outline_data.get("scaffold_map"),
             difficulty_level=outline_data.get("difficulty_level"),
         )
-        print(f"== 大纲已生成: {self.outline.topic}")
+        print(f"== 澶х翰宸茬敓鎴? {self.outline.topic}")
         return self.outline
 
     def generate_storyboard(self) -> List[Section]:
-        """Step 2: Generate teaching storyboard from outline (optionally with asset enhancement)"""
+        # Step 2: Generate teaching storyboard from outline.
         if not self.outline:
-            raise ValueError("大纲未生成，请先生成大纲")
+            raise ValueError("澶х翰鏈敓鎴愶紝璇峰厛鐢熸垚澶х翰")
 
         storyboard_file = self.output_dir / "storyboard.json"
         enhanced_storyboard_file = self.output_dir / "storyboard_with_assets.json"
@@ -675,28 +777,30 @@ class TeachingVideoAgent:
             if not cache_file.exists():
                 continue
             try:
-                print(f"📂 正在检查分镜缓存：{cache_file.name}")
+                print(f"馃搨 姝ｅ湪妫€鏌ュ垎闀滅紦瀛橈細{cache_file.name}")
                 with open(cache_file, "r", encoding="utf-8") as f:
                     cached_storyboard = wrap_storyboard_lecture_lines(json.load(f))
+                cached_storyboard = self._repair_storyboard_payload(cached_storyboard)
                 cached_storyboard, cache_errors = self._validate_storyboard_payload(cached_storyboard)
                 if cache_errors:
-                    print("♻️ 分镜缓存已过期：" + "; ".join(cache_errors))
+                    print("鈾伙笍 鍒嗛暅缂撳瓨宸茶繃鏈燂細" + "; ".join(cache_errors))
                     continue
                 if cache_file == storyboard_file and self.use_assets:
                     cached_storyboard = wrap_storyboard_lecture_lines(
                         self._enhance_storyboard_with_assets(cached_storyboard)
                     )
+                    cached_storyboard = self._repair_storyboard_payload(cached_storyboard)
                     cached_storyboard, enhanced_errors = self._validate_storyboard_payload(cached_storyboard)
                     if enhanced_errors:
-                        print("♻️ 素材增强结果破坏教学结构，将重生成：" + "; ".join(enhanced_errors))
+                        print("鈾伙笍 绱犳潗澧炲己缁撴灉鐮村潖鏁欏缁撴瀯锛屽皢閲嶇敓鎴愶細" + "; ".join(enhanced_errors))
                         continue
                 self.enhanced_storyboard = cached_storyboard
                 break
             except Exception as exc:
-                print(f"♻️ 分镜缓存不可用：{exc}")
+                print(f"鈾伙笍 鍒嗛暅缂撳瓨涓嶅彲鐢細{exc}")
 
         if self.enhanced_storyboard is None:
-            print("🎬 正在生成分镜脚本...")
+            print("馃幀 姝ｅ湪鐢熸垚鍒嗛暅鑴氭湰...")
             refer_img_path = (
                 self.knowledge_ref_img_folder / img_name
                 if (img_name := self.KNOWLEDGE2PATH.get(self.learning_topic)) is not None
@@ -715,12 +819,12 @@ class TeachingVideoAgent:
                 api_func = self._request_api_and_track_tokens
                 validation_note = ""
                 if attempt > 1 and 'storyboard_errors' in locals() and storyboard_errors:
-                    validation_note = "\n\n上一次输出未通过校验，请逐项修正：\n- " + "\n- ".join(storyboard_errors)
+                    validation_note = "\n\n涓婁竴娆¤緭鍑烘湭閫氳繃鏍￠獙锛岃閫愰」淇锛歕n- " + "\n- ".join(storyboard_errors)
                 response = api_func(prompt2 + validation_note, max_tokens=self.max_code_token_length)
                 if response is None:
-                    print(f"⚠️ 第 {attempt} 次尝试 API 请求失败，正在重试...")
+                    print(f"鈿狅笍 绗?{attempt} 娆″皾璇?API 璇锋眰澶辫触锛屾鍦ㄩ噸璇?..")
                     if attempt == self.max_regenerate_tries:
-                        raise ValueError("API 请求多次失败")
+                        raise ValueError("API 璇锋眰澶氭澶辫触")
                     continue
 
                 try:
@@ -734,11 +838,12 @@ class TeachingVideoAgent:
                 try:
                     json_str = extract_json_from_markdown(content)
                     candidate = wrap_storyboard_lecture_lines(json.loads(json_str))
+                    candidate = self._repair_storyboard_payload(candidate)
                     storyboard_data, storyboard_errors = self._validate_storyboard_payload(candidate)
                     if storyboard_errors:
-                        print(f"⚠️ 第 {attempt} 次分镜结构校验失败：" + "; ".join(storyboard_errors))
+                        print(f"鈿狅笍 绗?{attempt} 娆″垎闀滅粨鏋勬牎楠屽け璐ワ細" + "; ".join(storyboard_errors))
                         if attempt == self.max_regenerate_tries:
-                            raise ValueError("分镜结构多次无效：" + "; ".join(storyboard_errors))
+                            raise ValueError("Storyboard schema remained invalid: " + "; ".join(storyboard_errors))
                         continue
 
                     # Save original storyboard
@@ -752,17 +857,18 @@ class TeachingVideoAgent:
                         )
                     else:
                         self.enhanced_storyboard = storyboard_data
+                    self.enhanced_storyboard = self._repair_storyboard_payload(self.enhanced_storyboard)
                     self.enhanced_storyboard, enhanced_errors = self._validate_storyboard_payload(self.enhanced_storyboard)
                     if enhanced_errors:
-                        raise ValueError("素材增强后的分镜结构无效：" + "; ".join(enhanced_errors))
+                        raise ValueError("Enhanced storyboard schema is invalid: " + "; ".join(enhanced_errors))
                     break
 
                 except json.JSONDecodeError as e:
-                    print(f"⚠️ 第 {attempt} 次尝试分镜格式无效，正在重试...")
-                    print(f"❌ JSON Error: {e}")
-                    print(f"❌ Content snippet: {content[:1000]}...") 
+                    print(f"鈿狅笍 绗?{attempt} 娆″皾璇曞垎闀滄牸寮忔棤鏁堬紝姝ｅ湪閲嶈瘯...")
+                    print(f"鉂?JSON Error: {e}")
+                    print(f"鉂?Content snippet: {content[:1000]}...") 
                     if attempt == self.max_regenerate_tries:
-                        raise ValueError("分镜格式多次无效，请检查提示词或 API 响应")
+                        raise ValueError("鍒嗛暅鏍煎紡澶氭鏃犳晥锛岃妫€鏌ユ彁绀鸿瘝鎴?API 鍝嶅簲")
 
         # Parse into Section objects (using enhanced storyboard)
         self.sections = []
@@ -777,7 +883,7 @@ class TeachingVideoAgent:
                 title=section_data["title"],
                 lecture_lines=lecture_lines,
                 animations=section_data["animations"],
-                estimated_duration=section_data.get("estimated_duration"),  # 解析预计时长
+                estimated_duration=section_data.get("estimated_duration"),  # 瑙ｆ瀽棰勮鏃堕暱
                 highlight_groups=section_data.get("highlight_groups"),
                 evidence_lines_indices=section_data.get("evidence_lines_indices"),
                 zpd_check_line_index=section_data.get("zpd_check_line_index"),
@@ -792,12 +898,12 @@ class TeachingVideoAgent:
         with open(normalized_path, "w", encoding="utf-8") as f:
             json.dump(self.enhanced_storyboard, f, ensure_ascii=False, indent=2)
 
-        print(f"== 分镜处理完成，共生成 {len(self.sections)} 个小节")
+        print(f"== Storyboard processing complete, generated {len(self.sections)} sections")
         return self.sections
 
     def _enhance_storyboard_with_assets(self, storyboard_data: dict) -> dict:
-        """Enhance storyboard: smart analysis and download assets"""
-        print("🤖 正在增强分镜：智能分析并下载素材...")
+        # Enhance storyboard with assets.
+        print("馃 姝ｅ湪澧炲己鍒嗛暅锛氭櫤鑳藉垎鏋愬苟涓嬭浇绱犳潗...")
 
         try:
             enhanced_storyboard = process_storyboard_with_assets(
@@ -809,29 +915,26 @@ class TeachingVideoAgent:
             enhanced_storyboard_file = self.output_dir / "storyboard_with_assets.json"
             with open(enhanced_storyboard_file, "w", encoding="utf-8") as f:
                 json.dump(enhanced_storyboard, f, ensure_ascii=False, indent=2)
-            print("✅ 分镜已增强素材")
+            print("Storyboard assets enhanced")
             return enhanced_storyboard
 
         except Exception as e:
-            print(f"⚠️ 素材下载失败，使用原始分镜: {e}")
+            print(f"鈿狅笍 绱犳潗涓嬭浇澶辫触锛屼娇鐢ㄥ師濮嬪垎闀? {e}")
             return storyboard_data
 
     def inject_cover_section(self) -> None:
         """
-        在 sections 列表最前面注入一个「封面」section。
-
-        封面展示题目短名（大标题）+ 解题主题（副标题），并播放介绍旁白。
-        使用确定性模板生成 Manim 代码，保证稳定性。
+        Inject a deterministic cover section at the beginning of the storyboard.
         """
         if not self.outline:
-            print("⚠️ 大纲尚未生成，跳过封面注入")
+            print("Outline is not ready; skipping cover section injection")
             return
 
         if any(section.id == "section_cover" for section in self.sections):
-            print("🎬 封面 section 已存在，跳过注入")
+            print("馃幀 灏侀潰 section 宸插瓨鍦紝璺宠繃娉ㄥ叆")
             return
 
-        intro_text = f"本视频将带你讲解：{self.outline.topic}"
+        intro_text = f"本视频将讲解：{self.outline.topic}"
 
         cover_section = Section(
             id="section_cover",
@@ -842,10 +945,10 @@ class TeachingVideoAgent:
         )
 
         self.sections.insert(0, cover_section)
-        print(f"🎬 已注入封面 section（题目：{self.outline.topic}）")
+        print(f"Injected cover section for topic: {self.outline.topic}")
 
     def _generate_cover_code(self, section: Section) -> str:
-        """为封面 section 使用确定性模板生成 Manim 代码。"""
+        # Generate deterministic Manim code for the cover section.
         section_steps = self.prepare_section_steps(section)
 
         code = generate_cover_manim_code(
@@ -859,22 +962,19 @@ class TeachingVideoAgent:
             f.write(code)
 
         self.section_codes[section.id] = code
-        print(f"🎬 封面 section 代码已生成（模板化，含 TTS 旁白）")
+        print("Cover section code generated from template")
         return code
 
     def inject_overview_section(self) -> None:
         """
-        在 sections 列表最前面注入一个「解题导览」概述 section。
-
-        该方法使用 AI 合并精简 section titles，然后生成 lecture_lines。
-        概述 section 后续会正常走 TTS 管线和模板化代码生成（跳过 LLM Stage 3）。
+        Inject an overview section before generated body sections.
         """
         if not self.outline or not self.sections:
-            print("⚠️ 大纲或分节尚未生成，跳过概述注入")
+            print("Outline or sections are not ready; skipping overview injection")
             return
 
         if any(section.id == "section_overview" for section in self.sections):
-            print("📋 概述 section 已存在，跳过注入")
+            print("馃搵 姒傝堪 section 宸插瓨鍦紝璺宠繃娉ㄥ叆")
             return
 
         section_titles = [
@@ -882,13 +982,13 @@ class TeachingVideoAgent:
             if s.id not in ("section_overview", "section_cover")
         ]
 
-        print("🤖 正在使用 AI 合并精简章节标题...")
+        print("Merging section titles for overview...")
         merged_titles = _merge_section_titles_with_ai(
             section_titles=section_titles,
             topic=self.outline.topic,
             api_func=self._request_api_and_track_tokens,
         )
-        print(f"📋 合并后共 {len(merged_titles)} 条概要: {merged_titles}")
+        print(f"Merged {len(merged_titles)} overview titles: {merged_titles}")
 
         overview_lines = build_overview_lecture_lines(
             section_titles=merged_titles,
@@ -903,10 +1003,10 @@ class TeachingVideoAgent:
         )
 
         self.sections.insert(0, overview_section)
-        print(f"📋 已注入概述 section（{len(overview_lines)} 条讲解行）")
+        print(f"Injected overview section with {len(overview_lines)} lecture lines")
 
     def _generate_overview_code(self, section: Section) -> str:
-        """为概述 section 使用确定性模板生成 Manim 代码（跳过 LLM）。"""
+        # Generate deterministic Manim code for the overview section.
         import re as _re
 
         section_steps = self.prepare_section_steps(section)
@@ -920,12 +1020,12 @@ class TeachingVideoAgent:
             if line == "让我们开始吧！":
                 continue
 
-            match = _re.match(r"^第[一二三四五六七八九十\d]+部分，(.+)$", line)
+            match = _re.match(r"^第[一二三四五六七八九十\\d]+部分[:：](.+)$", line)
             if match:
                 merged_titles.append(match.group(1).strip())
                 continue
 
-            cleaned = _re.sub(r"^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]\s*", "", line)
+            cleaned = _re.sub(r"^[①②③④⑤⑥⑦⑧⑨⑩]\\s*", "", line)
             if cleaned and cleaned != line:
                 merged_titles.append(cleaned)
 
@@ -941,18 +1041,11 @@ class TeachingVideoAgent:
             f.write(code)
 
         self.section_codes[section.id] = code
-        print(f"📋 概述 section 代码已生成（模板化，无需 LLM）")
+        print("Overview section code generated from template")
         return code
 
     def generate_section_code(self, section: Section, attempt: int = 1, feedback_improvements=None, error_message: str = None) -> str:
-        """Generate Manim code for a single section
-        
-        Args:
-            section: 章节对象
-            attempt: 当前尝试次数
-            feedback_improvements: MLLM 反馈的改进建议（效果不佳时）
-            error_message: 上次运行失败的错误信息（运行失败时）
-        """
+        # Generate Manim code for a single section.
         if not feedback_improvements:
             self._set_section_versions_used(
                 section.id,
@@ -975,7 +1068,7 @@ class TeachingVideoAgent:
             and steps_file.exists()
             and audio_files_exist
         ):
-            print(f"📂 发现 {section.id} 的现有代码，正在读取...")
+            print(f"馃搨 鍙戠幇 {section.id} 鐨勭幇鏈変唬鐮侊紝姝ｅ湪璇诲彇...")
             with open(steps_file, "r", encoding="utf-8") as f:
                 self.section_steps[section.id] = json.load(f)
             with open(code_file, "r", encoding="utf-8") as f:
@@ -993,7 +1086,7 @@ class TeachingVideoAgent:
                     code_file.write_text(code, encoding="utf-8")
                 self.section_codes[section.id] = code
                 return code
-            print(f"♻️ {section.id} 代码与当前旁白步骤不一致，只重生成该节代码")
+            print(f"鈾伙笍 {section.id} 浠ｇ爜涓庡綋鍓嶆梺鐧芥楠や笉涓€鑷达紝鍙噸鐢熸垚璇ヨ妭浠ｇ爜")
 
         if not feedback_improvements:
             if section.id == "section_cover":
@@ -1001,10 +1094,10 @@ class TeachingVideoAgent:
             if section.id == "section_overview":
                 return self._generate_overview_code(section)
 
-        # print(f"💻 正在为 {section.id} 生成 Manim 代码 (尝试 {attempt}/{self.max_regenerate_tries})...")
+        # print(f"馃捇 姝ｅ湪涓?{section.id} 鐢熸垚 Manim 浠ｇ爜 (灏濊瘯 {attempt}/{self.max_regenerate_tries})...")
         regenerate_note = ""
         if attempt > 1:
-            # 仅用于运行失败的情况
+            # 浠呯敤浜庤繍琛屽け璐ョ殑鎯呭喌
             regenerate_note = get_regenerate_note(
                 attempt, 
                 MAX_REGENERATE_TRIES=self.max_regenerate_tries,
@@ -1016,13 +1109,13 @@ class TeachingVideoAgent:
             current_code = self.section_codes.get(section.id, "")
             versions_used = self._section_versions_used(section.id)
             if versions_used >= self.max_attempts:
-                raise RuntimeError(f"{section.id} 已用完三个代码版本，不能继续视觉改写")
+                raise RuntimeError(f"{section.id} 宸茬敤瀹屼笁涓唬鐮佺増鏈紝涓嶈兘缁х画瑙嗚鏀瑰啓")
             try:
                 modifier = GridCodeModifier(current_code)
                 modified_code = modifier.parse_feedback_and_modify(feedback_improvements)
                 modified_code = fix_png_path(modified_code, self.assets_dir)
                 if modified_code.strip() == current_code.strip():
-                    raise ValueError("结构化修改器未产生可验证的局部代码变化")
+                    raise ValueError("structured modifier produced no verifiable local code changes")
                 modified_code, _ = normalize_known_scene_tokens(modified_code)
                 find_scene_class_name(modified_code)
                 with open(code_file, "w", encoding="utf-8") as f:
@@ -1032,7 +1125,7 @@ class TeachingVideoAgent:
                 self._set_section_versions_used(section.id, versions_used + 1)
                 return modified_code
             except Exception as e:
-                raise ValueError(f"视觉局部补丁不可应用，保留原章节: {e}") from e
+                raise ValueError(f"瑙嗚灞€閮ㄨˉ涓佷笉鍙簲鐢紝淇濈暀鍘熺珷鑺? {e}") from e
 
         else:
             section_steps = self.prepare_section_steps(section)
@@ -1042,20 +1135,20 @@ class TeachingVideoAgent:
                 section_steps=section_steps,
                 base_class=base_class,
                 user_profile=self.user_profile,
-                estimated_duration=section.estimated_duration,  # 传递预计时长
-                solution_code=self.solution_code  # 传递标准答案代码
+                estimated_duration=section.estimated_duration,
+                solution_code=self.solution_code,
             )
 
         response = self._request_api_and_track_tokens(code_gen_prompt, max_tokens=self.max_code_token_length)
         if response is None:
-            print(f"❌ 通过 API 生成 {section.id} 代码失败。")
+            print(f"API failed to generate code for {section.id}")
             if not feedback_improvements and attempt < self.max_regenerate_tries:
                 return self.generate_section_code(
                     section=section,
                     attempt=attempt + 1,
-                    error_message="代码生成 API 未返回内容",
+                    error_message="code generation API returned no content",
                 )
-            raise RuntimeError(f"{section.id} 代码生成 API 未返回内容")
+            raise RuntimeError(f"{section.id} code generation API returned no content")
 
         try:
             code = response.candidates[0].content.parts[0].text
@@ -1075,7 +1168,7 @@ class TeachingVideoAgent:
         code, token_fixes = normalize_known_scene_tokens(code)
         find_scene_class_name(code)
         if token_fixes:
-            print(f"🧩 {section.id} 本地补全固定设计令牌: {', '.join(token_fixes)}")
+            print(f"馃З {section.id} 鏈湴琛ュ叏鍥哄畾璁捐浠ょ墝: {', '.join(token_fixes)}")
 
         snippets_valid, snippets_error = self._validate_code_snippet_literals(code, section)
         if not snippets_valid:
@@ -1091,7 +1184,7 @@ class TeachingVideoAgent:
             is_valid, validation_error = self._validate_synced_step_coverage(code, len(section_steps))
             if not is_valid:
                 if attempt < self.max_regenerate_tries:
-                    print(f"⚠️ {section.id} 代码未覆盖全部音频步骤，重新生成: {validation_error}")
+                    print(f"鈿狅笍 {section.id} 浠ｇ爜鏈鐩栧叏閮ㄩ煶棰戞楠わ紝閲嶆柊鐢熸垚: {validation_error}")
                     return self.generate_section_code(
                         section=section,
                         attempt=attempt + 1,
@@ -1134,10 +1227,10 @@ class TeachingVideoAgent:
             if same_content and same_target:
                 if repair_cached_step_audio(section_steps):
                     save_section_steps(section_steps, steps_file)
-                    print(f"♻️ {section.id} 仅修复缺失或损坏的旁白音频，保留其余音频缓存")
+                    print(f"鈾伙笍 {section.id} 浠呬慨澶嶇己澶辨垨鎹熷潖鐨勬梺鐧介煶棰戯紝淇濈暀鍏朵綑闊抽缂撳瓨")
                 self.section_steps[section.id] = section_steps
                 return section_steps
-            print(f"♻️ {section.id} 语义组或旁白预算已变化，只重建当前章节")
+            print(f"{section.id} narration cache changed; rebuilding this section only")
 
         section_steps = build_section_steps(
             section=section,
@@ -1150,7 +1243,7 @@ class TeachingVideoAgent:
         return section_steps
 
     def prepare_all_narration_steps(self, max_rounds: int = 3) -> Dict[str, List[dict]]:
-        """按 AI 已选总时长分配章节旁白预算，并以落盘 WAV 的物理时长调整。"""
+        # Allocate narration budgets and adjust them using rendered audio durations.
         max_rounds = min(self.max_attempts, max(1, int(max_rounds)))
         if self.duration is None:
             self._ensure_duration_resolved()
@@ -1188,10 +1281,7 @@ class TeachingVideoAgent:
             )
             self.actual_narration_seconds = measured_total
             self.retry_summary["narration_attempts"] = round_index + 1
-            print(
-                f"🎙️ 第 {round_index + 1}/{max_rounds} 轮旁白物理时长 {measured_total:.2f}s；"
-                f"AI 目标 {target_final_seconds:.2f}s"
-            )
+            print(f"Narration round {round_index + 1}/{max_rounds}: {measured_total:.2f}s; target {target_final_seconds:.2f}s")
             if acceptable_range[0] <= measured_total <= acceptable_range[1]:
                 return self.section_steps
             if measured_total <= 0:
@@ -1204,10 +1294,10 @@ class TeachingVideoAgent:
             }
 
         message = (
-            f"旁白经过 {max_rounds} 次尝试后为 {self.actual_narration_seconds:.2f}s，"
-            f"仍偏离目标 {acceptable_range[0]:.2f}-{acceptable_range[1]:.2f}s；继续生成完整视频"
+            f"Narration is {self.actual_narration_seconds:.2f}s after {max_rounds} attempts; "
+            f"outside target range {acceptable_range[0]:.2f}-{acceptable_range[1]:.2f}s, continuing with complete video."
         )
-        print(f"⚠️ {message}")
+        print(f"鈿狅笍 {message}")
         self._add_warning(
             "duration_target_missed",
             message,
@@ -1225,11 +1315,11 @@ class TeachingVideoAgent:
         force_render: bool = False,
         allow_code_repair: bool = True,
     ) -> Tuple[bool, Optional[str]]:
-        """Render one section while sharing the section's three-version budget."""
+        # Render one section while sharing the section version budget.
         code_path = self.output_dir / f"{section_id}.py"
         if section_id not in self.section_codes:
             if not code_path.exists():
-                return False, "代码文件不存在"
+                return False, "code file does not exist"
             self.section_codes[section_id] = code_path.read_text(encoding="utf-8")
 
         steps_file = self.output_dir / f"{section_id}_steps.json"
@@ -1274,14 +1364,14 @@ class TeachingVideoAgent:
                         require_audio=True,
                     )
                     self.section_videos[section_id] = str(remuxed_path)
-                    print(f"✅ {section_id} 命中内容指纹缓存: {profile.name}/{fingerprint}")
+                    print(f"鉁?{section_id} 鍛戒腑鍐呭鎸囩汗缂撳瓨: {profile.name}/{fingerprint}")
                     return True, None
                 except Exception as exc:
-                    print(f"♻️ {section_id} 指纹缓存无效，将重新渲染: {exc}")
+                    print(f"鈾伙笍 {section_id} 鎸囩汗缂撳瓨鏃犳晥锛屽皢閲嶆柊娓叉煋: {exc}")
 
             try:
                 if not preferred_scene:
-                    raise ValueError(last_error or "没有找到可执行的具体 Scene")
+                    raise ValueError(last_error or "娌℃湁鎵惧埌鍙墽琛岀殑鍏蜂綋 Scene")
                 snippets_valid, snippets_error = self._validate_persisted_code_literals(section_id, code)
                 if not snippets_valid:
                     raise ValueError(snippets_error)
@@ -1314,7 +1404,7 @@ class TeachingVideoAgent:
                     preferred_scene,
                 ]
                 print(
-                    f"🔧 {self.learning_topic} 渲染 {section_id} [{profile.name}] "
+                    f"馃敡 {self.learning_topic} 娓叉煋 {section_id} [{profile.name}] "
                     f"({fix_attempt + 1}/{max_fix_attempts}, {fingerprint})"
                 )
                 result = subprocess.run(
@@ -1353,11 +1443,11 @@ class TeachingVideoAgent:
                 self.section_videos[section_id] = str(fixed_video)
                 return True, None
             except subprocess.TimeoutExpired:
-                last_error = f"Manim {profile.name} 渲染超时"
+                last_error = f"Manim {profile.name} 娓叉煋瓒呮椂"
             except Exception as exc:
                 last_error = str(exc)
 
-            print(f"❌ {section_id} {profile.name} 渲染失败: {last_error}")
+            print(f"鉂?{section_id} {profile.name} 娓叉煋澶辫触: {last_error}")
             if not allow_code_repair or fix_attempt + 1 >= render_attempt_limit:
                 break
             fixed_code = self.scope_refine_fixer.fix_code_smart(
@@ -1372,10 +1462,10 @@ class TeachingVideoAgent:
             try:
                 find_scene_class_name(fixed_code)
             except Exception as exc:
-                last_error = f"修复代码预检失败: {exc}"
+                last_error = f"repaired code precheck failed: {exc}"
                 break
             if fixed_code.strip() == self.section_codes[section_id].strip():
-                last_error = "修复未产生代码变化"
+                last_error = "repair produced no code changes"
                 break
             self.section_codes[section_id] = fixed_code
             code_path.write_text(fixed_code, encoding="utf-8")
@@ -1386,30 +1476,27 @@ class TeachingVideoAgent:
         return False, last_error
 
     def get_mllm_feedback(self, section: Section, video_path: str, round_number: int = 1) -> VideoFeedback:
-        print(f"🤖 {self.learning_topic} 使用 MLLM 分析视频 ({round_number}/{self.feedback_rounds}): {section.id}")
+        print(f"馃 {self.learning_topic} 浣跨敤 MLLM 鍒嗘瀽瑙嗛 ({round_number}/{self.feedback_rounds}): {section.id}")
 
         current_code = self.section_codes[section.id]
         positions = self.extractor.extract_grid_positions(current_code)
         position_table = self.extractor.generate_position_table(positions)
         if section.id in {"section_cover", "section_overview"}:
-            analysis_prompt = f"""
-你是严格的视频布局质检员。当前片段是封面或全屏导览，不使用普通左文右图模板。
-逐秒检查全部联系表，只把真实可见问题判为问题：文字或图形遮挡、元素被裁切、低对比度、
-字符乱码、页面切换后的旧元素残留、后续页面元素提前出现、当前页面元素延迟消失、
-完整页面在整句旁白期间缓慢淡入或淡出，以及逐句旁白字幕或横跨底部的字幕框。
-片段标题：{section.title}
-画面文字：{'；'.join(section.lecture_lines)}
-只输出合法 JSON：{{"layout":{{"has_issues":false,"improvements":[]}}}}
-若确有问题，improvements 最多三项，每项包含 problem、solution、timestamp、line_number、object_affected。
-"""
+            analysis_prompt = (
+                "你是严格的视频布局质检员。当前片段是封面或全屏导览。\n"
+                "只把真实可见的硬问题判为问题：文字或图形遮挡、元素被裁切、低对比度、乱码、旧元素残留、元素过早出现或过晚消失、逐句旁白字幕框。\n"
+                f"片段标题：{section.title}\n"
+                f"画面文字：{'；'.join(section.lecture_lines)}\n"
+                '只输出合法 JSON：{"layout": {"has_issues": false, "improvements": []}}\n'
+                "如确有问题，improvements 最多三项，每项包含 problem、solution、timestamp、line_number、object_affected。\n"
+            )
         else:
             analysis_prompt = get_prompt4_layout_feedback(section=section, position_table=position_table)
-        analysis_prompt += """
-
-交付前只检查会破坏可用性的硬问题，不评价美观度、教学深度或可选润色。
-如能用固定网格定位调用修复，请在 improvement 中额外返回 line_number 和 new_code；
-new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area(...) 调用。
-"""
+        analysis_prompt += (
+            "\n交付前只检查会破坏可用性的硬问题，不评价美观、教学深度或可选润色。\n"
+            "如果能用固定网格定位调用修复，请在 improvement 中额外返回 line_number 和 new_code；"
+            "new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area(...) 调用。\n"
+        )
         transition_timestamps: List[float] = []
         cursor = 0.0
         previous_page = None
@@ -1467,14 +1554,14 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 suggested_improvements=suggested_improvements,
                 raw_response=feedback_content,
                 is_good_enough=not has_layout_issues,
-                good_enough_reason="交付前仅检查重叠、裁切、残留、乱码、缺失和音画不完整等硬问题。",
+                good_enough_reason="Checked only hard visual integrity issues before delivery.",
                 evaluation_scores={"hard_visual_integrity": 20.0 if not has_layout_issues else 0.0},
             )
             self.video_feedbacks[f"{section.id}_round{round_number}"] = feedback
             return feedback
 
         except Exception as e:
-            print(f"❌ {self.learning_topic} MLLM 分析失败: {str(e)}")
+            print(f"鉂?{self.learning_topic} MLLM 鍒嗘瀽澶辫触: {str(e)}")
             return VideoFeedback(
                 section_id=section.id,
                 video_path=video_path,
@@ -1484,16 +1571,16 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             )
 
     def optimize_with_feedback(self, section: Section, feedback: VideoFeedback) -> bool:
-        """事务式应用反馈；代码一旦变化，就使用新指纹强制重新渲染。"""
+        # Apply visual feedback transactionally and force rerender when code changes.
         if not feedback.has_issues or not feedback.suggested_improvements:
-            print(f"✅ {self.learning_topic} {section.id} 无需优化")
+            print(f"鉁?{self.learning_topic} {section.id} 鏃犻渶浼樺寲")
             return True
 
         original_code_content = self.section_codes[section.id]
         original_video_path = self.section_videos.get(section.id)
         code_path = self.output_dir / f"{section.id}.py"
 
-        print(f"🎯 {self.learning_topic} 根据本轮视觉反馈修订 {section.id}")
+        print(f"馃幆 {self.learning_topic} 鏍规嵁鏈疆瑙嗚鍙嶉淇 {section.id}")
         try:
             self.section_codes[section.id] = original_code_content
             code_path.write_text(original_code_content, encoding="utf-8")
@@ -1505,7 +1592,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 section,
             )
             if not snippets_valid:
-                print(f"⚠️ {section.id} 视觉修订破坏标准答案展示，立即回滚: {snippets_error}")
+                print(f"鈿狅笍 {section.id} 瑙嗚淇鐮村潖鏍囧噯绛旀灞曠ず锛岀珛鍗冲洖婊? {snippets_error}")
                 self.section_codes[section.id] = original_code_content
                 code_path.write_text(original_code_content, encoding="utf-8")
                 if original_video_path:
@@ -1516,7 +1603,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 len(self.section_steps[section.id]),
             )
             if not timeline_valid:
-                print(f"⚠️ {section.id} 视觉修订破坏旁白时间轴，立即回滚: {timeline_error}")
+                print(f"鈿狅笍 {section.id} 瑙嗚淇鐮村潖鏃佺櫧鏃堕棿杞达紝绔嬪嵆鍥炴粴: {timeline_error}")
                 self.section_codes[section.id] = original_code_content
                 code_path.write_text(original_code_content, encoding="utf-8")
                 if original_video_path:
@@ -1529,11 +1616,11 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 force_render=True,
             )
             if success:
-                print(f"✨ {self.learning_topic} {section.id} 新代码已按新指纹重新渲染")
+                print(f"鉁?{self.learning_topic} {section.id} 鏂颁唬鐮佸凡鎸夋柊鎸囩汗閲嶆柊娓叉煋")
                 return True
-            raise RuntimeError("视觉修订后的代码未能成功渲染")
+            raise RuntimeError("瑙嗚淇鍚庣殑浠ｇ爜鏈兘鎴愬姛娓叉煋")
         except Exception as exc:
-            print(f"⚠️ {self.learning_topic} {section.id} 本轮视觉优化失败，回滚: {exc}")
+            print(f"鈿狅笍 {self.learning_topic} {section.id} 鏈疆瑙嗚浼樺寲澶辫触锛屽洖婊? {exc}")
         self.section_codes[section.id] = original_code_content
         code_path.write_text(original_code_content, encoding="utf-8")
         if original_video_path:
@@ -1572,20 +1659,20 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         and pinned.get("fingerprint") == current_fingerprint
                     ):
                         self.section_codes[section.id] = cached_code
-                        print(f"✅ {section.id} 内容指纹与显式验收记录一致，复用源码")
+                        print(f"鉁?{section.id} 鍐呭鎸囩汗涓庢樉寮忛獙鏀惰褰曚竴鑷达紝澶嶇敤婧愮爜")
                         return section.id, None
             self.generate_section_code(section, attempt=1)
             return section.id, None
         except Exception as exc:
             try:
-                self._install_fallback_code(section, f"代码生成三次仍失败: {exc}")
+                self._install_fallback_code(section, f"浠ｇ爜鐢熸垚涓夋浠嶅け璐? {exc}")
                 return section.id, None
             except Exception as fallback_error:
                 return section.id, fallback_error
 
     def generate_codes(self) -> Dict[str, str]:
         if not self.sections:
-            raise ValueError(f"{self.learning_topic} 请先生成教学小节")
+            raise ValueError(f"{self.learning_topic} 璇峰厛鐢熸垚鏁欏灏忚妭")
         self.prepare_all_narration_steps(max_rounds=self.max_attempts)
         pinned_sections = self._load_pinned_sections()
 
@@ -1598,17 +1685,17 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             for future in as_completed(futures):
                 section_id, err = future.result()
                 if err:
-                    print(f"❌ {self.learning_topic} {section_id} 代码生成失败: {err}")
+                    print(f"鉂?{self.learning_topic} {section_id} 浠ｇ爜鐢熸垚澶辫触: {err}")
                     section = next(item for item in self.sections if item.id == section_id)
                     try:
                         self._install_fallback_code(section, str(err))
-                        print(f"🛟 {section_id} 已在代码生成阶段切换稳定保底模板")
+                        print(f"馃洘 {section_id} 宸插湪浠ｇ爜鐢熸垚闃舵鍒囨崲绋冲畾淇濆簳妯℃澘")
                     except Exception as fallback_exc:
                         failures.append((section_id, f"{err}; fallback={fallback_exc}"))
 
         missing = [section.id for section in self.sections if section.id not in self.section_codes]
         if failures or missing:
-            raise RuntimeError(f"分节代码生成不完整: failures={failures}, missing={missing}")
+            raise RuntimeError(f"鍒嗚妭浠ｇ爜鐢熸垚涓嶅畬鏁? failures={failures}, missing={missing}")
 
         return self.section_codes
 
@@ -1640,7 +1727,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                             pinned_value.get("profile") != self.render_profile.name
                             or pinned_value.get("fingerprint") != expected_fingerprint
                         ):
-                            raise ValueError("显式验收记录与当前代码、音频或渲染规格不一致")
+                            raise ValueError("pinned final section does not match current code, audio, or render profile")
                         pinned_video = Path(str(pinned_value.get("video_path") or ""))
                         if not pinned_video.is_absolute():
                             pinned_video = self.output_dir / pinned_video
@@ -1651,10 +1738,10 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         )
                         self.section_videos[section_id] = str(pinned_video)
                         self.pinned_final_reused.add(section_id)
-                        print(f"✅ {section_id} 复用显式验收的最终章节缓存")
+                        print(f"{section_id} reused pinned accepted final section cache")
                         return True
                 except Exception as exc:
-                    print(f"♻️ {section_id} 显式最终缓存无效，将正常渲染: {exc}")
+                    print(f"鈾伙笍 {section_id} 鏄惧紡鏈€缁堢紦瀛樻棤鏁堬紝灏嗘甯告覆鏌? {exc}")
 
             success, last_error = self.debug_and_fix_code(
                 section_id,
@@ -1662,8 +1749,8 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 render_profile=self.preview_render_profile,
             )
             if not success:
-                print(f"⚠️ {self.learning_topic} {section_id} 三个代码版本均不可用，切换稳定保底模板")
-                self._install_fallback_code(section, last_error or "预览渲染失败")
+                print(f"{self.learning_topic} {section_id} exhausted code versions; switching to fallback template")
+                self._install_fallback_code(section, last_error or "preview render failed")
                 success, last_error = self.debug_and_fix_code(
                     section_id,
                     max_fix_attempts=1,
@@ -1672,7 +1759,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                     allow_code_repair=False,
                 )
                 if not success:
-                    print(f"❌ {self.learning_topic} {section_id} 保底模板仍无法渲染: {last_error}")
+                    print(f"鉂?{self.learning_topic} {section_id} 淇濆簳妯℃澘浠嶆棤娉曟覆鏌? {last_error}")
                     return False
             preview_video_path = self.section_videos.get(section_id)
 
@@ -1705,7 +1792,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         break
                     feedback = self.get_mllm_feedback(section, current_video, round_number=round_number)
                     if (feedback.raw_response or "").startswith("Error:"):
-                        print(f"⚠️ {section_id} 视觉评价不可用；保留已完成章节，稍后仍可继续优化")
+                        print(f"鈿狅笍 {section_id} 瑙嗚璇勪环涓嶅彲鐢紱淇濈暀宸插畬鎴愮珷鑺傦紝绋嶅悗浠嶅彲缁х画浼樺寲")
                         review_completed = False
                         break
                     if not feedback.has_issues and feedback.is_good_enough:
@@ -1713,13 +1800,13 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         review_completed = True
                         break
                     if not feedback.suggested_improvements:
-                        print(f"⚠️ {section_id} 硬问题反馈没有可验证的局部补丁，保留原预览")
+                        print(f"{section_id} feedback had no verifiable local patch; keeping preview render")
                         break
                     if not self.optimize_with_feedback(section, feedback):
                         break
                     review_completed = False
 
-                # 视觉审查已完成或预算已耗尽；结果只用于警告，不阻塞交付。
+                # Visual review results are warning-only for delivery.
                 review_completed = True
 
                 qa_fingerprint = render_fingerprint(
@@ -1749,7 +1836,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             return True
 
         except Exception as e:
-            print(f"❌ {self.learning_topic} {section_id} 渲染过程异常: {str(e)}")
+            print(f"鉂?{self.learning_topic} {section_id} 娓叉煋杩囩▼寮傚父: {str(e)}")
             return False
 
     def render_section_worker(self, section_data) -> Tuple[str, bool, Optional[str], Dict[str, Any]]:
@@ -1801,11 +1888,11 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             return section_id, success, video_path, quality
 
         except Exception as e:
-            print(f"❌ {self.learning_topic} {section_id} 渲染过程异常: {str(e)}")
+            print(f"鉂?{self.learning_topic} {section_id} 娓叉煋杩囩▼寮傚父: {str(e)}")
             return section_id, False, None, {"passed": False, "error": str(e)}
 
     def render_native_section_worker(self, section_data) -> Tuple[str, bool, Optional[str], Optional[str]]:
-        """Render the requested native profile once; never mutate code during this tier."""
+        # Render the requested native profile once without mutating code.
         section_id = "unknown"
         try:
             section, agent_class, kwargs, _ = section_data
@@ -1825,15 +1912,9 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
         self,
         max_render_workers: Optional[int] = None,
     ) -> Dict[str, str]:
-        """Pipeline section code generation directly into the 1080p baseline renderer.
-
-        Narration remains a deliberate all-section barrier. Once it is ready, each
-        section is submitted to the render pool as soon as its source (or fallback
-        source) has been persisted; slow code-generation requests no longer keep
-        already-ready sections idle.
-        """
+        # Pipeline section code generation directly into the preview renderer.
         if not self.sections:
-            raise ValueError(f"{self.learning_topic} 请先生成教学小节")
+            raise ValueError(f"{self.learning_topic} 璇峰厛鐢熸垚鏁欏灏忚妭")
 
         narration_started = time.time()
         self.prepare_all_narration_steps(max_rounds=self.max_attempts)
@@ -1853,10 +1934,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
         render_futures = {}
         code_failures: List[Tuple[str, str]] = []
 
-        print(
-            f"🔄 启动章节流水线：代码生成并发 {code_workers}，"
-            f"1080p 渲染并发 {render_workers}"
-        )
+        print(f"Starting section pipeline: code workers={code_workers}, preview render workers={render_workers}")
         # The first render job is submitted while code-generation threads are
         # active. Use spawn explicitly so Docker/Linux does not fork a
         # multithreaded parent process and inherit unsafe lock state.
@@ -1884,7 +1962,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                     if error is not None:
                         try:
                             self._install_fallback_code(section, str(error))
-                            print(f"🛟 {section_id} 已切换稳定保底模板")
+                            print(f"{section_id} switched to fallback template")
                         except Exception as fallback_exc:
                             code_failures.append((section_id, f"{error}; fallback={fallback_exc}"))
                             continue
@@ -1892,7 +1970,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                     task_data = (section, self.__class__, self.get_serializable_state(), False)
                     render_future = render_executor.submit(self.render_section_worker, task_data)
                     render_futures[render_future] = section_id
-                    print(f"🎬 {section_id} 代码已落盘，立即开始 1080p 渲染")
+                    print(f"馃幀 {section_id} 浠ｇ爜宸茶惤鐩橈紝绔嬪嵆寮€濮?1080p 娓叉煋")
 
             for render_future in as_completed(render_futures):
                 section_id = render_futures[render_future]
@@ -1903,18 +1981,18 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         self.preview_render_seconds.append(float(quality["preview_render_seconds"]))
                     if success and video_path:
                         baseline_results[sid] = video_path
-                        print(f"✅ {sid} 1080p 基线渲染成功: {video_path}")
+                        print(f"鉁?{sid} 1080p 鍩虹嚎娓叉煋鎴愬姛: {video_path}")
                     else:
-                        print(f"⚠️ {sid} 1080p 基线渲染失败")
+                        print(f"鈿狅笍 {sid} 1080p 鍩虹嚎娓叉煋澶辫触")
                 except Exception as exc:
-                    print(f"❌ {section_id} 1080p 基线渲染过程错误: {exc}")
+                    print(f"鉂?{section_id} 1080p 鍩虹嚎娓叉煋杩囩▼閿欒: {exc}")
 
         if code_failures:
-            print(f"⚠️ 流水线中有章节无法形成代码或保底代码: {code_failures}")
+            print(f"鈿狅笍 娴佹按绾夸腑鏈夌珷鑺傛棤娉曞舰鎴愪唬鐮佹垨淇濆簳浠ｇ爜: {code_failures}")
 
         missing_codes = [section.id for section in self.sections if section.id not in self.section_codes]
         if missing_codes:
-            print(f"⚠️ 流水线缺少章节代码，将由完整性检查终止缺章交付: {missing_codes}")
+            print(f"鈿狅笍 娴佹按绾跨己灏戠珷鑺備唬鐮侊紝灏嗙敱瀹屾暣鎬ф鏌ョ粓姝㈢己绔犱氦浠? {missing_codes}")
 
         return self.render_all_sections(
             max_workers=render_workers,
@@ -1931,9 +2009,9 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             configured = os.getenv("C2V_PREVIEW_RENDER_WORKERS") or os.getenv("C2V_RENDER_WORKERS")
             max_workers = int(configured) if configured else 3
         if baseline_results is None:
-            print(f"🎥 先并行生成完整 1080p 基线 (最多 {max_workers} 个进程)...")
+            print(f"馃帴 鍏堝苟琛岀敓鎴愬畬鏁?1080p 鍩虹嚎 (鏈€澶?{max_workers} 涓繘绋?...")
         else:
-            print(f"🔄 已接收流水线生成的 {len(baseline_results)}/{len(self.sections)} 个 1080p 基线章节")
+            print(f"馃攧 宸叉帴鏀舵祦姘寸嚎鐢熸垚鐨?{len(baseline_results)}/{len(self.sections)} 涓?1080p 鍩虹嚎绔犺妭")
 
         tasks = []
         for section in self.sections:
@@ -1941,11 +2019,11 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 task_data = (section, self.__class__, self.get_serializable_state(), False)
                 tasks.append(task_data)
             except Exception as e:
-                print(f"⚠️ 为 {section.id} 准备任务数据时出错: {str(e)}")
+                print(f"鈿狅笍 涓?{section.id} 鍑嗗浠诲姟鏁版嵁鏃跺嚭閿? {str(e)}")
                 continue
 
         if not tasks:
-            print("❌ 没有有效任务可执行")
+            print("No valid render tasks to execute")
             return {}
 
         results = dict(baseline_results or {})
@@ -1962,7 +2040,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                             future_to_section[future] = task[0].id
                         except Exception as e:
                             section_id = task[0].id if task and len(task) > 0 else "unknown"
-                            print(f"⚠️ 提交 {section_id} 任务时出错: {str(e)}")
+                            print(f"鈿狅笍 鎻愪氦 {section_id} 浠诲姟鏃跺嚭閿? {str(e)}")
                             failed_count += 1
 
                     for future in as_completed(future_to_section):
@@ -1976,22 +2054,22 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                             if success and video_path:
                                 results[sid] = video_path
                                 successful_count += 1
-                                print(f"✅ {sid} 视频渲染成功: {video_path}")
+                                print(f"鉁?{sid} 瑙嗛娓叉煋鎴愬姛: {video_path}")
                             else:
                                 failed_count += 1
-                                print(f"⚠️ {sid} 视频渲染失败")
+                                print(f"鈿狅笍 {sid} 瑙嗛娓叉煋澶辫触")
 
                         except Exception as e:
                             failed_count += 1
-                            print(f"❌ {section_id} 视频渲染过程错误: {str(e)}")
+                            print(f"鉂?{section_id} 瑙嗛娓叉煋杩囩▼閿欒: {str(e)}")
 
             except Exception as e:
-                print(f"❌ 并行渲染过程中出现严重错误: {str(e)}")
+                print(f"鉂?骞惰娓叉煋杩囩▼涓嚭鐜颁弗閲嶉敊璇? {str(e)}")
         if successful_count == len(self.sections) and self.use_feedback:
             if self.remaining_pipeline_seconds() > self.finalize_reserve_seconds:
                 visual_workers = max(1, int(os.getenv("C2V_VISUAL_WORKERS", "2")))
                 visual_tasks = [(section, self.__class__, self.get_serializable_state(), True) for section in self.sections]
-                print(f"🔎 1080p 基线完整，开始最多两轮硬问题视觉检查（并发 {visual_workers}）")
+                print(f"1080p baseline complete; starting hard-issue visual review with {visual_workers} workers")
                 with ProcessPoolExecutor(max_workers=visual_workers) as executor:
                     futures = {
                         executor.submit(self.render_section_worker, task): task[0].id
@@ -2005,12 +2083,12 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         else:
                             self._add_warning(
                                 "visual_review_unavailable",
-                                f"{sid} 视觉复查未完成，继续使用已成功的 1080p 基线",
+                                f"{sid} 瑙嗚澶嶆煡鏈畬鎴愶紝缁х画浣跨敤宸叉垚鍔熺殑 1080p 鍩虹嚎",
                                 section_id=sid,
                             )
             else:
                 self.deadline_action = "skip_visual_review_for_deadline"
-                self._add_warning("visual_review_skipped", "剩余预算不足，跳过视觉复查并保留完整基线")
+                self._add_warning("visual_review_skipped", "鍓╀綑棰勭畻涓嶈冻锛岃烦杩囪瑙夊鏌ュ苟淇濈暀瀹屾暣鍩虹嚎")
 
         for section_id, quality in self.visual_quality_results.items():
             self.retry_summary.setdefault("sections", {})[section_id] = quality.get("retry_summary", {})
@@ -2019,18 +2097,18 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             for warning in quality.get("warnings", []):
                 self._add_warning(
                     str(warning.get("code") or "section_warning"),
-                    str(warning.get("message") or "章节生成存在非阻塞问题"),
+                    str(warning.get("message") or "section generation produced a non-blocking warning"),
                     **{key: value for key, value in warning.items() if key not in {"code", "message"}},
                 )
             if quality.get("feedback_enabled") and not quality.get("passed"):
                 self._add_warning(
                     "visual_quality_not_passed",
-                    f"{section_id} 已完成渲染，但两轮内未完全通过视觉审查",
+                    f"{section_id} 宸插畬鎴愭覆鏌擄紝浣嗕袱杞唴鏈畬鍏ㄩ€氳繃瑙嗚瀹℃煡",
                     section_id=section_id,
                 )
 
         if failed_count > 0 or successful_count != len(self.sections):
-            raise RuntimeError(f"{len(self.sections) - successful_count} 个章节渲染失败；禁止合并缺章成片")
+            raise RuntimeError(f"{len(self.sections) - successful_count} 涓珷鑺傛覆鏌撳け璐ワ紱绂佹鍚堝苟缂虹珷鎴愮墖")
 
         preview_results = dict(results)
         self.actual_render_profile = self.preview_render_profile
@@ -2040,8 +2118,8 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             remaining = self.remaining_pipeline_seconds()
             can_finish_native = estimated_native_seconds + self.finalize_reserve_seconds <= remaining
             print(
-                f"📐 原生 {self.render_profile.name} 预计 {estimated_native_seconds:.0f}s，"
-                f"剩余预算 {remaining:.0f}s（合并预留 {self.finalize_reserve_seconds}s）"
+                f"Native {self.render_profile.name} estimate {estimated_native_seconds:.0f}s; "
+                f"remaining budget {remaining:.0f}s with merge reserve {self.finalize_reserve_seconds}s"
             )
             if can_finish_native:
                 native_results: Dict[str, str] = {}
@@ -2056,7 +2134,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                         if success and path:
                             native_results[sid] = path
                         else:
-                            native_errors[sid] = error or "原生规格渲染失败"
+                            native_errors[sid] = error or "native render failed"
                 if len(native_results) == len(self.sections):
                     results = native_results
                     self.actual_render_profile = self.render_profile
@@ -2065,7 +2143,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                     self.deadline_action = "native_render_failed_use_1080p"
                     self._add_warning(
                         "render_profile_fallback",
-                        f"原生 {self.render_profile.name} 未形成完整章节集合，返回完整 {self.preview_render_profile.name}",
+                        f"Native {self.render_profile.name} did not produce a complete section set; returning complete {self.preview_render_profile.name}",
                         errors=native_errors,
                     )
             else:
@@ -2073,18 +2151,18 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                 self.deadline_action = "skip_native_render_for_deadline"
                 self._add_warning(
                     "render_profile_fallback",
-                    f"预计原生 {self.render_profile.name} 无法在总预算内完成，返回完整 {self.preview_render_profile.name}",
+                    f"Estimated native {self.render_profile.name} render cannot finish within remaining budget; returning complete {self.preview_render_profile.name}",
                     estimated_native_seconds=estimated_native_seconds,
                     remaining_seconds=remaining,
                 )
 
-        # 更新结果并输出统计信息
+        # Update final section video choices before merge.
         self.section_videos.update(results)
 
         total_sections = len(self.sections)
-        print(f"\n📊 渲染统计:")
-        print(f"   总小节数: {total_sections}")
-        print(f"   成功率: {successful_count/total_sections*100:.1f}%" if total_sections > 0 else "   成功率: 0%")
+        print(f"\n馃搳 娓叉煋缁熻:")
+        print(f"   鎬诲皬鑺傛暟: {total_sections}")
+        print(f"   鎴愬姛鐜? {successful_count/total_sections*100:.1f}%" if total_sections > 0 else "   鎴愬姛鐜? 0%")
 
         pinned_cache_path = self.output_dir / "pinned_final_sections.json"
         try:
@@ -2126,17 +2204,17 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
         temporary_pin_path.replace(pinned_cache_path)
 
         if successful_count == 0:
-            raise RuntimeError("所有分节视频渲染失败")
+            raise RuntimeError("all section renders failed")
         if failed_count > 0 or successful_count != total_sections:
-            raise RuntimeError(f"{total_sections - successful_count} 个章节渲染失败；禁止合并缺章成片")
-        print("🎉 所有分节视频渲染成功！")
+            raise RuntimeError(f"{total_sections - successful_count} 涓珷鑺傛覆鏌撳け璐ワ紱绂佹鍚堝苟缂虹珷鎴愮墖")
+        print("馃帀 鎵€鏈夊垎鑺傝棰戞覆鏌撴垚鍔燂紒")
 
         return results
 
     def merge_videos(self, output_filename: str = None) -> str:
-        """严格按章节顺序合并最终规格视频，并使用物理媒体事实验收。"""
+        # Merge section videos in storyboard order and validate final media.
         if not self.section_videos:
-            raise ValueError("没有可用视频进行合并")
+            raise ValueError("娌℃湁鍙敤瑙嗛杩涜鍚堝苟")
         if self.duration is None:
             self._ensure_duration_resolved()
 
@@ -2146,15 +2224,15 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
 
         output_path = self.output_dir / output_filename
 
-        print(f"🔗 开始合并分节视频...")
+        print(f"馃敆 寮€濮嬪悎骞跺垎鑺傝棰?..")
 
         video_list_file = self.output_dir / "video_list.txt"
         ordered_ids = []
         if self.sections:
             ordered_ids = [s.id for s in self.sections]
         else:
-            # 备选方案：如果缺失 sections 对象，使用自然排序 (Natural Sort)
-            # 这里简单实现一个 key function 处理 trailing numbers
+            # 澶囬€夋柟妗堬細濡傛灉缂哄け sections 瀵硅薄锛屼娇鐢ㄨ嚜鐒舵帓搴?(Natural Sort)
+            # 杩欓噷绠€鍗曞疄鐜颁竴涓?key function 澶勭悊 trailing numbers
             def natural_keys(text):
                 return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
             ordered_ids = sorted(self.section_videos.keys(), key=natural_keys)
@@ -2162,7 +2240,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
         target_ids = ordered_ids if ordered_ids else sorted(self.section_videos.keys())
         missing = [section_id for section_id in target_ids if section_id not in self.section_videos]
         if missing:
-            raise ValueError(f"严格合并禁止缺章：{missing}")
+            raise ValueError(f"strict merge refused missing sections: {missing}")
 
         with open(video_list_file, "w", encoding="utf-8") as f:
             for section_id in target_ids:
@@ -2173,7 +2251,7 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                     require_audio=True,
                 )
                 if section_media["video_codec"] != "h264":
-                    raise ValueError(f"{section_id} 视频编码不是 H.264: {section_media['video_codec']}")
+                    raise ValueError(f"{section_id} 瑙嗛缂栫爜涓嶆槸 H.264: {section_media['video_codec']}")
                 escaped = str(video_path).replace("'", "'\\''")
                 f.write(f"file '{escaped}'\n")
 
@@ -2197,18 +2275,18 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
                     require_audio=True,
                 )
                 if media["video_codec"] != "h264":
-                    raise ValueError(f"成片视频编码不是 H.264: {media['video_codec']}")
+                    raise ValueError(f"鎴愮墖瑙嗛缂栫爜涓嶆槸 H.264: {media['video_codec']}")
                 if media["pixel_format"] != "yuv420p":
-                    raise ValueError(f"成片像素格式不是 yuv420p: {media['pixel_format']}")
+                    raise ValueError(f"鎴愮墖鍍忕礌鏍煎紡涓嶆槸 yuv420p: {media['pixel_format']}")
                 if media["audio_codec"] != "aac":
-                    raise ValueError(f"成片音频编码不是 AAC: {media['audio_codec']}")
+                    raise ValueError(f"鎴愮墖闊抽缂栫爜涓嶆槸 AAC: {media['audio_codec']}")
                 self.media_metadata = media
                 break
             except Exception as exc:
                 last_error = str(exc)
-                print(f"⚠️ 合并或媒体验收第 {attempt}/{self.max_attempts} 次失败: {last_error}")
+                print(f"鈿狅笍 鍚堝苟鎴栧獟浣撻獙鏀剁 {attempt}/{self.max_attempts} 娆″け璐? {last_error}")
         else:
-            raise RuntimeError(f"合并和媒体验收在 {self.max_attempts} 次尝试后仍失败: {last_error}")
+            raise RuntimeError(f"鍚堝苟鍜屽獟浣撻獙鏀跺湪 {self.max_attempts} 娆″皾璇曞悗浠嶅け璐? {last_error}")
 
         self.actual_duration_seconds = float(self.media_metadata["duration"])
         self.media_metadata["long_silences"] = None
@@ -2217,14 +2295,14 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
         if not duration_range[0] <= self.actual_duration_seconds <= duration_range[1]:
             self._add_warning(
                 "duration_target_missed",
-                f"成片时长 {self.actual_duration_seconds:.2f}s 偏离目标范围，但视频完整可播放",
+                f"Final video duration {self.actual_duration_seconds:.2f}s is outside the target range, but the video is complete and playable.",
                 actual_duration_seconds=self.actual_duration_seconds,
                 accepted_duration_seconds=list(duration_range),
             )
         return str(output_path)
 
     def GENERATE_VIDEO(self) -> str:
-        """Generate complete video with MLLM feedback optimization"""
+        # Generate complete video with visual feedback optimization.
         try:
             self.generate_outline()
             self.generate_storyboard()
@@ -2233,30 +2311,23 @@ new_code 必须是该行完整的 self.place_at_grid(...) 或 self.place_in_area
             self.generate_and_render_sections()
             final_video = self.merge_videos()
             if final_video:
-                print(f"🎉 视频生成成功: {final_video}")
+                print(f"馃帀 瑙嗛鐢熸垚鎴愬姛: {final_video}")
                 return final_video
             else:
-                print(f"❌ {self.learning_topic} 失败")
+                print(f"鉂?{self.learning_topic} 澶辫触")
                 return None
         except Exception as e:
-            print(f"❌ 视频生成失败: {e}")
+            print(f"鉂?瑙嗛鐢熸垚澶辫触: {e}")
             return None
 
 
 def process_single_problem(idx: int, problem: Dict[str, str], folder_path: Path, cfg: RunConfig):
-    """处理单个编程题目（CLI 批量模式下使用）
-    
-    Args:
-        idx: 题目索引
-        problem: 包含 problem_description 和 solution_code 的字典
-        folder_path: 输出目录
-        cfg: 运行配置
-    """
+    # Process one programming problem in CLI batch mode.
     desc = problem["problem_description"]
     code = problem.get("solution_code", "")
     label = desc[:50] if len(desc) > 50 else desc
     
-    print(f"\n🚀 正在处理题目 [{idx}]: {label}")
+    print(f"\n馃殌 姝ｅ湪澶勭悊棰樼洰 [{idx}]: {label}")
     start_time = time.time()
 
     agent = TeachingVideoAgent(
@@ -2271,26 +2342,26 @@ def process_single_problem(idx: int, problem: Dict[str, str], folder_path: Path,
     duration_minutes = (time.time() - start_time) / 60
     total_tokens = agent.token_usage["total_tokens"]
 
-    print(f"✅ 题目 [{idx}] 处理完成。耗时: {duration_minutes:.2f} 分钟, Token 使用: {total_tokens}")
+    print(f"鉁?棰樼洰 [{idx}] 澶勭悊瀹屾垚銆傝€楁椂: {duration_minutes:.2f} 鍒嗛挓, Token 浣跨敤: {total_tokens}")
     return label, video_path, duration_minutes, total_tokens
 
 
 def process_batch(batch_data, cfg: RunConfig):
-    """Process a batch of problems (serial within a batch)"""
+    # Process a batch of problems serially within the batch.
     batch_idx, problem_batch, folder_path = batch_data
     results = []
-    print(f"第 {batch_idx + 1} 批次开始处理 {len(problem_batch)} 个题目")
+    print(f"Batch {batch_idx + 1} starts with {len(problem_batch)} problems")
 
     for local_idx, (idx, problem) in enumerate(problem_batch):
         try:
             if local_idx > 0:
                 delay = random.uniform(3, 6)
-                print(f"⏳ 第 {batch_idx + 1} 批次等待 {delay:.1f} 秒...")
+                print(f"鈴?绗?{batch_idx + 1} 鎵规绛夊緟 {delay:.1f} 绉?..")
                 time.sleep(delay)
             results.append(process_single_problem(idx, problem, folder_path, cfg))
         except Exception as e:
             label = problem.get("problem_description", "unknown")[:50]
-            print(f"❌ 第 {batch_idx + 1} 批次处理 {label} 失败: {e}")
+            print(f"鉂?绗?{batch_idx + 1} 鎵规澶勭悊 {label} 澶辫触: {e}")
             results.append((label, None, 0, 0))
     return batch_idx, results
 
@@ -2298,16 +2369,7 @@ def process_batch(batch_data, cfg: RunConfig):
 def run_Code2Video(
     problems: List[Dict[str, str]], folder_path: Path, parallel=True, batch_size=3, max_workers=8, cfg: RunConfig = RunConfig()
 ):
-    """批量处理编程题目，生成讲解视频
-    
-    Args:
-        problems: 题目列表，每个元素为 {"problem_description": "...", "solution_code": "..."}
-        folder_path: 输出目录
-        parallel: 是否并行
-        batch_size: 每批处理数量
-        max_workers: 最大并行进程数
-        cfg: 运行配置
-    """
+    # Batch-process programming problems and generate videos.
     all_results = []
 
     if parallel:
@@ -2316,32 +2378,30 @@ def run_Code2Video(
             batch = [(i + j, p) for j, p in enumerate(problems[i : i + batch_size])]
             batches.append((i // batch_size, batch, folder_path))
 
-        print(
-            f"🔄 并行批处理模式: {len(batches)} 个批次，每批 {batch_size} 个题目，{max_workers} 个并发批次"
-        )
+        print(f"Parallel batch mode: {len(batches)} batches, batch_size={batch_size}, max_workers={max_workers}")
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(process_batch, batch, cfg): batch for batch in batches}
             for future in as_completed(futures):
                 try:
                     batch_idx, batch_results = future.result()
                     all_results.extend(batch_results)
-                    print(f"✅ 第 {batch_idx + 1} 批次完成")
+                    print(f"鉁?绗?{batch_idx + 1} 鎵规瀹屾垚")
                 except Exception as e:
-                    print(f"❌ 批次处理失败: {e}")
+                    print(f"鉂?鎵规澶勭悊澶辫触: {e}")
     else:
-        print("🔄 串行处理模式")
+        print("馃攧 涓茶澶勭悊妯″紡")
         for idx, problem in enumerate(problems):
             try:
                 all_results.append(process_single_problem(idx, problem, folder_path, cfg))
             except Exception as e:
                 label = problem.get("problem_description", "unknown")[:50]
-                print(f"❌ 串行处理 {label} 失败: {e}")
+                print(f"鉂?涓茶澶勭悊 {label} 澶辫触: {e}")
                 all_results.append((label, None, 0, 0))
 
     successful_runs = [r for r in all_results if r[1] is not None]
     total_runs = len(all_results)
     if not successful_runs:
-        print("\n所有题目处理失败，无法计算平均值。")
+        print("\nAll problems failed; cannot compute averages.")
         return
 
     total_duration = sum(r[2] for r in successful_runs)
@@ -2349,10 +2409,10 @@ def run_Code2Video(
     num_successful = len(successful_runs)
 
     print("\n" + "=" * 50)
-    print(f"   总题目数: {total_runs}")
-    print(f"   成功处理: {num_successful} ({num_successful/total_runs*100:.1f}%)")
-    print(f"   平均耗时 [分]: {total_duration/num_successful:.2f} 分钟/题目")
-    print(f"   平均 Token 消耗: {total_tokens_consumed/num_successful:,.0f} tokens/题目")
+    print(f"   鎬婚鐩暟: {total_runs}")
+    print(f"   鎴愬姛澶勭悊: {num_successful} ({num_successful/total_runs*100:.1f}%)")
+    print(f"   骞冲潎鑰楁椂 [鍒哴: {total_duration/num_successful:.2f} 鍒嗛挓/棰樼洰")
+    print(f"   骞冲潎 Token 娑堣€? {total_tokens_consumed/num_successful:,.0f} tokens/棰樼洰")
     print("=" * 50)
 
 
@@ -2366,7 +2426,7 @@ def get_api_and_output(API_name):
     try:
         return mapping[API_name]
     except KeyError:
-        raise ValueError("无效的 API 模型名称")
+        raise ValueError("鏃犳晥鐨?API 妯″瀷鍚嶇О")
 
 
 def build_and_parse_args():
@@ -2383,7 +2443,7 @@ def build_and_parse_args():
         type=str,
         default="TEST",
     )
-    parser.add_argument("--problems_file", type=str, help="批量题目 JSON 文件路径（相对于 json_files 目录）", default=None)
+    parser.add_argument("--problems_file", type=str, help="Batch problem JSON file path relative to json_files", default=None)
     parser.add_argument("--iconfinder_api_key", type=str, default="")
 
     # Basically invariant parameters
@@ -2393,42 +2453,42 @@ def build_and_parse_args():
     parser.add_argument("--no_assets", action="store_false", dest="use_assets")
 
     parser.add_argument("--max_code_token_length", type=int, help="max # token for generating code", default=10000)
-    parser.add_argument("--max_fix_bug_tries", type=int, help="已弃用；总尝试数最多为 3", default=3)
-    parser.add_argument("--max_regenerate_tries", type=int, help="已弃用；总尝试数最多为 3", default=3)
-    parser.add_argument("--max_feedback_gen_code_tries", type=int, help="已弃用；每轮视觉反馈只改写一次", default=1)
-    parser.add_argument("--max_mllm_fix_bugs_tries", type=int, help="已弃用；每轮视觉反馈只渲染一次", default=1)
+    parser.add_argument("--max_fix_bug_tries", type=int, help="宸插純鐢紱鎬诲皾璇曟暟鏈€澶氫负 3", default=3)
+    parser.add_argument("--max_regenerate_tries", type=int, help="宸插純鐢紱鎬诲皾璇曟暟鏈€澶氫负 3", default=3)
+    parser.add_argument("--max_feedback_gen_code_tries", type=int, help="Deprecated; one code rewrite per visual feedback round", default=1)
+    parser.add_argument("--max_mllm_fix_bugs_tries", type=int, help="Deprecated; one render per visual feedback round", default=1)
     parser.add_argument("--feedback_rounds", type=int, default=2)
-    parser.add_argument("--duration", type=int, default=None, help="目标时长（分钟）；不传时由 AI 在 5-15 分钟内选择")
+    parser.add_argument("--duration", type=int, default=None, help="鐩爣鏃堕暱锛堝垎閽燂級锛涗笉浼犳椂鐢?AI 鍦?5-15 鍒嗛挓鍐呴€夋嫨")
     parser.add_argument(
         "--render_profile",
         choices=["1080p30", "4k30", "4k60"],
         default="4k30",
-        help="原生渲染规格",
+        help="鍘熺敓娓叉煋瑙勬牸",
     )
 
     parser.add_argument("--parallel", action="store_true", default=False)
     parser.add_argument("--no_parallel", action="store_false", dest="parallel")
     parser.add_argument("--parallel_group_num", type=int, default=3)
     parser.add_argument("--max_concepts", type=int, help="Limit # concepts for a quick run, -1 for all", default=-1)
-    parser.add_argument("--problem_description", type=str, help="编程题目描述（单题模式）", default=None)
-    parser.add_argument("--solution_code", type=str, help="标准答案代码（单题模式）", default=None)
+    parser.add_argument("--problem_description", type=str, help="缂栫▼棰樼洰鎻忚堪锛堝崟棰樻ā寮忥級", default=None)
+    parser.add_argument("--solution_code", type=str, help="鏍囧噯绛旀浠ｇ爜锛堝崟棰樻ā寮忥級", default=None)
     
-    # 新增参数：最大并行工作进程数
+    # 鏂板鍙傛暟锛氭渶澶у苟琛屽伐浣滆繘绋嬫暟
     parser.add_argument("--max_workers", type=int, default=None, help="Force specific number of workers, overriding auto-detection")
 
-    # 用户个性化配置参数 - 新的自然语言描述方式
+    # 鐢ㄦ埛涓€у寲閰嶇疆鍙傛暟 - 鏂扮殑鑷劧璇█鎻忚堪鏂瑰紡
     parser.add_argument(
         "--user_profile",
         type=str,
         default="",
-        help="用户画像的自然语言描述，例如：'我是17岁的高中生，想要的学习难度是入门级，选择的编程语言是Python，目标是利用暑假成功入门Python'"
+        help="鐢ㄦ埛鐢诲儚鐨勮嚜鐒惰瑷€鎻忚堪锛屼緥濡傦細'鎴戞槸17宀佺殑楂樹腑鐢燂紝鎯宠鐨勫涔犻毦搴︽槸鍏ラ棬绾э紝閫夋嫨鐨勭紪绋嬭瑷€鏄疨ython锛岀洰鏍囨槸鍒╃敤鏆戝亣鎴愬姛鍏ラ棬Python'"
     )
     parser.add_argument(
         "--difficulty",
         type=str,
         choices=["simple", "medium", "hard"],
         default="medium",
-        help="内容难度等级（simple/medium/hard），默认 medium"
+        help="鍐呭闅惧害绛夌骇锛坰imple/medium/hard锛夛紝榛樿 medium"
     )
 
     return parser.parse_args()
@@ -2447,18 +2507,18 @@ if __name__ == "__main__":
     iconfinder_cfg = _CFG.get("iconfinder", {})
     args.iconfinder_api_key = iconfinder_cfg.get("api_key")
     if args.iconfinder_api_key:
-        print(f"Iconfinder API 密钥: {args.iconfinder_api_key}")
+        print(f"Iconfinder API 瀵嗛挜: {args.iconfinder_api_key}")
     else:
-        print("警告: 配置文件中未找到 Iconfinder API 密钥。使用默认值 (None)。")
+        print("Warning: Iconfinder API key not found; using default None.")
 
-    # 判断运行模式
+    # 鍒ゆ柇杩愯妯″紡
     single_mode = bool(args.problem_description)
 
     if not single_mode and not args.problems_file:
-        raise ValueError("必须提供 --problem_description（单题模式）或 --problems_file（批量模式）")
+        raise ValueError("蹇呴』鎻愪緵 --problem_description锛堝崟棰樻ā寮忥級鎴?--problems_file锛堟壒閲忔ā寮忥級")
 
-    # 创建用户个性化配置
-    # 难度映射为自然语言描述
+    # 鍒涘缓鐢ㄦ埛涓€у寲閰嶇疆
+    # 闅惧害鏄犲皠涓鸿嚜鐒惰瑷€鎻忚堪
     difficulty_desc_map = {
         "simple": "内容难度偏简单入门",
         "medium": "内容难度为中等",
@@ -2467,31 +2527,30 @@ if __name__ == "__main__":
     difficulty_desc = difficulty_desc_map.get(args.difficulty, "内容难度为中等")
 
     if args.user_profile:
-        # 将 difficulty 自然语言描述追加到用户画像文本
         profile_text = f"{args.user_profile}，{difficulty_desc}"
-        print(f"🧠 正在使用 AI 解析用户画像...")
-        print(f"📝 用户输入: {profile_text}")
+        print(f"馃 姝ｅ湪浣跨敤 AI 瑙ｆ瀽鐢ㄦ埛鐢诲儚...")
+        print(f"馃摑 鐢ㄦ埛杈撳叆: {profile_text}")
         
         user_profile = create_profile_from_text(profile_text)
         parsed_profile = parse_profile_with_ai_sync(profile_text, api, max_retries=3)
         
         if parsed_profile:
             user_profile.update_with_parsed_profile(parsed_profile)
-            print(f"✅ AI 解析成功！")
+            print("AI profile parsing succeeded")
             
             summary = parsed_profile.get("user_summary", {})
-            print(f"📋 解析结果:")
-            print(f"   - 年龄段: {summary.get('age_group', '未知')}")
-            print(f"   - 知识背景: {summary.get('background', '未知')}")
-            print(f"   - 学习目标: {summary.get('learning_goal', '未知')}")
-            print(f"   - 编程语言: {summary.get('target_language', 'Python')}")
-            print(f"   - 难度偏好: {summary.get('difficulty_preference', '中等')}")
+            print(f"馃搵 瑙ｆ瀽缁撴灉:")
+            print(f"   - 骞撮緞娈? {summary.get('age_group', '鏈煡')}")
+            print(f"   - 鐭ヨ瘑鑳屾櫙: {summary.get('background', '鏈煡')}")
+            print(f"   - 瀛︿範鐩爣: {summary.get('learning_goal', '鏈煡')}")
+            print(f"   - 缂栫▼璇█: {summary.get('target_language', 'Python')}")
+            print(f"   - 闅惧害鍋忓ソ: {summary.get('difficulty_preference', '涓瓑')}")
         else:
-            print(f"⚠️ AI 解析失败，使用默认解析结果")
+            print("AI profile parsing failed; using default parsed profile")
     else:
-        # 即使没有用户画像文本，也将 difficulty 传入
+        # 鍗充娇娌℃湁鐢ㄦ埛鐢诲儚鏂囨湰锛屼篃灏?difficulty 浼犲叆
         profile_text = difficulty_desc
-        print(f"📋 未提供用户画像，使用难度配置: {difficulty_desc}")
+        print(f"馃搵 鏈彁渚涚敤鎴风敾鍍忥紝浣跨敤闅惧害閰嶇疆: {difficulty_desc}")
         user_profile = create_profile_from_text(profile_text)
         parsed_profile = parse_profile_with_ai_sync(profile_text, api, max_retries=3)
         if parsed_profile:
@@ -2515,8 +2574,8 @@ if __name__ == "__main__":
     )
 
     if single_mode:
-        # ===== 单题模式 =====
-        print(f"🔄 单题模式: 生成单个编程题讲解视频")
+        # ===== 鍗曢妯″紡 =====
+        print("Single-problem mode: generating one programming explanation video")
         start_time = time.time()
 
         agent = TeachingVideoAgent(
@@ -2532,28 +2591,28 @@ if __name__ == "__main__":
         total_tokens = agent.token_usage["total_tokens"]
 
         if video_path:
-            print(f"\n🎉 视频生成成功: {video_path}")
+            print(f"\n馃帀 瑙嗛鐢熸垚鎴愬姛: {video_path}")
         else:
-            print(f"\n❌ 视频生成失败")
-        print(f"   耗时: {duration_minutes:.2f} 分钟, Token 使用: {total_tokens}")
+            print(f"\n鉂?瑙嗛鐢熸垚澶辫触")
+        print(f"   鑰楁椂: {duration_minutes:.2f} 鍒嗛挓, Token 浣跨敤: {total_tokens}")
     else:
-        # ===== 批量模式（从 JSON 文件读取题目列表） =====
-        # JSON 文件格式: [{"problem_description": "...", "solution_code": "..."}, ...]
+        # ===== 鎵归噺妯″紡锛堜粠 JSON 鏂囦欢璇诲彇棰樼洰鍒楄〃锛?=====
+        # JSON 鏂囦欢鏍煎紡: [{"problem_description": "...", "solution_code": "..."}, ...]
         problems_path = Path(__file__).resolve().parent / "json_files" / args.problems_file
         with open(problems_path, "r", encoding="utf-8") as f:
             problems = json.load(f)
             if args.max_concepts is not None and args.max_concepts > 0:
                 problems = problems[: args.max_concepts]
 
-        # 验证格式
+        # 楠岃瘉鏍煎紡
         for i, p in enumerate(problems):
             if not isinstance(p, dict) or "problem_description" not in p:
                 raise ValueError(
-                    f"题目 [{i}] 格式错误：每个元素必须是包含 'problem_description' 字段的字典。"
-                    f"\n期望格式: {{\"problem_description\": \"...\", \"solution_code\": \"...\"}}"
+                    f"Problem [{i}] has invalid format; each item must include problem_description."
+                    f"\nExpected: {{\"problem_description\": \"...\", \"solution_code\": \"...\"}}"
                 )
 
-        print(f"📋 已加载 {len(problems)} 个题目")
+        print(f"Loaded {len(problems)} problems")
 
         real_workers = args.max_workers if args.max_workers is not None else get_optimal_workers()
 
@@ -2565,3 +2624,4 @@ if __name__ == "__main__":
             max_workers=real_workers,
             cfg=cfg,
         )
+

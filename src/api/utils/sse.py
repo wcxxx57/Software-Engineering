@@ -169,7 +169,7 @@ class SyncTaskProgressCallback:
     用于在同步代码（如 Celery Worker）中报告进度
     """
     
-    def __init__(self, redis_client, channel_name: str):
+    def __init__(self, redis_client, channel_name: str, task_id: Optional[str] = None):
         """
         初始化回调
         
@@ -179,11 +179,12 @@ class SyncTaskProgressCallback:
         """
         self.redis = redis_client
         self.channel = channel_name
+        self.task_id = task_id
         self.sse_manager = SSEManager()
     
     def on_stage_start(self, stage_name: str, message: str) -> str:
         """阶段开始回调"""
-        task_id = self.sse_manager.create_task_id()
+        task_id = self.task_id or self.sse_manager.create_task_id()
         event = self.sse_manager.emit_running(task_id, message)
         self.redis.publish(self.channel, event)
         return task_id
@@ -207,6 +208,7 @@ class SyncTaskProgressCallback:
 
     def on_final_failure(self, message: str, data: Optional[Dict[str, Any]] = None):
         """发送最终失败事件并关闭 SSE，供 Celery 正确标记任务失败。"""
-        event = self.sse_manager.emit_failed("generation", message, data)
+        task_id = self.task_id or "generation"
+        event = self.sse_manager.emit_failed(task_id, message, data)
         self.redis.publish(self.channel, event)
         self.redis.publish(self.channel, "__END__")

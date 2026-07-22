@@ -1,0 +1,13 @@
+{
+  "problem_description": "接雨水（Trapping Rain Water）\n\n给定一个非负整数数组 height，其中 height[i] 表示第 i 个柱子的高度。每根柱子宽度为 1，计算柱子之间能够接住的雨水总量。\n\n教学要求：面向经济管理专业、具有基础 Python 的入门学习者。用库存高低和闲置能力类比积水容量；讲清左右最高边界、双指针移动、当前可接水量和代码执行过程；保留题目含义与 Python 解法。",
+  "solution_code": "from typing import List\n\nclass Solution:\n    def trap(self, height: List[int]) -> int:\n        if not height:\n            return 0\n\n        left, right = 0, len(height) - 1\n        left_max, right_max = 0, 0\n        water = 0\n\n        while left < right:\n            if height[left] <= height[right]:\n                if height[left] >= left_max:\n                    left_max = height[left]\n                else:\n                    water += left_max - height[left]\n                left += 1\n            else:\n                if height[right] >= right_max:\n                    right_max = height[right]\n                else:\n                    water += right_max - height[right]\n                right -= 1\n\n        return water\n",
+  "age": 20,
+  "language": "Python",
+  "duration": 5,
+  "render_profile": "4k30",
+  "difficulty": "simple",
+  "extra_info": "我是经济管理专业学生，有一定 Python 基础，正在跨学科学习数据结构与算法。",
+  "use_feedback": false,
+  "use_assets": false,
+  "api_model": "gpt-5"
+}

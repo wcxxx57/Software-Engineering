@@ -44,7 +44,7 @@ def generate_video_task(
     """
     # 创建 Redis 客户端用于发布进度
     redis_client = redis.from_url(settings.redis_url)
-    callback = SyncTaskProgressCallback(redis_client, channel_name)
+    callback = SyncTaskProgressCallback(redis_client, channel_name, self.request.id)
     pipeline_started_at = time.time()
     pre_agent_stage_timings: Dict[str, Any] = {}
     
@@ -181,7 +181,7 @@ def generate_video_task(
             max_mllm_fix_bugs_tries=1,
             max_repair_attempts=2,
             feedback_rounds=2,
-            pipeline_budget_seconds=int(os.getenv("VIDEO_PIPELINE_BUDGET_SECONDS", "2400")),
+            pipeline_budget_seconds=int(os.getenv("VIDEO_PIPELINE_BUDGET_SECONDS", "3000")),
             finalize_reserve_seconds=int(os.getenv("VIDEO_FINALIZE_RESERVE_SECONDS", "240")),
             pipeline_started_at=pipeline_started_at,
         )

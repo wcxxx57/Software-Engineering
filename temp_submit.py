@@ -1,0 +1,40 @@
+﻿import requests
+import time
+
+url = 'http://localhost:8081/api/v1/generate-video'
+body = {
+    'problem_description': '接雨水（Trapping Rain Water）\n\n给定一个非负整数数组 height，其中 height[i] 表示第 i 个柱子的高度。想象为柱子围成的地形，每根柱子宽度为 1，计算在这些柱子之间能接住的总量（可容纳的闲置容量）。\n\n输入: height = [0,1,0,2,1,0,1,3,2,1,2,1]\n输出: 6\n\n输入: height = [4,2,0,3,2,5]\n输出: 9\n\n要求：\n1. 先讲清楚“为什么会积水”。\n2. 结合经济管理背景（库存波动、库存高低导致的闲置能力）帮助理解。\n3. 讲清双指针算法的边界含义：左侧最高与右侧最高决定当前柱子的可蓄水量。\n4. 讲清边界条件与循环推进。\n5. 面向非计算机背景的同学，语言自然、通俗但算法严谨。',
+    'solution_code': 'from typing import List\n\nclass Solution:\n    def trap(self, height: List[int]) -> int:\n        # 双指针 + 两侧最高边界，O(n) 时间 O(1) 空间\n        if not height:\n            return 0\n\n        left, right = 0, len(height) - 1\n        left_max, right_max = 0, 0\n        water = 0\n\n        while left < right:\n            if height[left] <= height[right]:\n                if height[left] >= left_max:\n                    left_max = height[left]\n                else:\n                    water += left_max - height[left]\n                left += 1\n            else:\n                if height[right] >= right_max:\n                    right_max = height[right]\n                else:\n                    water += right_max - height[right]\n                right -= 1\n\n        return water',
+    'language': 'Python',
+    'difficulty': 'simple',
+    'duration': 10,
+    'render_profile': '1080p30',
+    'api_model': 'gpt-5',
+    'use_feedback': True,
+    'use_assets': False,
+}
+
+resp = requests.post(
+    url,
+    json=body,
+    headers={'X-API-Key': 'dev-api-key-12345'},
+    stream=True,
+    timeout=30,
+)
+
+print('HTTP', resp.status_code)
+print('Task-ID', resp.headers.get('X-Task-ID'))
+print('CT', resp.headers.get('Content-Type'))
+print('---SSE---')
+
+start = time.time()
+for raw in resp.iter_lines():
+    if not raw:
+        continue
+    line = raw.decode('utf-8', errors='ignore')
+    print(line)
+    if line.startswith('event: result'):
+        break
+    if time.time() - start > 25:
+        print('TIMEOUT-LOCAL-BREAK')
+        break
