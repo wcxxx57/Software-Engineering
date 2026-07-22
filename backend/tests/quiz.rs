@@ -313,6 +313,10 @@ async fn study_quiz_submit_calculates_correct() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["correct_problems"], 1);
+    assert_eq!(body["data"]["exp_reward"], 15);
+
+    let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
+    assert_eq!(me_body["data"]["exp"], 15);
 
     // Verify quiz is now Submitted
     let (_, body) = app
@@ -323,7 +327,7 @@ async fn study_quiz_submit_calculates_correct() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Submitted");
+    assert_eq!(body["data"]["status"], "SUBMITTED");
     assert_eq!(body["data"]["correct_problems"], 1);
 }
 

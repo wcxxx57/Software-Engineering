@@ -1,0 +1,9 @@
+{
+  "problem_description": "盛最多水的容器 - 给定一个长度为 n 的整数数组 height 。有 n 条垂线，第 i 条线的两个端点是 (i, 0) 和 (i, height[i]) 。\n\n找出其中的两条线，使得它们与 x 轴共同构成的容器可以容纳最多的水。\n\n返回容器可以储存的最大水量。\n\n说明：你不能倾斜容器。\n\n示例 1：输入：[1,8,6,2,5,4,8,3,7]\n输出：49\n解释：图中垂直线代表输入数组 [1,8,6,2,5,4,8,3,7]。在此情况下，容器能够容纳水（表示为蓝色部分）的最大值为 49。\n\n示例 2：\n输入：height = [1,1]\n输出：1",
+  "solution_code": "class Solution:\n    def maxArea(self, height: List[int]) -> int:\n        l, r = 0, len(height) - 1\n        ans = 0\n        while l < r:\n            area = min(height[l], height[r]) * (r - l)\n            ans = max(ans, area)\n            if height[l] <= height[r]:\n                l += 1\n            else:\n                r -= 1\n        return ans",
+  "age": 20,
+  "language": "Python",
+  "duration": 10,
+  "difficulty": "medium",
+  "extra_info": "我是大学生，有一定的python编程基础，想要预习数据结构与算法，目标是通过暑假系统学习并掌握相关知识。"
+}

@@ -1,14 +1,15 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
-    routing::{patch, post},
+    extract::{Path, Query, State},
+    routing::{get, patch, post},
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
     TransactionTrait,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::{
     auth::{ServiceAuth, ServiceKind},
@@ -21,11 +22,19 @@ use crate::{
     },
     error::{AppError, BusinessError},
     response::ok,
+    services::asset_transaction::{self, DIAMOND, GOLD},
     state::AppState,
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/knowledge-videos/gc", get(knowledge_video_gc_candidates))
+        .route(
+            "/knowledge-videos/gc/{id}/confirm",
+            post(confirm_knowledge_video_gc),
+        )
+        .route("/code-videos/gc", get(code_video_gc_candidates))
+        .route("/code-videos/gc/{id}/confirm", post(confirm_code_video_gc))
         .route("/knowledge-videos/{id}", patch(update_knowledge_video))
         .route("/code-videos/{id}", patch(update_code_video))
         .route("/interactive-htmls/{id}", patch(update_interactive_html))
@@ -108,6 +117,201 @@ async fn resolve_interactive_html_owner<C: ConnectionTrait>(
     resolve_owner_via_task(db, study_task::Column::InteractiveHtmlId, id).await
 }
 
+#[derive(Debug, Deserialize)]
+struct GcQuery {
+    #[serde(default = "default_gc_grace_seconds")]
+    grace_seconds: i64,
+}
+
+fn default_gc_grace_seconds() -> i64 {
+    86_400
+}
+
+#[derive(Debug, Serialize)]
+struct GcCandidate {
+    id: i32,
+    object_key: Option<String>,
+    created_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct GcSnapshot {
+    referenced_object_keys: Vec<String>,
+    candidates: Vec<GcCandidate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GcConfirmRequest {
+    object_key: Option<String>,
+}
+
+async fn knowledge_video_gc_candidates(
+    State(state): State<AppState>,
+    service_auth: ServiceAuth,
+    Query(query): Query<GcQuery>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    if service_auth.service != ServiceKind::KnowledgeVideo {
+        return Err(AppError::business(BusinessError::InvalidApiKey));
+    }
+    let grace = query.grace_seconds.clamp(3_600, 31_536_000);
+    let cutoff = Utc::now() - Duration::seconds(grace);
+    let records = knowledge_video::Entity::find().all(&state.db).await?;
+    let linked_ids: HashSet<i32> = user_knowledge_video_link::Entity::find()
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|link| link.knowledge_video_id)
+        .collect();
+    let task_ids: HashSet<i32> = study_task::Entity::find()
+        .filter(study_task::Column::KnowledgeVideoId.is_not_null())
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .filter_map(|task| task.knowledge_video_id)
+        .collect();
+
+    let referenced_object_keys = records
+        .iter()
+        .filter_map(|record| record.object_key.clone())
+        .collect();
+    let candidates = records
+        .into_iter()
+        .filter(|record| {
+            !linked_ids.contains(&record.id)
+                && !task_ids.contains(&record.id)
+                && record.created_at <= cutoff
+                && matches!(
+                    record.status,
+                    knowledge_video::KnowledgeVideoStatus::Finished
+                        | knowledge_video::KnowledgeVideoStatus::Failed
+                )
+        })
+        .map(|record| GcCandidate {
+            id: record.id,
+            object_key: record.object_key,
+            created_at: record.created_at.timestamp_millis(),
+        })
+        .collect();
+    Ok(ok(GcSnapshot {
+        referenced_object_keys,
+        candidates,
+    }))
+}
+
+async fn code_video_gc_candidates(
+    State(state): State<AppState>,
+    service_auth: ServiceAuth,
+    Query(query): Query<GcQuery>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    if service_auth.service != ServiceKind::CodeVideo {
+        return Err(AppError::business(BusinessError::InvalidApiKey));
+    }
+    let grace = query.grace_seconds.clamp(3_600, 31_536_000);
+    let cutoff = Utc::now() - Duration::seconds(grace);
+    let records = code_video::Entity::find().all(&state.db).await?;
+    let linked_ids: HashSet<i32> = user_code_video_link::Entity::find()
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|link| link.code_video_id)
+        .collect();
+    let referenced_object_keys = records
+        .iter()
+        .filter_map(|record| record.object_key.clone())
+        .collect();
+    let candidates = records
+        .into_iter()
+        .filter(|record| {
+            !linked_ids.contains(&record.id)
+                && record.created_at <= cutoff
+                && matches!(
+                    record.status,
+                    code_video::CodeVideoStatus::Finished | code_video::CodeVideoStatus::Failed
+                )
+        })
+        .map(|record| GcCandidate {
+            id: record.id,
+            object_key: record.object_key,
+            created_at: record.created_at.timestamp_millis(),
+        })
+        .collect();
+    Ok(ok(GcSnapshot {
+        referenced_object_keys,
+        candidates,
+    }))
+}
+
+async fn confirm_knowledge_video_gc(
+    State(state): State<AppState>,
+    service_auth: ServiceAuth,
+    Path(id): Path<i32>,
+    Json(payload): Json<GcConfirmRequest>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    if service_auth.service != ServiceKind::KnowledgeVideo {
+        return Err(AppError::business(BusinessError::InvalidApiKey));
+    }
+    let tx = state.db.begin().await?;
+    let record = knowledge_video::Entity::find_by_id(id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+    let linked = user_knowledge_video_link::Entity::find_by_id(id)
+        .one(&tx)
+        .await?
+        .is_some();
+    let task_linked = study_task::Entity::find()
+        .filter(study_task::Column::KnowledgeVideoId.eq(id))
+        .one(&tx)
+        .await?
+        .is_some();
+    if linked
+        || task_linked
+        || record.object_key != payload.object_key
+        || !matches!(
+            record.status,
+            knowledge_video::KnowledgeVideoStatus::Finished
+                | knowledge_video::KnowledgeVideoStatus::Failed
+        )
+    {
+        return Err(AppError::ValidationFailed);
+    }
+    knowledge_video::Entity::delete_by_id(id).exec(&tx).await?;
+    tx.commit().await?;
+    Ok(ok(serde_json::json!({"deleted": true})))
+}
+
+async fn confirm_code_video_gc(
+    State(state): State<AppState>,
+    service_auth: ServiceAuth,
+    Path(id): Path<i32>,
+    Json(payload): Json<GcConfirmRequest>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    if service_auth.service != ServiceKind::CodeVideo {
+        return Err(AppError::business(BusinessError::InvalidApiKey));
+    }
+    let tx = state.db.begin().await?;
+    let record = code_video::Entity::find_by_id(id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+    let linked = user_code_video_link::Entity::find_by_id(id)
+        .one(&tx)
+        .await?
+        .is_some();
+    if linked
+        || record.object_key != payload.object_key
+        || !matches!(
+            record.status,
+            code_video::CodeVideoStatus::Finished | code_video::CodeVideoStatus::Failed
+        )
+    {
+        return Err(AppError::ValidationFailed);
+    }
+    code_video::Entity::delete_by_id(id).exec(&tx).await?;
+    tx.commit().await?;
+    Ok(ok(serde_json::json!({"deleted": true})))
+}
+
 // --- knowledge_video ---
 
 async fn update_knowledge_video(
@@ -144,10 +348,12 @@ async fn update_knowledge_video(
                 .one(&tx)
                 .await?
                 .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-            let mut active_user: user::ActiveModel = existing_user.into();
-            active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+            let new_diamond = existing_user.diamond + cost;
+            let mut active_user: user::ActiveModel = existing_user.clone().into();
+            active_user.diamond = Set(new_diamond);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
+            asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "知识视频生成失败退款").await?;
         } else {
             tracing::warn!(
                 resource_id = id,
@@ -225,10 +431,12 @@ async fn update_code_video(
                 .one(&tx)
                 .await?
                 .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-            let mut active_user: user::ActiveModel = existing_user.into();
-            active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+            let new_diamond = existing_user.diamond + cost;
+            let mut active_user: user::ActiveModel = existing_user.clone().into();
+            active_user.diamond = Set(new_diamond);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
+            asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "代码视频生成失败退款").await?;
         } else {
             tracing::warn!(
                 resource_id = id,
@@ -304,10 +512,12 @@ async fn update_interactive_html(
                 .one(&tx)
                 .await?
                 .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-            let mut active_user: user::ActiveModel = existing_user.into();
-            active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+            let new_diamond = existing_user.diamond + cost;
+            let mut active_user: user::ActiveModel = existing_user.clone().into();
+            active_user.diamond = Set(new_diamond);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
+            asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "2D 交互生成失败退款").await?;
         } else {
             tracing::warn!(
                 resource_id = id,
@@ -383,10 +593,12 @@ async fn update_knowledge_explanation(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = existing_user.into();
-        active_user.gold = Set(active_user.gold.unwrap() + record.cost);
+        let new_gold = existing_user.gold + record.cost;
+        let mut active_user: user::ActiveModel = existing_user.clone().into();
+        active_user.gold = Set(new_gold);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, existing_user.id, GOLD, record.cost, new_gold, "知识解析生成失败退款").await?;
     }
 
     active.update(&tx).await?;
@@ -515,10 +727,12 @@ async fn callback_study_subject(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = existing_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = existing_user.diamond + cost;
+        let mut active_user: user::ActiveModel = existing_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, existing_user.id, DIAMOND, cost, new_diamond, "学习计划生成失败退款").await?;
     }
 
     // Handle Pretest FINISHED → create problems
@@ -619,7 +833,6 @@ async fn callback_study_subject(
                 }
                 .insert(&tx)
                 .await?;
-
             }
         }
     }
@@ -737,10 +950,12 @@ async fn callback_study_quiz(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = existing_user.into();
-        active_user.gold = Set(active_user.gold.unwrap() + quiz.cost);
+        let new_gold = existing_user.gold + quiz.cost;
+        let mut active_user: user::ActiveModel = existing_user.clone().into();
+        active_user.gold = Set(new_gold);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, existing_user.id, GOLD, quiz.cost, new_gold, "知识点测验生成失败退款").await?;
     }
 
     // Handle FINISHED → create problems
@@ -822,11 +1037,15 @@ async fn recharge_balance(
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
-    let mut active: user::ActiveModel = existing.into();
+    let gold_delta = payload.gold.unwrap_or(0);
+    let diamond_delta = payload.diamond.unwrap_or(0);
+    let mut active: user::ActiveModel = existing.clone().into();
     active.gold = Set(new_gold);
     active.diamond = Set(new_diamond);
     active.updated_at = Set(Utc::now());
     active.update(&tx).await?;
+    asset_transaction::record(&tx, existing.id, GOLD, gold_delta, new_gold, "系统调整").await?;
+    asset_transaction::record(&tx, existing.id, DIAMOND, diamond_delta, new_diamond, "系统调整").await?;
 
     tx.commit().await?;
 

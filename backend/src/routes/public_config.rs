@@ -9,6 +9,7 @@ pub struct PublicConfig {
     storage: StorageConfig,
     resource: ResourceConfig,
     checkin: CheckinConfig,
+    experience: ExperienceConfig,
 }
 
 #[derive(Debug, Serialize)]
@@ -19,8 +20,17 @@ pub struct CheckinConfig {
 }
 
 #[derive(Debug, Serialize)]
+pub struct ExperienceConfig {
+    checkin_reward: i32,
+    study_task_reward: i32,
+    study_quiz_reward: i32,
+    study_subject_reward: i32,
+}
+
+#[derive(Debug, Serialize)]
 pub struct StudySubjectConfig {
     pricing: Vec<StudySubjectPricingItem>,
+    completion_refund_percent: i32,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,7 +65,10 @@ fn build_public_config(config: &Config) -> PublicConfig {
         .collect();
 
     PublicConfig {
-        study_subject: StudySubjectConfig { pricing },
+        study_subject: StudySubjectConfig {
+            pricing,
+            completion_refund_percent: config.study_subject_completion_refund_percent,
+        },
         storage: StorageConfig {
             public_base: config.storage_public_base.clone(),
             bucket: config.storage_bucket.clone(),
@@ -71,6 +84,12 @@ fn build_public_config(config: &Config) -> PublicConfig {
             reward_sequence: config.checkin_reward_sequence.clone(),
             makeup_gold_cost_per_day: config.checkin_makeup_gold_cost_per_day,
             makeup_diamond_cost: config.checkin_makeup_diamond_cost,
+        },
+        experience: ExperienceConfig {
+            checkin_reward: config.checkin_exp_reward,
+            study_task_reward: config.study_task_exp_reward,
+            study_quiz_reward: config.study_quiz_exp_reward,
+            study_subject_reward: config.study_subject_exp_reward,
         },
     }
 }

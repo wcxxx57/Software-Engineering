@@ -19,6 +19,7 @@ use crate::{
     error::{AppError, BusinessError},
     response::{created, ok},
     routes::study_stages::{StudyStageDetailView, StudyTaskBriefView},
+    services::asset_transaction::{self, DIAMOND},
     services::personalization::LearnerProfileSnapshot,
     services::study_subject::{
         PlanRequest, PretestRequest, PretestResult, dispatch_plan, dispatch_pretest,
@@ -150,8 +151,9 @@ pub async fn create(
     }
 
     let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
-    let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.diamond = Set(active_user.diamond.unwrap() - cost);
+    let new_diamond = existing_user.diamond - cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
 
     let record = study_subject::ActiveModel {
@@ -173,6 +175,7 @@ pub async fn create(
     // Newly created subject becomes the user's active subject.
     active_user.active_study_subject_id = Set(Some(record.id));
     active_user.update(&tx).await?;
+    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "创建学习计划").await?;
 
     tx.commit().await?;
 
@@ -202,10 +205,12 @@ pub async fn create(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = refund_user.diamond + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "学习计划生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);
@@ -338,6 +343,7 @@ pub async fn list_stages(
         .into_iter()
         .map(|s| StudyStageDetailView {
             id: s.id,
+            study_subject_id: s.study_subject_id,
             title: s.title,
             description: s.description,
             sort_order: s.sort_order,
@@ -458,10 +464,12 @@ pub async fn create_plan(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = refund_user.diamond + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "学习计划生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);

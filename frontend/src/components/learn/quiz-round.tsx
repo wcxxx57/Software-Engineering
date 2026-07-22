@@ -118,11 +118,18 @@ export function QuizRound({
     if (!allAnswered || submitQuiz.isPending) return;
     submitQuiz.mutate(undefined, {
       onSuccess: (data) => {
-        const correct = (data as { correct_problems?: number }).correct_problems;
+        const result = data as {
+          correct_problems?: number;
+          exp_reward?: number;
+        };
+        const correct = result.correct_problems;
         toast.success(
           typeof correct === "number"
             ? `提交成功，答对 ${correct} / ${total} 题`
             : "提交成功",
+          typeof result.exp_reward === "number"
+            ? { description: `+${result.exp_reward} EXP` }
+            : undefined,
         );
         setCurrentIndex(0);
       },

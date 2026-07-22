@@ -4,22 +4,23 @@ import { useState } from "react";
 import {
   BookOpen,
   Coins,
-  Crown,
   Flame,
   Gem,
   GraduationCap,
   Loader2,
   LogOut,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { CheckinButton } from "@/components/dashboard/checkin-button";
+import { AssetOverviewDialog } from "@/components/dashboard/asset-overview-dialog";
 import { HandbookDialog } from "@/components/dashboard/handbook-dialog";
 import { ProfileEditDialog } from "@/components/dashboard/profile-edit-dialog";
 import { AiChatPanel } from "@/components/panels/ai-chat-panel";
-import type { User } from "@/lib/api/schemas";
+import type { AssetKind, User } from "@/lib/api/schemas";
 
 function levelFromExp(exp: number) {
   return Math.floor(Math.sqrt(exp / 100));
@@ -33,11 +34,18 @@ export function DashboardAside({
   checkedToday: boolean;
 }) {
   const [profileOpen, setProfileOpen] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
+  const [initialAsset, setInitialAsset] = useState<AssetKind>("EXP");
   const [handbookOpen, setHandbookOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const queryClient = useQueryClient();
   const level = levelFromExp(user.exp);
   const needsProfile = user.birth_year === null;
+
+  const openAssets = (asset: AssetKind) => {
+    setInitialAsset(asset);
+    setAssetsOpen(true);
+  };
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -95,21 +103,28 @@ export function DashboardAside({
         <h4 className="relative z-10 mb-1 text-[19px] font-extrabold tracking-tight text-brand-dark">
           {user.username}
         </h4>
+        <button
+          type="button"
+          onClick={() => setProfileOpen(true)}
+          className="relative z-10 mb-2 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold text-palette-orange transition-colors hover:bg-palette-orange-mist"
+        >
+          <Pencil className="size-3" strokeWidth={2.4} /> 编辑资料
+        </button>
         <p className="relative z-10 mb-6 text-sm font-semibold text-brand-medium">
-          初学乍练 · 累计签到{" "}
+          初学乍练 · Lv.{level} · 累计签到{" "}
           <strong className="font-extrabold">{user.total_checkins}</strong> 天
         </p>
 
         <div className="relative z-10 mb-3 grid w-full grid-cols-2 gap-2">
-          <StatCard label="等级" icon={<Crown className="size-3.5" />} value={`Lv.${level}`} tone="yellow" />
+          <StatCard label="EXP" icon={<Sparkles className="size-3.5" />} value={user.exp} tone="yellow" onClick={() => openAssets("EXP")} />
           <StatCard
             label="连续登录天数"
             icon={<Flame className="size-3.5" />}
             value={`${user.streak_checkins} 天`}
             tone="orange"
           />
-          <StatCard label="金币" icon={<Coins className="size-3.5" />} value={user.gold} tone="blue" />
-          <StatCard label="钻石" icon={<Gem className="size-3.5" />} value={user.diamond} tone="purple" />
+          <StatCard label="金币" icon={<Coins className="size-3.5" />} value={user.gold} tone="blue" onClick={() => openAssets("GOLD")} />
+          <StatCard label="钻石" icon={<Gem className="size-3.5" />} value={user.diamond} tone="purple" onClick={() => openAssets("DIAMOND")} />
         </div>
 
         <div className="relative z-10 flex w-full gap-2">
@@ -148,6 +163,12 @@ export function DashboardAside({
         open={profileOpen}
         onOpenChange={setProfileOpen}
       />
+      <AssetOverviewDialog
+        user={user}
+        open={assetsOpen}
+        onOpenChange={setAssetsOpen}
+        initialAsset={initialAsset}
+      />
       <HandbookDialog open={handbookOpen} onOpenChange={setHandbookOpen} />
     </div>
   );
@@ -170,21 +191,35 @@ function StatCard({
   icon,
   value,
   tone,
+  onClick,
 }: {
   label: string;
   icon: React.ReactNode;
   value: string | number;
   tone: Tone;
+  onClick?: () => void;
 }) {
-  return (
-    <div
-      className={`flex items-center justify-between rounded-xl border px-3 py-2 ${TONE_CLASS[tone]}`}
-    >
+  const content = (
+    <>
       <span className="flex items-center gap-1 text-sm font-semibold text-brand-dark">
         {icon}
         {label}
       </span>
       <span className="text-sm font-extrabold text-brand-dark">{value}</span>
+    </>
+  );
+
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left transition-transform hover:-translate-y-0.5 ${TONE_CLASS[tone]}`}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className={`flex items-center justify-between rounded-xl border px-3 py-2 ${TONE_CLASS[tone]}`}>
+      {content}
     </div>
   );
 }

@@ -4,7 +4,7 @@ use axum::{
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, JoinType, QueryFilter,
-    QuerySelect, RelationTrait,
+    QueryOrder, QuerySelect, RelationTrait,
 };
 use serde::{Deserialize, Serialize};
 use validator::Validate;
@@ -12,7 +12,7 @@ use validator::Validate;
 use crate::{
     auth::AuthUser,
     entities::{
-        common::{Gender, ProblemAnswer},
+        asset_transaction, common::{Gender, ProblemAnswer},
         study_quiz, study_quiz_problem, study_stage, study_subject, study_task, user,
     },
     error::{AppError, BusinessError},
@@ -56,6 +56,60 @@ pub async fn get_me(
         .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
 
     Ok(ok(UserView::from(user)))
+}
+
+#[derive(Debug, Serialize)]
+pub struct AssetOverviewView {
+    exp: i32,
+    gold: i32,
+    diamond: i32,
+    transactions: Vec<AssetTransactionView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AssetTransactionView {
+    id: i32,
+    asset: String,
+    amount: i32,
+    balance_after: i32,
+    title: String,
+    created_at: i64,
+}
+
+/// GET /api/v1/me/assets
+pub async fn get_assets(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let user = user::Entity::find_by_id(auth_user.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+
+    let transactions = asset_transaction::Entity::find()
+        .filter(asset_transaction::Column::UserId.eq(auth_user.user_id))
+        .order_by_desc(asset_transaction::Column::CreatedAt)
+        .order_by_desc(asset_transaction::Column::Id)
+        .limit(200)
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|item| AssetTransactionView {
+            id: item.id,
+            asset: item.asset,
+            amount: item.amount,
+            balance_after: item.balance_after,
+            title: item.title,
+            created_at: item.created_at.timestamp_millis(),
+        })
+        .collect();
+
+    Ok(ok(AssetOverviewView {
+        exp: user.exp,
+        gold: user.gold,
+        diamond: user.diamond,
+        transactions,
+    }))
 }
 
 pub async fn update_me(
@@ -175,7 +229,7 @@ pub struct QuizProblemSource {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct MistakesQuery {
+pub struct ProblemSearchQuery {
     #[serde(default)]
     pub include_hidden: Option<bool>,
     #[serde(default)]
@@ -186,7 +240,7 @@ pub struct MistakesQuery {
 pub async fn list_mistakes(
     State(state): State<AppState>,
     auth_user: AuthUser,
-    Query(query): Query<MistakesQuery>,
+    Query(query): Query<ProblemSearchQuery>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
     let include_hidden = query.include_hidden.unwrap_or(false);
     let q = query
@@ -237,14 +291,16 @@ pub async fn list_mistakes(
 pub async fn list_bookmarks(
     State(state): State<AppState>,
     auth_user: AuthUser,
+    Query(query): Query<ProblemSearchQuery>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
-    let rows: Vec<(
-        study_quiz_problem::Model,
-        Option<study_quiz::Model>,
-        Option<study_task::Model>,
-        Option<study_stage::Model>,
-        Option<study_subject::Model>,
-    )> = study_quiz_problem::Entity::find()
+    let q = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+
+    let mut select = study_quiz_problem::Entity::find()
         .find_also_related(study_quiz::Entity)
         .join(JoinType::InnerJoin, study_quiz::Relation::StudyTask.def())
         .join(JoinType::InnerJoin, study_task::Relation::StudyStage.def())
@@ -253,7 +309,19 @@ pub async fn list_bookmarks(
             study_stage::Relation::StudySubject.def(),
         )
         .filter(study_subject::Column::UserId.eq(auth_user.user_id))
-        .filter(study_quiz_problem::Column::Bookmarked.eq(true))
+        .filter(study_quiz_problem::Column::Bookmarked.eq(true));
+
+    if let Some(ref q) = q {
+        select = select.filter(study_quiz_problem::Column::Content.contains(q));
+    }
+
+    let rows: Vec<(
+        study_quiz_problem::Model,
+        Option<study_quiz::Model>,
+        Option<study_task::Model>,
+        Option<study_stage::Model>,
+        Option<study_subject::Model>,
+    )> = select
         .all(&state.db)
         .await?
         .into_iter()

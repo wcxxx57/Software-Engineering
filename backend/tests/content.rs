@@ -88,7 +88,7 @@ async fn interactive_html_create_dispatch_success_charges_diamonds() {
     assert_eq!(payload["prompt"], "build a sorting demo");
 
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
-    assert_eq!(me_body["data"]["diamond"], 30);
+    assert_eq!(me_body["data"]["diamond"], 45);
 }
 
 #[tokio::test]
@@ -169,7 +169,7 @@ async fn internal_callback_failed_triggers_refund() {
     let token = app.create_user_and_login("gen_user2", "password123").await;
     let api_key = &app.config.interactive_html_api_key;
 
-    app.update_user_state("gen_user2", None, 0, 0, 100, 30).await;
+    app.update_user_state("gen_user2", None, 0, 0, 100, 45).await;
     app.insert_interactive_html(1, interactive_html::InteractiveHtmlStatus::Queuing)
         .await;
 
@@ -197,7 +197,7 @@ async fn internal_callback_failed_triggers_refund() {
 
     // Check user diamonds were refunded
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
-    assert_eq!(me_body["data"]["diamond"], 50); // 30 + 20 refund
+    assert_eq!(me_body["data"]["diamond"], 50); // 45 + 5 refund
 }
 
 #[tokio::test]

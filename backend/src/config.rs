@@ -15,6 +15,11 @@ pub struct Config {
     pub checkin_reward_sequence: Vec<i32>,
     pub checkin_makeup_gold_cost_per_day: i32,
     pub checkin_makeup_diamond_cost: i32,
+    pub checkin_exp_reward: i32,
+    pub study_task_exp_reward: i32,
+    pub study_quiz_exp_reward: i32,
+    pub study_subject_exp_reward: i32,
+    pub study_subject_completion_refund_percent: i32,
 
     // Content generation costs
     pub knowledge_video_diamond_cost: i32,
@@ -124,6 +129,19 @@ impl Config {
             .parse()
             .map_err(|_| AppError::internal("CHECKIN_MAKEUP_DIAMOND_COST is invalid"))?;
 
+        let checkin_exp_reward = parse_non_negative_i32("CHECKIN_EXP_REWARD", "5")?;
+        let study_task_exp_reward = parse_non_negative_i32("STUDY_TASK_EXP_REWARD", "10")?;
+        let study_quiz_exp_reward = parse_non_negative_i32("STUDY_QUIZ_EXP_REWARD", "15")?;
+        let study_subject_exp_reward =
+            parse_non_negative_i32("STUDY_SUBJECT_EXP_REWARD", "200")?;
+        let study_subject_completion_refund_percent =
+            parse_non_negative_i32("STUDY_SUBJECT_COMPLETION_REFUND_PERCENT", "50")?;
+        if study_subject_completion_refund_percent > 100 {
+            return Err(AppError::internal(
+                "STUDY_SUBJECT_COMPLETION_REFUND_PERCENT must be between 0 and 100",
+            ));
+        }
+
         let knowledge_video_diamond_cost = env::var("KNOWLEDGE_VIDEO_DIAMOND_COST")
             .unwrap_or_else(|_| "5".to_owned())
             .parse()
@@ -135,7 +153,7 @@ impl Config {
             .map_err(|_| AppError::internal("CODE_VIDEO_DIAMOND_COST is invalid"))?;
 
         let interactive_html_diamond_cost = env::var("INTERACTIVE_HTML_DIAMOND_COST")
-            .unwrap_or_else(|_| "20".to_owned())
+            .unwrap_or_else(|_| "5".to_owned())
             .parse()
             .map_err(|_| AppError::internal("INTERACTIVE_HTML_DIAMOND_COST is invalid"))?;
 
@@ -218,6 +236,11 @@ impl Config {
             checkin_reward_sequence,
             checkin_makeup_gold_cost_per_day,
             checkin_makeup_diamond_cost,
+            checkin_exp_reward,
+            study_task_exp_reward,
+            study_quiz_exp_reward,
+            study_subject_exp_reward,
+            study_subject_completion_refund_percent,
             knowledge_video_diamond_cost,
             code_video_diamond_cost,
             interactive_html_diamond_cost,
@@ -249,6 +272,19 @@ impl Config {
             storage_public_base,
         })
     }
+}
+
+fn parse_non_negative_i32(name: &str, default: &str) -> Result<i32, AppError> {
+    let value = env::var(name)
+        .unwrap_or_else(|_| default.to_owned())
+        .parse::<i32>()
+        .map_err(|_| AppError::internal(format!("{name} is invalid")))?;
+    if value < 0 {
+        return Err(AppError::internal(format!(
+            "{name} must be non-negative"
+        )));
+    }
+    Ok(value)
 }
 
 fn parse_study_subject_diamond_costs(raw: &str) -> Result<BTreeMap<i32, i32>, AppError> {

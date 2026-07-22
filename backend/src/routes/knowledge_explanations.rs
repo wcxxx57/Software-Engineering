@@ -13,7 +13,7 @@ use crate::{
     entities::{knowledge_explanation, user},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::{content::dispatch_payload, personalization::LearnerProfileSnapshot},
+    services::{asset_transaction::{self, GOLD}, content::dispatch_payload, personalization::LearnerProfileSnapshot},
     state::AppState,
 };
 
@@ -75,10 +75,12 @@ pub async fn create(
     }
 
     let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
-    let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.gold = Set(active_user.gold.unwrap() - cost);
+    let new_gold = existing_user.gold - cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.gold = Set(new_gold);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
+    asset_transaction::record(&tx, existing_user.id, GOLD, -cost, new_gold, "生成独立知识解析").await?;
 
     let record = knowledge_explanation::ActiveModel {
         user_id: Set(auth_user.user_id),
@@ -118,10 +120,12 @@ pub async fn create(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.gold = Set(active_user.gold.unwrap() + cost);
+        let new_gold = refund_user.gold + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.gold = Set(new_gold);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, GOLD, cost, new_gold, "知识解析生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);
@@ -189,10 +193,12 @@ pub async fn update(
             return Err(AppError::business(BusinessError::InsufficientGold));
         }
 
-        let mut active_user: user::ActiveModel = existing_user.into();
-        active_user.gold = Set(active_user.gold.unwrap() - cost);
+        let new_gold = existing_user.gold - cost;
+        let mut active_user: user::ActiveModel = existing_user.clone().into();
+        active_user.gold = Set(new_gold);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, existing_user.id, GOLD, -cost, new_gold, "重新生成知识解析").await?;
 
         active.status = Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing);
         active.content = Set(None);
@@ -233,10 +239,12 @@ pub async fn update(
                     .one(&tx)
                     .await?
                     .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-                let mut active_user: user::ActiveModel = refund_user.into();
-                active_user.gold = Set(active_user.gold.unwrap() + cost);
+                let new_gold = refund_user.gold + cost;
+                let mut active_user: user::ActiveModel = refund_user.clone().into();
+                active_user.gold = Set(new_gold);
                 active_user.updated_at = Set(Utc::now());
                 active_user.update(&tx).await?;
+                asset_transaction::record(&tx, refund_user.id, GOLD, cost, new_gold, "知识解析生成失败退款").await?;
 
                 tx.commit().await?;
                 return Err(err);

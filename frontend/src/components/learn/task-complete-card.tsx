@@ -52,7 +52,16 @@ export function TaskCompleteCard({
     startTransition(async () => {
       const result = await completeTaskAction(taskId);
       if (result.ok) {
-        toast.success("已记录学习进度，继续加油!");
+        const rewards = [`+${result.data.exp_reward} EXP`];
+        if (result.data.diamond_refund > 0) {
+          rewards.push(`返还 ${result.data.diamond_refund} 钻石`);
+        }
+        toast.success(
+          result.data.subject_completed
+            ? "学习计划已全部完成！"
+            : "已记录学习进度，继续加油!",
+          { description: rewards.join(" · ") },
+        );
         setConfirmOpen(false);
       } else {
         toast.error(result.message);

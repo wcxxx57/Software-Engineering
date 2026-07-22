@@ -22,7 +22,7 @@ export function CheckinButton({
       if (result.ok) {
         setDone(true);
         toast.success(`签到成功 +${result.data.gold_reward} 金币`, {
-          description: `连续签到 ${result.data.streak_checkins} 天`,
+          description: `+${result.data.exp_reward} EXP · 连续签到 ${result.data.streak_checkins} 天`,
         });
       } else {
         toast.error(result.message);

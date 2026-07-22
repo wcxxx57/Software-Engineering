@@ -82,7 +82,7 @@ Backend：
 RABBITMQ_URL=amqp://<user>:<password>@rabbitmq:5672/%2f
 INTERACTIVE_HTML_EXCHANGE=zhiying.interactive_html
 INTERACTIVE_HTML_API_KEY=sk-<共享密钥>
-INTERACTIVE_HTML_DIAMOND_COST=20
+INTERACTIVE_HTML_DIAMOND_COST=5
 ```
 
 Education2D：

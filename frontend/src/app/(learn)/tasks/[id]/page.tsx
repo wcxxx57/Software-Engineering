@@ -6,12 +6,15 @@ import { ExplanationViewer } from "@/components/learn/explanation-viewer";
 import { MarkmapCard } from "@/components/learn/markmap-card";
 import { QuizSection } from "@/components/learn/quiz-section";
 import { TaskCompleteCard } from "@/components/learn/task-complete-card";
+import { TaskNavigation } from "@/components/learn/task-navigation";
+import { TaskSectionNav } from "@/components/learn/task-section-nav";
 import { TaskSidebar } from "@/components/learn/task-sidebar";
 import { serverFetch } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { getPublicConfig } from "@/lib/api/public-config";
 import {
   studyStageDetailSchema,
+  studyStageListSchema,
   studyTaskSchema,
   type StudyStageDetail,
   type StudyTask,
@@ -52,11 +55,34 @@ export default async function TaskPage({
 
   const config = await getPublicConfig();
   const coreFlowOnly = process.env.CORE_FLOW_ONLY === "true";
+  let subjectStages: StudyStageDetail[] = stage ? [stage] : [];
+  if (stage) {
+    try {
+      subjectStages = await serverFetch<StudyStageDetail[]>(
+        `/study-subjects/${stage.study_subject_id}/stages`,
+        { schema: studyStageListSchema },
+      );
+    } catch {
+      subjectStages = [stage];
+    }
+  }
+
+  const orderedTasks = subjectStages
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .flatMap((item) =>
+      [...item.tasks].sort((a, b) => a.sort_order - b.sort_order),
+    );
+  const taskIndex = orderedTasks.findIndex((item) => item.id === task.id);
+  const previousTask = taskIndex > 0 ? orderedTasks[taskIndex - 1] : null;
+  const nextTask =
+    taskIndex >= 0 && taskIndex < orderedTasks.length - 1
+      ? orderedTasks[taskIndex + 1]
+      : null;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-canvas">
       <main className="flex flex-1 flex-col gap-10 overflow-y-auto px-8 py-10 sm:px-16 sm:py-14 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-border-muted [&::-webkit-scrollbar-thumb:hover]:bg-border-strong [&::-webkit-scrollbar-track]:bg-transparent">
-        <header className="flex flex-col gap-3">
+        <header id="task-top" className="scroll-mt-8 flex flex-col gap-3">
           <span className="inline-flex w-fit items-center gap-1.5 rounded-xl bg-gradient-to-br from-palette-yellow-light to-palette-orange-light px-[18px] py-1.5 text-sm font-extrabold tracking-wide text-brand-deep shadow-[0_4px_12px_color-mix(in_oklch,var(--palette-orange)_30%,transparent)]">
             <BookOpen className="size-4" strokeWidth={2.2} />
             <span>学习任务</span>
@@ -72,39 +98,53 @@ export default async function TaskPage({
           </p>
         </header>
 
+        <TaskNavigation previous={previousTask} next={nextTask} />
+        <TaskSectionNav
+          extended={!coreFlowOnly}
+          hasKnowledgeMap={task.knowledge_explanation_id != null}
+        />
+
         {task.knowledge_explanation_id != null ? (
           <>
-            <MarkmapCard id={task.knowledge_explanation_id} />
-            <ExplanationViewer
-              id={task.knowledge_explanation_id}
-              taskId={task.id}
-            />
+            <div id="knowledge-map" className="scroll-mt-24">
+              <MarkmapCard id={task.knowledge_explanation_id} />
+            </div>
+            <div id="explanation" className="scroll-mt-24">
+              <ExplanationViewer
+                id={task.knowledge_explanation_id}
+                taskId={task.id}
+              />
+            </div>
           </>
         ) : (
-          <ExplanationGenerateCard
-            taskId={task.id}
-            taskStatus={task.status}
-          />
+          <div id="explanation" className="scroll-mt-24">
+            <ExplanationGenerateCard
+              taskId={task.id}
+              taskStatus={task.status}
+            />
+          </div>
         )}
 
         {!coreFlowOnly ? <ExtendedLearningResources task={task} /> : null}
 
-        <QuizSection
-          taskId={task.id}
-          taskStatus={task.status}
-          freeLimit={config.resource.study_quiz_free_limit_per_task}
-          extraGoldCost={config.resource.study_quiz_extra_gold_cost}
-        />
+        <div id="quiz" className="scroll-mt-24">
+          <QuizSection
+            taskId={task.id}
+            taskStatus={task.status}
+            freeLimit={config.resource.study_quiz_free_limit_per_task}
+            extraGoldCost={config.resource.study_quiz_extra_gold_cost}
+          />
+        </div>
 
-        <TaskCompleteCard
-          taskId={task.id}
-          taskStatus={task.status}
-          nextTaskId={
-            stage?.tasks
-              .filter((t) => t.sort_order > task.sort_order)
-              .sort((a, b) => a.sort_order - b.sort_order)[0]?.id ?? null
-          }
-        />
+        <div id="complete" className="scroll-mt-24">
+          <TaskCompleteCard
+            taskId={task.id}
+            taskStatus={task.status}
+            nextTaskId={nextTask?.id ?? null}
+          />
+        </div>
+
+        <TaskNavigation previous={previousTask} next={nextTask} />
       </main>
 
       <TaskSidebar task={task} stage={stage} />
@@ -125,20 +165,32 @@ async function ExtendedLearningResources({ task }: { task: StudyTask }) {
 
   return (
     <>
-      {task.knowledge_video_id != null ? (
-        <VideoViewer source={{ kind: "task", taskId: task.id }} />
-      ) : (
-        <ResourceGenerateCard taskId={task.id} taskStatus={task.status} kind="knowledge-video" />
-      )}
-      {task.interactive_html_id != null ? (
-        <InteractiveHtmlViewer
-          source={{ kind: "task", taskId: task.id }}
-          title="2D 可视化操作"
-          subtitle="播放步骤、缩放画布并用自然语言调整图形"
-        />
-      ) : (
-        <ResourceGenerateCard taskId={task.id} taskStatus={task.status} kind="interactive-html" />
-      )}
+      <div id="knowledge-video" className="scroll-mt-24">
+        {task.knowledge_video_id != null ? (
+          <VideoViewer source={{ kind: "task", taskId: task.id }} />
+        ) : (
+          <ResourceGenerateCard
+            taskId={task.id}
+            taskStatus={task.status}
+            kind="knowledge-video"
+          />
+        )}
+      </div>
+      <div id="interactive-html" className="scroll-mt-24">
+        {task.interactive_html_id != null ? (
+          <InteractiveHtmlViewer
+            source={{ kind: "task", taskId: task.id }}
+            title="2D 可视化操作"
+            subtitle="播放步骤、缩放画布并用自然语言调整图形"
+          />
+        ) : (
+          <ResourceGenerateCard
+            taskId={task.id}
+            taskStatus={task.status}
+            kind="interactive-html"
+          />
+        )}
+      </div>
     </>
   );
 }

@@ -26,3 +26,15 @@ services:
   knowledge-video-bridge:
     build: null
     image: ghcr.io/wcxxx57/software-engineering-knowledge2video:${IMAGE_TAG:-latest}
+
+  code-video-api:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-code2video:${IMAGE_TAG:-latest}
+
+  code-video-worker:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-code2video:${IMAGE_TAG:-latest}
+
+  code-video-bridge:
+    build: null
+    image: ghcr.io/wcxxx57/software-engineering-code2video:${IMAGE_TAG:-latest}

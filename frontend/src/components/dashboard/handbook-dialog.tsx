@@ -42,7 +42,9 @@ export function HandbookDialog({
   const config = useConfig();
   const seq = config.checkin.reward_sequence;
   const stableDailyGold = seq.length > 0 ? seq[seq.length - 1] : 0;
-  const weeklyMaxGold = seq.reduce((acc, value) => acc + value, 0);
+  const firstWeekGold = seq.reduce((acc, value) => acc + value, 0);
+  const stableWeeklyGold = stableDailyGold * 7;
+  const refundPercent = config.study_subject.completion_refund_percent;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -88,7 +90,8 @@ export function HandbookDialog({
                 </Bullet>
                 <Bullet>
                   <strong>满签彩蛋</strong>：理论上一周连续签到最多可累计{" "}
-                  <strong>{weeklyMaxGold} 金币</strong>。
+                  <strong>{firstWeekGold} 金币</strong>；进入稳定期后每周最多{" "}
+                  <strong>{stableWeeklyGold} 金币</strong>。
                 </Bullet>
                 <Tip>
                   <Lightbulb className="size-3.5 shrink-0 text-palette-orange" strokeWidth={2.4} />
@@ -113,7 +116,8 @@ export function HandbookDialog({
             <TabsContent value="diamond" className="flex flex-col gap-3">
               <Section tone="blue" Icon={Sparkles} title="获取方式">
                 <Bullet>
-                  <strong>完课对赌</strong>：开通学习计划时按阶段数预扣钻石，全勤完成可获返还。
+                  <strong>完课对赌</strong>：开通学习计划时按阶段数预扣钻石，完成全部学习任务后返还{" "}
+                  <strong>{refundPercent}%</strong>。
                 </Bullet>
                 <Bullet>
                   <strong>充值氪金</strong>：商店上线后可直接购买（暂未开放）。
@@ -127,7 +131,7 @@ export function HandbookDialog({
                       <tr className="text-brand-dark">
                         <Th align="left">阶段数</Th>
                         <Th>预扣钻石</Th>
-                        <Th>实际净消耗（参考 50% 返还）</Th>
+                        <Th>完成后实际净消耗</Th>
                       </tr>
                     </thead>
                     <tbody>
@@ -143,7 +147,10 @@ export function HandbookDialog({
                             {row.diamond_cost}
                           </Td>
                           <Td className="text-brand-medium">
-                            约 {Math.round(row.diamond_cost / 2)}
+                            {row.diamond_cost -
+                              Math.round(
+                                (row.diamond_cost * refundPercent) / 100,
+                              )}
                           </Td>
                         </tr>
                       ))}
@@ -174,19 +181,20 @@ export function HandbookDialog({
             <TabsContent value="exp" className="flex flex-col gap-3">
               <Section tone="green" Icon={CalendarCheck} title="经验值获取途径">
                 <Bullet>
-                  <strong>日常签到</strong>：每日 <strong>+5 EXP</strong>。
+                  <strong>日常签到</strong>：每日{" "}
+                  <strong>+{config.experience.checkin_reward} EXP</strong>。
                 </Bullet>
                 <Bullet>
                   <strong>学完一个学习任务</strong>：
-                  <strong>+10 EXP</strong>。
+                  <strong>+{config.experience.study_task_reward} EXP</strong>。
                 </Bullet>
                 <Bullet>
                   <strong>完成一轮知识点小测</strong>：
-                  <strong>+15 EXP</strong>。
+                  <strong>+{config.experience.study_quiz_reward} EXP</strong>。
                 </Bullet>
                 <Bullet>
                   <strong>完成完整学习计划</strong>：
-                  <strong>+200 EXP</strong>。
+                  <strong>+{config.experience.study_subject_reward} EXP</strong>。
                 </Bullet>
                 <Tip>
                   <Lightbulb className="size-3.5 shrink-0 text-palette-orange" strokeWidth={2.4} />

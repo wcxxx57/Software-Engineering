@@ -54,6 +54,27 @@ export const meProfileSchema = z.object({
 });
 export type MeProfile = z.infer<typeof meProfileSchema>;
 
+export const assetKindSchema = z.enum(["EXP", "GOLD", "DIAMOND"]);
+export type AssetKind = z.infer<typeof assetKindSchema>;
+
+export const assetTransactionSchema = z.object({
+  id: z.number().int(),
+  asset: assetKindSchema,
+  amount: z.number().int(),
+  balance_after: z.number().int(),
+  title: z.string(),
+  created_at: z.number().int(),
+});
+export type AssetTransaction = z.infer<typeof assetTransactionSchema>;
+
+export const assetOverviewSchema = z.object({
+  exp: z.number().int(),
+  gold: z.number().int(),
+  diamond: z.number().int(),
+  transactions: z.array(assetTransactionSchema),
+});
+export type AssetOverview = z.infer<typeof assetOverviewSchema>;
+
 export const tokenSchema = z.object({ token: z.string() });
 export type Token = z.infer<typeof tokenSchema>;
 
@@ -62,6 +83,7 @@ export type Token = z.infer<typeof tokenSchema>;
 export const checkinResponseSchema = z.object({
   checkin_date: z.string(),
   gold_reward: z.number().int(),
+  exp_reward: z.number().int(),
   makeup_applied: z.boolean(),
   makeup_days: z.number().int(),
   diamond_cost: z.number().int(),
@@ -146,13 +168,23 @@ export const checkinConfigSchema = z.object({
 });
 export type CheckinConfig = z.infer<typeof checkinConfigSchema>;
 
+export const experienceConfigSchema = z.object({
+  checkin_reward: z.number().int(),
+  study_task_reward: z.number().int(),
+  study_quiz_reward: z.number().int(),
+  study_subject_reward: z.number().int(),
+});
+export type ExperienceConfig = z.infer<typeof experienceConfigSchema>;
+
 export const publicConfigSchema = z.object({
   study_subject: z.object({
     pricing: z.array(studySubjectPricingItemSchema),
+    completion_refund_percent: z.number().int().min(0).max(100),
   }),
   storage: storageConfigSchema,
   resource: resourceConfigSchema,
   checkin: checkinConfigSchema,
+  experience: experienceConfigSchema,
 });
 export type PublicConfig = z.infer<typeof publicConfigSchema>;
 
@@ -187,7 +219,18 @@ export type CreateStudyQuizResponse = z.infer<
 
 export const submitStudyQuizResponseSchema = z.object({
   correct_problems: z.number().int(),
+  exp_reward: z.number().int(),
 });
+
+export const completeStudyTaskResponseSchema = z.object({
+  success: z.boolean(),
+  exp_reward: z.number().int(),
+  diamond_refund: z.number().int(),
+  subject_completed: z.boolean(),
+});
+export type CompleteStudyTaskResponse = z.infer<
+  typeof completeStudyTaskResponseSchema
+>;
 export type SubmitStudyQuizResponse = z.infer<
   typeof submitStudyQuizResponseSchema
 >;
@@ -206,6 +249,7 @@ export type StudyTaskBrief = z.infer<typeof studyTaskBriefSchema>;
 
 export const studyStageDetailSchema = z.object({
   id: z.number().int(),
+  study_subject_id: z.number().int(),
   title: z.string(),
   description: z.string(),
   sort_order: z.number().int(),

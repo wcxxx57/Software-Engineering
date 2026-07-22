@@ -1,3 +1,4 @@
+pub mod asset_transaction;
 pub mod code_video;
 pub mod common;
 pub mod interactive_html;

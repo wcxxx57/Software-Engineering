@@ -14,7 +14,7 @@ use crate::{
     entities::{interactive_html, user, user_interactive_html_link},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::content::{GenerateRequest, dispatch_to_service},
+    services::{asset_transaction::{self, DIAMOND}, content::{GenerateRequest, dispatch_to_service}},
     state::AppState,
 };
 
@@ -71,10 +71,12 @@ pub async fn create(
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
-    let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.diamond = Set(active_user.diamond.unwrap() - cost);
+    let new_diamond = existing_user.diamond - cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
+    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成 2D 交互内容").await?;
 
     let record = interactive_html::ActiveModel {
         status: Set(interactive_html::InteractiveHtmlStatus::Queuing),
@@ -119,10 +121,12 @@ pub async fn create(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = refund_user.diamond + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "2D 交互生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);

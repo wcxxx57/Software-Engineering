@@ -14,7 +14,7 @@ use crate::{
     entities::{knowledge_video, user, user_knowledge_video_link},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::{content::dispatch_payload, personalization::LearnerProfileSnapshot},
+    services::{asset_transaction::{self, DIAMOND}, content::dispatch_payload, personalization::LearnerProfileSnapshot},
     state::AppState,
 };
 
@@ -79,10 +79,12 @@ pub async fn create(
     }
 
     let learner_profile = LearnerProfileSnapshot::from_user(&existing_user);
-    let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.diamond = Set(active_user.diamond.unwrap() - cost);
+    let new_diamond = existing_user.diamond - cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
+    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成知识视频").await?;
 
     let record = knowledge_video::ActiveModel {
         status: Set(knowledge_video::KnowledgeVideoStatus::Queuing),
@@ -128,10 +130,12 @@ pub async fn create(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = refund_user.diamond + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "知识视频生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);

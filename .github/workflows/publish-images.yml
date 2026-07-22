@@ -32,6 +32,9 @@ jobs:
           - name: knowledge2video
             context: ./services/knowledge2video
             image: ghcr.io/wcxxx57/software-engineering-knowledge2video
+          - name: code2video
+            context: ./services/code2video
+            image: ghcr.io/wcxxx57/software-engineering-code2video
 
     steps:
       - uses: actions/checkout@v4

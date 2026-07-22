@@ -1,0 +1,21 @@
+{
+  "api_key": "replace-with-your-shared-api-key",
+  "gpt-41": {
+    "base_url": "https://api.example.com/v1",
+    "api_version": "",
+    "model": "gpt-4.1"
+  },
+  "gpt5": {
+    "base_url": "https://api.example.com/v1",
+    "api_version": "",
+    "model": "gpt-5"
+  },
+  "gpt4o": {
+    "base_url": "https://api.example.com/v1",
+    "api_version": "",
+    "model": "gpt-4o"
+  },
+  "iconfinder": {
+    "api_key": "replace-with-iconfinder-key"
+  }
+}

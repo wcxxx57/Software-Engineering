@@ -24,6 +24,7 @@ from .celery_app import celery_app
 from ..config import settings
 from ..utils.file_utils import save_video_with_hash
 from ..utils.sse import SyncTaskProgressCallback
+from ...output_lifecycle import task_workspace
 
 
 @celery_app.task(bind=True, name="src.api.tasks.video_tasks.generate_video_task")
@@ -198,7 +199,7 @@ def generate_video_task(
         # 每个 API 任务使用独立目录，避免同一知识点的不同用户画像、难度、
         # 语言或时长请求复用彼此的中间缓存。
         request_id = str(self.request.id or channel_name).replace("/", "_")
-        folder_path = src_dir / "CASES" / f"API_{api_model}" / request_id
+        folder_path = task_workspace(settings.output_dir, request_id)
         folder_path.mkdir(parents=True, exist_ok=True)
         
         # 创建 Agent

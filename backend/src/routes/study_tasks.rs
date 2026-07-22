@@ -19,6 +19,7 @@ use crate::{
     error::{AppError, BusinessError},
     response::{created, ok},
     services::{
+        asset_transaction::{self, DIAMOND, EXP, GOLD},
         content::{GenerateRequest, dispatch_payload, dispatch_to_service},
         personalization::{LearnerProfileSnapshot, LearningContextSnapshot},
         study_subject::{QuizRequest, dispatch_quiz},
@@ -118,6 +119,15 @@ fn resolve_prompt(payload: PromptRequest, task: &study_task::Model) -> String {
         .unwrap_or_else(|| task_default_prompt(task))
 }
 
+fn percentage_amount(amount: i32, percent: i32) -> Result<i32, AppError> {
+    let numerator = i64::from(amount)
+        .checked_mul(i64::from(percent))
+        .and_then(|value| value.checked_add(50))
+        .ok_or_else(|| AppError::internal("percentage calculation overflowed i64"))?;
+    i32::try_from(numerator / 100)
+        .map_err(|_| AppError::internal("percentage result overflowed i32"))
+}
+
 // ── Helpers ──
 
 /// Load a study_task and verify ownership through the join chain.
@@ -171,6 +181,8 @@ pub async fn complete(
         return Err(AppError::business(BusinessError::InvalidStudyTaskStatus));
     }
 
+    let mut completed_subject = false;
+
     // 1. Mark task as Finished
     let mut active_task: study_task::ActiveModel = task.into();
     active_task.status = Set(StudyTaskStatus::Finished);
@@ -210,6 +222,7 @@ pub async fn complete(
 
         if new_finished_stages >= subject.total_stages {
             // All stages done
+            completed_subject = true;
             active_subject.status = Set(StudySubjectStatus::Finished);
             active_subject.updated_at = Set(Utc::now());
             active_subject.update(&tx).await?;
@@ -248,8 +261,67 @@ pub async fn complete(
         active_stage.update(&tx).await?;
     }
 
+    let diamond_refund = if completed_subject {
+        percentage_amount(
+            subject.diamond_cost,
+            state.config.study_subject_completion_refund_percent,
+        )?
+    } else {
+        0
+    };
+    let exp_reward = state
+        .config
+        .study_task_exp_reward
+        .checked_add(if completed_subject {
+            state.config.study_subject_exp_reward
+        } else {
+            0
+        })
+        .ok_or_else(|| AppError::internal("study completion exp overflowed i32"))?;
+
+    let existing_user = user::Entity::find_by_id(auth_user.user_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    let new_exp = existing_user
+        .exp
+        .checked_add(exp_reward)
+        .ok_or_else(|| AppError::internal("user exp overflowed i32"))?;
+    let new_diamond = existing_user
+        .diamond
+        .checked_add(diamond_refund)
+        .ok_or_else(|| AppError::internal("user diamond overflowed i32"))?;
+    active_user.exp = Set(new_exp);
+    active_user.diamond = Set(new_diamond);
+    active_user.updated_at = Set(Utc::now());
+    active_user.update(&tx).await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        EXP,
+        exp_reward,
+        new_exp,
+        if completed_subject { "完成学习任务与学习计划" } else { "完成学习任务" },
+    )
+    .await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        diamond_refund,
+        new_diamond,
+        "学习计划完课返还",
+    )
+    .await?;
+
     tx.commit().await?;
-    Ok(ok(serde_json::json!({"success": true})))
+    Ok(ok(serde_json::json!({
+        "success": true,
+        "exp_reward": exp_reward,
+        "diamond_refund": diamond_refund,
+        "subject_completed": completed_subject,
+    })))
 }
 
 /// POST /api/v1/study-tasks/{id}/knowledge-video
@@ -309,10 +381,12 @@ pub async fn create_knowledge_video(
         task_description: Some(task.description.clone()),
     };
 
-    let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.diamond = Set(active_user.diamond.unwrap() - cost);
+    let new_diamond = existing_user.diamond - cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
+    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成知识视频").await?;
 
     let kv_record = knowledge_video::ActiveModel {
         status: Set(knowledge_video::KnowledgeVideoStatus::Queuing),
@@ -358,10 +432,12 @@ pub async fn create_knowledge_video(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = refund_user.diamond + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "知识视频生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);
@@ -403,10 +479,12 @@ pub async fn create_interactive_html(
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
 
-    let mut active_user: user::ActiveModel = existing_user.into();
-    active_user.diamond = Set(active_user.diamond.unwrap() - cost);
+    let new_diamond = existing_user.diamond - cost;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
+    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成 2D 交互内容").await?;
 
     let ih_record = interactive_html::ActiveModel {
         status: Set(interactive_html::InteractiveHtmlStatus::Queuing),
@@ -448,10 +526,12 @@ pub async fn create_interactive_html(
             .one(&tx)
             .await?
             .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-        let mut active_user: user::ActiveModel = refund_user.into();
-        active_user.diamond = Set(active_user.diamond.unwrap() + cost);
+        let new_diamond = refund_user.diamond + cost;
+        let mut active_user: user::ActiveModel = refund_user.clone().into();
+        active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "2D 交互生成失败退款").await?;
 
         tx.commit().await?;
         return Err(err);
@@ -602,10 +682,12 @@ pub async fn create_quiz(
             return Err(AppError::business(BusinessError::InsufficientGold));
         }
 
-        let mut active_user: user::ActiveModel = existing_user.into();
-        active_user.gold = Set(active_user.gold.unwrap() - cost);
+        let new_gold = existing_user.gold - cost;
+        let mut active_user: user::ActiveModel = existing_user.clone().into();
+        active_user.gold = Set(new_gold);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
+        asset_transaction::record(&tx, existing_user.id, GOLD, -cost, new_gold, "生成额外知识点测验").await?;
     }
 
     let quiz_record = study_quiz::ActiveModel {
@@ -646,10 +728,12 @@ pub async fn create_quiz(
                 .one(&tx)
                 .await?
                 .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-            let mut active_user: user::ActiveModel = refund_user.into();
-            active_user.gold = Set(active_user.gold.unwrap() + cost);
+            let new_gold = refund_user.gold + cost;
+            let mut active_user: user::ActiveModel = refund_user.clone().into();
+            active_user.gold = Set(new_gold);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
+            asset_transaction::record(&tx, refund_user.id, GOLD, cost, new_gold, "知识点测验生成失败退款").await?;
         }
 
         tx.commit().await?;

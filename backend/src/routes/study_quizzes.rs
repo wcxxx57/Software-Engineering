@@ -13,10 +13,11 @@ use crate::{
     auth::AuthUser,
     entities::{
         common::ProblemAnswer, study_quiz, study_quiz::StudyQuizStatus, study_quiz_problem,
-        study_stage, study_subject, study_task,
+        study_stage, study_subject, study_task, user,
     },
     error::{AppError, BusinessError},
     response::ok,
+    services::asset_transaction::{self, EXP},
     state::AppState,
 };
 
@@ -194,9 +195,32 @@ pub async fn submit(
     active.updated_at = Set(Utc::now());
     active.update(&tx).await?;
 
+    let existing_user = user::Entity::find_by_id(auth_user.user_id)
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
+    let mut active_user: user::ActiveModel = existing_user.clone().into();
+    let new_exp = existing_user
+        .exp
+        .checked_add(state.config.study_quiz_exp_reward)
+        .ok_or_else(|| AppError::internal("user exp overflowed i32"))?;
+    active_user.exp = Set(new_exp);
+    active_user.updated_at = Set(Utc::now());
+    active_user.update(&tx).await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        EXP,
+        state.config.study_quiz_exp_reward,
+        new_exp,
+        "完成知识点测验",
+    )
+    .await?;
+
     tx.commit().await?;
 
     Ok(ok(serde_json::json!({
         "correct_problems": correct_count,
+        "exp_reward": state.config.study_quiz_exp_reward,
     })))
 }

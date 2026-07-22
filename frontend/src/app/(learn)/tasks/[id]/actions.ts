@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { serverFetch } from "@/lib/api/client";
 import {
+  completeStudyTaskResponseSchema,
   createInteractiveHtmlResponseSchema,
   createKnowledgeExplanationResponseSchema,
   createKnowledgeVideoResponseSchema,
@@ -12,6 +13,7 @@ import {
   type CreateKnowledgeExplanationResponse,
   type CreateKnowledgeVideoResponse,
   type CreateStudyQuizResponse,
+  type CompleteStudyTaskResponse,
 } from "@/lib/api/schemas";
 import { withApiError, type ActionResult } from "@/lib/server/action";
 
@@ -22,7 +24,7 @@ export type CreateKnowledgeExplanationActionResult =
 export type CreateInteractiveHtmlActionResult =
   ActionResult<CreateInteractiveHtmlResponse>;
 export type CreateStudyQuizActionResult = ActionResult<CreateStudyQuizResponse>;
-export type CompleteTaskActionResult = ActionResult;
+export type CompleteTaskActionResult = ActionResult<CompleteStudyTaskResponse>;
 
 export async function createKnowledgeVideoAction(
   taskId: number,
@@ -115,11 +117,16 @@ export async function completeTaskAction(
     return { ok: false, message: "无效的任务" };
   }
   return withApiError(async () => {
-    await serverFetch(`/study-tasks/${taskId}/complete`, {
-      method: "POST",
-      body: {},
-    });
+    const data = await serverFetch<CompleteStudyTaskResponse>(
+      `/study-tasks/${taskId}/complete`,
+      {
+        method: "POST",
+        body: {},
+        schema: completeStudyTaskResponseSchema,
+      },
+    );
     revalidatePath(`/tasks/${taskId}`);
     revalidatePath("/dashboard");
+    return data;
   });
 }

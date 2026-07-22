@@ -1,6 +1,6 @@
 use axum::{Json, extract::State};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use serde::Deserialize;
 use validator::Validate;
 
@@ -9,7 +9,7 @@ use crate::{
     error::{AppError, BusinessError},
     response::created,
     routes::user_views::UserView,
-    services::password::hash_password,
+    services::{asset_transaction::{self, DIAMOND}, password::hash_password},
     state::AppState,
 };
 
@@ -39,6 +39,7 @@ pub async fn create_user(
     let now = Utc::now();
     let password = hash_password(&payload.password)?;
 
+    let tx = state.db.begin().await?;
     let created_user = user::ActiveModel {
         username: Set(payload.username),
         password: Set(password),
@@ -57,8 +58,19 @@ pub async fn create_user(
         updated_at: Set(now),
         ..Default::default()
     }
-    .insert(&state.db)
+    .insert(&tx)
     .await?;
+
+    asset_transaction::record(
+        &tx,
+        created_user.id,
+        DIAMOND,
+        state.config.register_bonus_diamonds,
+        created_user.diamond,
+        "新用户注册奖励",
+    )
+    .await?;
+    tx.commit().await?;
 
     Ok(created(UserView::from(created_user)))
 }

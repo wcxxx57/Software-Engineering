@@ -47,13 +47,19 @@ impl TestApp {
             jwt_secret: "test-secret".to_owned(),
             jwt_ttl_days: 30,
             cors_allow_origin: "*".to_owned(),
+            core_flow_only: false,
             register_bonus_diamonds: 80,
             checkin_reward_sequence: vec![1, 2, 3, 4, 5, 6, 7],
             checkin_makeup_gold_cost_per_day: 10,
             checkin_makeup_diamond_cost: 1,
+            checkin_exp_reward: 5,
+            study_task_exp_reward: 10,
+            study_quiz_exp_reward: 15,
+            study_subject_exp_reward: 200,
+            study_subject_completion_refund_percent: 50,
             knowledge_video_diamond_cost: 5,
             code_video_diamond_cost: 5,
-            interactive_html_diamond_cost: 20,
+            interactive_html_diamond_cost: 5,
             knowledge_explanation_gold_cost: 10,
             knowledge_video_exchange: "test.knowledge_video".to_owned(),
             code_video_exchange: "test.code_video".to_owned(),
@@ -74,6 +80,12 @@ impl TestApp {
             study_quiz_extra_gold_cost: 20,
             recharge_api_key: "sk-test-recharge".to_owned(),
             rabbitmq_url: "amqp://test/%2f".to_owned(),
+            storage_endpoint: "http://localhost:9100".to_owned(),
+            storage_access_key: "test-access".to_owned(),
+            storage_secret_key: "test-secret".to_owned(),
+            storage_region: "us-east-1".to_owned(),
+            storage_bucket: "test-bucket".to_owned(),
+            storage_public_base: "http://localhost:9100/test-bucket".to_owned(),
         };
         let publisher = InMemoryPublisher::new();
         let app = build_app_with_publisher(config.clone(), publisher.clone())
@@ -240,7 +252,9 @@ impl TestApp {
             status: Set(study_subject::StudySubjectStatus::Studying),
             total_stages: Set(num_stages as i32),
             finished_stages: Set(0),
-            diamond_cost: Set(0),
+            // Persist the original plan creation cost so completion-refund tests
+            // exercise the same source of truth used by production code.
+            diamond_cost: Set(10),
             language: Set("PYTHON".to_owned()),
             target: Set(String::new()),
             created_at: Set(now),
@@ -404,10 +418,9 @@ impl TestApp {
         let db = self.db().await;
         let now = Utc::now();
         let record = knowledge_video::ActiveModel {
-            user_id: Set(user_id),
             status: Set(status),
             prompt: Set("test prompt".to_owned()),
-            url: Set(None),
+            object_key: Set(None),
             public: Set(false),
             created_at: Set(now),
             updated_at: Set(now),
@@ -427,10 +440,9 @@ impl TestApp {
         let db = self.db().await;
         let now = Utc::now();
         let record = code_video::ActiveModel {
-            user_id: Set(user_id),
             status: Set(status),
             prompt: Set("test prompt".to_owned()),
-            url: Set(None),
+            object_key: Set(None),
             public: Set(false),
             created_at: Set(now),
             updated_at: Set(now),
@@ -450,10 +462,9 @@ impl TestApp {
         let db = self.db().await;
         let now = Utc::now();
         let record = interactive_html::ActiveModel {
-            user_id: Set(user_id),
             status: Set(status),
             prompt: Set("test prompt".to_owned()),
-            url: Set(None),
+            object_key: Set(None),
             public: Set(false),
             created_at: Set(now),
             updated_at: Set(now),
@@ -478,7 +489,6 @@ impl TestApp {
             status: Set(status),
             prompt: Set("test prompt".to_owned()),
             content: Set(None),
-            mindmap: Set(None),
             public: Set(false),
             cost: Set(cost),
             created_at: Set(now),

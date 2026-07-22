@@ -1,6 +1,6 @@
-# 2D 可视化与知识视频本地验证
+# 2D 可视化、知识视频与代码视频本地验证
 
-本文面向当前 `iteration2` 集成版本。它保留原 `education2d` 与 `knowledge2video` 分支的完整功能代码，并通过现有 RabbitMQ + backend 内部回调契约接入学习任务页。
+本文面向当前集成版本。它保留 `education2d`、`knowledge2video` 与 `code2video` 的完整功能代码，并通过现有 RabbitMQ + backend 内部回调契约接入平台。
 
 ## 1. 配置
 
@@ -18,6 +18,8 @@ CORE_FLOW_ONLY=false
 INTERACTIVE_HTML_API_KEY=sk-一个随机值
 KNOWLEDGE_VIDEO_API_KEY=sk-另一个随机值
 KNOWLEDGE_VIDEO_SERVICE_API_KEY=一个随机值
+CODE_VIDEO_API_KEY=sk-代码视频随机值
+CODE_VIDEO_SERVICE_API_KEY=另一个随机值
 
 STORAGE_ACCESS_KEY=zhiying-local
 STORAGE_SECRET_KEY=一个足够长的随机值
@@ -34,6 +36,10 @@ VIVO_TTS_APP_KEY=你的vivo蓝心TTS应用Key
 K2V_LOGIC_MODEL=gpt-5.6-terra
 K2V_CODE_MODEL=gpt-5.6-sol
 K2V_RENDER_PROFILE=1080p30
+
+CODE_VIDEO_LOGIC_MODEL=gpt-5.6-terra
+CODE_VIDEO_CODE_MODEL=gpt-5.6-sol
+CODE_VIDEO_RENDER_PROFILE=1080p30
 ```
 
 不要把 `.env` 提交到 Git，也不要把真实 Key 发到聊天中。
@@ -60,7 +66,7 @@ docker compose `
   up -d --build --remove-orphans
 ```
 
-首次构建 `knowledge2video` 会安装 FFmpeg、LaTeX、中文字体、Manim 与科学计算依赖，耗时和镜像体积明显大于其他服务。
+首次构建 `knowledge2video` 与 `code2video` 会安装 FFmpeg、LaTeX、中文字体、Manim 与科学计算依赖，耗时和镜像体积明显大于其他服务。
 
 如果拉取 Docker Hub 基础镜像时反复出现 `EOF` 或代理连接错误，先在 Docker Desktop 的代理设置中使用本机代理：
 
@@ -77,6 +83,7 @@ http://127.0.0.1:7890
 后端：http://127.0.0.1:9000/health
 RabbitMQ：http://127.0.0.1:15672
 Knowledge2Video API：http://127.0.0.1:8080/docs
+Code2Video API：http://127.0.0.1:8081/docs
 MinIO Console：http://127.0.0.1:9101
 ```
 
@@ -103,6 +110,9 @@ education2d
 knowledge-video-api
 knowledge-video-worker
 knowledge-video-bridge
+code-video-api
+code-video-worker
+code-video-bridge
 frontend
 npm
 ```
@@ -117,7 +127,7 @@ docker exec zhiying-rabbitmq `
   name consumers messages_ready messages_unacknowledged
 ```
 
-以下六个队列应各有 `1` 个消费者：
+以下七个队列应各有 `1` 个消费者：
 
 ```text
 zhiying.pretest.generate
@@ -126,6 +136,7 @@ zhiying.knowledge_explanation.generate
 zhiying.quiz.generate
 zhiying.interactive_html.generate
 zhiying.knowledge_video.generate
+zhiying.code_video.generate
 ```
 
 ## 4. 浏览器端完整验证
@@ -153,6 +164,8 @@ http://127.0.0.1:3080
 13. 状态应从 `QUEUING → GENERATING → FINISHED`；
 14. 页面出现原生视频播放器，拖动进度条应触发 HTTP Range `206`；
 15. 最后完成课后测并打卡。
+
+然后打开 `http://127.0.0.1:3080/c2v`，分别输入题目描述与标准答案代码并生成。后端会把两段输入封装为带代码围栏的权威 prompt，`code-video-bridge` 在不改写答案代码的前提下拆分请求，提交到独立的 `code_video_generation` Celery 队列，完成后上传到 `code-videos/` 对象前缀并回调后端。状态同样应经过 `QUEUING → GENERATING → FINISHED`，最终可在页面播放器中播放。
 
 生成结束后，可检查最新 metadata 中的完整画像快照：
 
@@ -187,6 +200,9 @@ docker logs -f --tail 200 zhiying-education2d
 docker logs -f --tail 200 zhiying-knowledge-video-bridge
 docker logs -f --tail 200 zhiying-knowledge-video-worker
 docker logs -f --tail 200 zhiying-knowledge-video-api
+docker logs -f --tail 200 zhiying-code-video-bridge
+docker logs -f --tail 200 zhiying-code-video-worker
+docker logs -f --tail 200 zhiying-code-video-api
 ```
 
 正常启动日志包含：
@@ -194,14 +210,16 @@ docker logs -f --tail 200 zhiying-knowledge-video-api
 ```text
 Education2D worker ready queue=zhiying.interactive_html.generate
 Knowledge2Video integration worker ready queue=zhiying.knowledge_video.generate
+Code2Video integration worker ready queue=zhiying.code_video.generate
 celery@... ready
 ```
 
-若知识视频立即失败，优先检查：
+若知识视频或代码视频立即失败，优先检查：
 
 - `VIVO_TTS_APP_ID / VIVO_TTS_APP_KEY` 是否填写；
 - LLM 网关 URL 是否包含正确的 `/v1`；
 - `K2V_LOGIC_MODEL / K2V_CODE_MODEL` 是否被网关支持；
+- `CODE_VIDEO_LOGIC_MODEL / CODE_VIDEO_CODE_MODEL` 是否被网关支持；
 - MinIO `minio-init` 是否 `Exited (0)`；
 - 服务器是否有足够 CPU、内存和磁盘。
 
@@ -235,6 +253,19 @@ docker run --rm `
 ```
 
 当前知识视频画像透传相关回归基线为 Knowledge2Video `23 passed`。
+
+Code2Video 必须在容器内执行测试：
+
+```powershell
+docker run --rm `
+  --mount "type=bind,source=$PWD\services\code2video,target=/workspace" `
+  --workdir /workspace `
+  --entrypoint python `
+  zhiying/code2video:local `
+  -m pytest -q
+```
+
+当前 Code2Video 回归基线为 `21 passed`。
 
 ## 7. 停止
 

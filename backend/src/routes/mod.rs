@@ -59,6 +59,7 @@ fn api_router() -> Router<AppState> {
         .route("/users", axum::routing::post(users::create_user))
         .route("/tokens", axum::routing::post(tokens::create_token))
         .route("/me", get(me::get_me).patch(me::update_me))
+        .route("/me/assets", get(me::get_assets))
         .route("/me/username", axum::routing::patch(me::update_username))
         .route("/me/mistakes", get(me::list_mistakes))
         .route("/me/bookmarks", get(me::list_bookmarks))

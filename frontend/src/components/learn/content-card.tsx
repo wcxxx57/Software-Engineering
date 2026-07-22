@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -40,6 +43,7 @@ export function ContentCard({
   action,
   children,
   className,
+  defaultCollapsed = false,
 }: {
   theme: ContentCardTheme;
   icon: ReactNode;
@@ -48,7 +52,11 @@ export function ContentCard({
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  defaultCollapsed?: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const contentId = useId();
+
   return (
     <section
       className={cn(
@@ -58,7 +66,12 @@ export function ContentCard({
         className,
       )}
     >
-      <div className="mb-6 flex items-center justify-between border-b border-border-strong/20 pb-4">
+      <div
+        className={cn(
+          "flex items-center justify-between gap-4",
+          !collapsed && "mb-6 border-b border-border-strong/20 pb-4",
+        )}
+      >
         <div className="flex items-center gap-2.5">
           <span
             className={cn(
@@ -80,9 +93,28 @@ export function ContentCard({
             )}
           </h2>
         </div>
-        {action}
+        <div className="flex shrink-0 items-center gap-2">
+          {action}
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            aria-controls={contentId}
+            onClick={() => setCollapsed((value) => !value)}
+            className="inline-flex size-9 items-center justify-center rounded-xl border border-white/70 bg-white/60 text-brand-medium shadow-[0_2px_8px_color-mix(in_oklch,var(--border-muted)_20%,transparent)] backdrop-blur-md transition hover:-translate-y-px hover:bg-white/90 hover:text-brand-dark"
+            title={collapsed ? "展开内容" : "收起内容"}
+          >
+            {collapsed ? (
+              <ChevronDown className="size-4" strokeWidth={2.4} />
+            ) : (
+              <ChevronUp className="size-4" strokeWidth={2.4} />
+            )}
+            <span className="sr-only">{collapsed ? "展开内容" : "收起内容"}</span>
+          </button>
+        </div>
       </div>
-      {children}
+      <div id={contentId} hidden={collapsed}>
+        {children}
+      </div>
     </section>
   );
 }

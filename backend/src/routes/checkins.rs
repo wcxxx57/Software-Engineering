@@ -18,6 +18,7 @@ use crate::{
         makeup_cost, makeup_dates, missed_days_since_last_checkin, next_streak,
         reward_for_streak_day, reward_sum_for_streak_range,
     },
+    services::asset_transaction::{self, DIAMOND, EXP, GOLD},
     state::AppState,
 };
 
@@ -36,6 +37,7 @@ pub struct CheckinRequest {
 pub struct CheckinResponse {
     checkin_date: String,
     gold_reward: i32,
+    exp_reward: i32,
     makeup_applied: bool,
     makeup_days: i64,
     diamond_cost: i32,
@@ -149,20 +151,42 @@ pub async fn check_in(
     } else {
         0
     };
+    let exp_reward = state
+        .config
+        .checkin_exp_reward
+        .checked_mul(
+            added_checkins
+                .checked_add(1)
+                .ok_or_else(|| AppError::internal("added checkins overflowed i32"))?,
+        )
+        .ok_or_else(|| AppError::internal("checkin exp reward overflowed i32"))?;
 
-    active_user.gold = Set(existing_user.gold + gold_reward - gold_cost);
-    active_user.diamond = Set(existing_user.diamond - diamond_cost);
+    let new_gold = existing_user.gold + gold_reward - gold_cost;
+    let new_diamond = existing_user.diamond - diamond_cost;
+    let new_exp = existing_user
+        .exp
+        .checked_add(exp_reward)
+        .ok_or_else(|| AppError::internal("user exp overflowed i32"))?;
+    active_user.gold = Set(new_gold);
+    active_user.diamond = Set(new_diamond);
+    active_user.exp = Set(new_exp);
     active_user.total_checkins = Set(existing_user.total_checkins + added_checkins + 1);
     active_user.streak_checkins = Set(streak);
     active_user.last_checkin = Set(Some(today));
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
 
+    asset_transaction::record(&tx, existing_user.id, GOLD, gold_reward, existing_user.gold + gold_reward, "签到奖励").await?;
+    asset_transaction::record(&tx, existing_user.id, GOLD, -gold_cost, new_gold, "补签消耗").await?;
+    asset_transaction::record(&tx, existing_user.id, DIAMOND, -diamond_cost, new_diamond, "补签消耗").await?;
+    asset_transaction::record(&tx, existing_user.id, EXP, exp_reward, new_exp, "签到经验").await?;
+
     tx.commit().await?;
 
     Ok(created(CheckinResponse {
         checkin_date: today.to_string(),
         gold_reward,
+        exp_reward,
         makeup_applied,
         makeup_days: if makeup_applied { missed_days } else { 0 },
         diamond_cost,

@@ -99,7 +99,7 @@ async fn study_task_complete_unlocks_next() {
     let (_, stage_ids, task_ids) = app.insert_study_subject_with_plan(1, 1, 2).await;
 
     // Complete first task
-    let (status, _) = app
+    let (status, complete_body) = app
         .request(
             "POST",
             &format!("/api/v1/study-tasks/{}/complete", task_ids[0][0]),
@@ -108,6 +108,12 @@ async fn study_task_complete_unlocks_next() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(complete_body["data"]["exp_reward"], 10);
+    assert_eq!(complete_body["data"]["diamond_refund"], 0);
+    assert_eq!(complete_body["data"]["subject_completed"], false);
+
+    let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
+    assert_eq!(me_body["data"]["exp"], 10);
 
     // First task is now Finished
     let (_, body) = app
@@ -141,6 +147,31 @@ async fn study_task_complete_unlocks_next() {
         )
         .await;
     assert_eq!(body["data"]["finished_tasks"], 1);
+}
+
+#[tokio::test]
+async fn study_task_completing_subject_rewards_exp_and_refunds_diamonds() {
+    let app = TestApp::new().await;
+    let token = app.create_user_and_login("subject_reward", "password123").await;
+    let (_, _, task_ids) = app.insert_study_subject_with_plan(1, 1, 1).await;
+
+    let (status, body) = app
+        .request(
+            "POST",
+            &format!("/api/v1/study-tasks/{}/complete", task_ids[0][0]),
+            Some(&token),
+            None,
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["exp_reward"], 210);
+    assert_eq!(body["data"]["diamond_refund"], 5);
+    assert_eq!(body["data"]["subject_completed"], true);
+
+    let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;
+    assert_eq!(me_body["data"]["exp"], 210);
+    assert_eq!(me_body["data"]["diamond"], 85);
 }
 
 #[tokio::test]

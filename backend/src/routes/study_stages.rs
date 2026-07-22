@@ -16,6 +16,7 @@ use crate::{
 #[derive(Debug, Serialize)]
 pub struct StudyStageDetailView {
     pub id: i32,
+    pub study_subject_id: i32,
     pub title: String,
     pub description: String,
     pub sort_order: i32,
@@ -74,6 +75,7 @@ pub async fn get_by_id(
 
     Ok(ok(StudyStageDetailView {
         id: stage.id,
+        study_subject_id: stage.study_subject_id,
         title: stage.title,
         description: stage.description,
         sort_order: stage.sort_order,

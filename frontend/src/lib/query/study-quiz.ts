@@ -1,5 +1,7 @@
 "use client";
 
+import { meQueryKey } from "@/lib/query/keys";
+
 import {
   useMutation,
   useQuery,
@@ -112,6 +114,7 @@ export function useSubmitQuiz(quizId: number, taskId: number) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: quizDetailQueryKey(quizId) });
       qc.invalidateQueries({ queryKey: taskQuizzesQueryKey(taskId) });
+      qc.invalidateQueries({ queryKey: meQueryKey });
     },
   });
 }

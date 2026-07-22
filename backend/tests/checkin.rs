@@ -17,6 +17,7 @@ async fn checkin_basic_flow_and_repeat_guard_work() {
 
     assert_eq!(checkin_status, StatusCode::CREATED);
     assert_eq!(checkin_body["data"]["gold_reward"], 1);
+    assert_eq!(checkin_body["data"]["exp_reward"], 5);
     assert_eq!(checkin_body["data"]["makeup_applied"], false);
     assert_eq!(checkin_body["data"]["total_checkins"], 1);
     assert_eq!(checkin_body["data"]["streak_checkins"], 1);
@@ -28,6 +29,23 @@ async fn checkin_basic_flow_and_repeat_guard_work() {
     assert_eq!(list_status, StatusCode::OK);
     assert_eq!(list_body["data"].as_array().map(Vec::len), Some(1));
     assert_eq!(list_body["data"][0]["gold_reward"], 1);
+
+    let (assets_status, assets_body) = app
+        .request("GET", "/api/v1/me/assets", Some(&token), None)
+        .await;
+    assert_eq!(assets_status, StatusCode::OK);
+    assert_eq!(assets_body["data"]["exp"], 5);
+    assert_eq!(assets_body["data"]["gold"], 1);
+    assert_eq!(assets_body["data"]["diamond"], 80);
+    let transactions = assets_body["data"]["transactions"]
+        .as_array()
+        .expect("asset transactions should be an array");
+    assert!(transactions.iter().any(|item| {
+        item["asset"] == "EXP" && item["amount"] == 5 && item["title"] == "签到经验"
+    }));
+    assert!(transactions.iter().any(|item| {
+        item["asset"] == "GOLD" && item["amount"] == 1 && item["title"] == "签到奖励"
+    }));
 
     let (repeat_status, repeat_body) = app
         .request("POST", "/api/v1/checkins", Some(&token), Some(json!({})))
@@ -86,6 +104,7 @@ async fn checkin_makeup_updates_rewards_and_costs() {
     assert_eq!(body["data"]["gold_cost"], 20);
     assert_eq!(body["data"]["diamond_cost"], 1);
     assert_eq!(body["data"]["gold_reward"], 12);
+    assert_eq!(body["data"]["exp_reward"], 15);
     assert_eq!(body["data"]["streak_checkins"], 5);
     assert_eq!(body["data"]["total_checkins"], 5);
 
@@ -94,6 +113,7 @@ async fn checkin_makeup_updates_rewards_and_costs() {
     assert_eq!(me_status, StatusCode::OK);
     assert_eq!(me_body["data"]["gold"], 92);
     assert_eq!(me_body["data"]["diamond"], 4);
+    assert_eq!(me_body["data"]["exp"], 15);
     assert_eq!(me_body["data"]["streak_checkins"], 5);
     assert_eq!(me_body["data"]["total_checkins"], 5);
 
@@ -202,6 +222,7 @@ async fn checkin_no_gap_makeup_ignored() {
     assert_eq!(body["data"]["diamond_cost"], 0);
     assert_eq!(body["data"]["streak_checkins"], 4);
     assert_eq!(body["data"]["gold_reward"], 4);
+    assert_eq!(body["data"]["exp_reward"], 5);
 
     // Balance should not be deducted
     let (_, me_body) = app.request("GET", "/api/v1/me", Some(&token), None).await;

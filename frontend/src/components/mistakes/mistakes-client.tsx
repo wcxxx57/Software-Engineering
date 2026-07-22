@@ -17,7 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -34,8 +34,6 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import {
-  bookmarksQueryKey,
-  mistakesQueryKey,
   useBookmarks,
   useMistakes,
 } from "@/lib/query/mistakes";
@@ -49,21 +47,21 @@ export function MistakesClient() {
   const [mode, setMode] = useState<Mode>("mistakes");
   const [includeHidden, setIncludeHidden] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search.trim());
 
-  const mistakesQuery = useMistakes(includeHidden);
-  const bookmarksQuery = useBookmarks();
+  const mistakesQuery = useMistakes(includeHidden, deferredSearch);
+  const bookmarksQuery = useBookmarks(deferredSearch);
 
-  const items =
-    mode === "mistakes"
-      ? (mistakesQuery.data ?? [])
-      : (bookmarksQuery.data ?? []);
+  const items = useMemo(
+    () =>
+      mode === "mistakes"
+        ? (mistakesQuery.data ?? [])
+        : (bookmarksQuery.data ?? []),
+    [mode, mistakesQuery.data, bookmarksQuery.data],
+  );
   const isLoading =
     mode === "mistakes" ? mistakesQuery.isLoading : bookmarksQuery.isLoading;
-
-  // 切 Tab 时清空详情
-  useEffect(() => {
-    setActiveId(null);
-  }, [mode]);
 
   const activeIndex = useMemo(
     () => items.findIndex((it) => it.id === activeId),
@@ -94,7 +92,13 @@ export function MistakesClient() {
           </p>
         </header>
 
-        <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
+        <Tabs
+          value={mode}
+          onValueChange={(value) => {
+            setMode(value as Mode);
+            setActiveId(null);
+          }}
+        >
           <TabsList className="grid h-auto w-full max-w-[360px] grid-cols-2 gap-1 rounded-full bg-canvas p-1 shadow-[inset_2px_2px_5px_color-mix(in_oklch,var(--border-muted)_25%,transparent),inset_-2px_-2px_5px_rgba(255,255,255,0.8)]">
             <TabsTrigger
               value="mistakes"
@@ -113,7 +117,7 @@ export function MistakesClient() {
           </TabsList>
 
           <TabsContent value="mistakes" className="mt-6 flex flex-col gap-6">
-            <SearchPlaceholder />
+            <ProblemSearch value={search} onChange={setSearch} />
             <CountBar count={items.length} mode="mistakes">
               <label className="flex cursor-pointer items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-semibold text-brand-medium shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <Checkbox
@@ -128,19 +132,27 @@ export function MistakesClient() {
               isLoading={isLoading}
               mode="mistakes"
               onOpen={setActiveId}
-              emptyHint="还没有错题，先去做几次小测吧"
+              emptyHint={
+                deferredSearch
+                  ? "没有找到匹配的错题，换个关键词试试"
+                  : "还没有错题，先去做几次小测吧"
+              }
             />
           </TabsContent>
 
           <TabsContent value="bookmarks" className="mt-6 flex flex-col gap-6">
-            <SearchPlaceholder />
+            <ProblemSearch value={search} onChange={setSearch} />
             <CountBar count={items.length} mode="bookmarks" />
             <CardGrid
               items={items}
               isLoading={isLoading}
               mode="bookmarks"
               onOpen={setActiveId}
-              emptyHint="还没有收藏题目，做小测时点击星标即可"
+              emptyHint={
+                deferredSearch
+                  ? "没有找到匹配的收藏题目，换个关键词试试"
+                  : "还没有收藏题目，做小测时点击星标即可"
+              }
             />
           </TabsContent>
         </Tabs>
@@ -164,16 +176,39 @@ export function MistakesClient() {
   );
 }
 
-function SearchPlaceholder() {
+function ProblemSearch({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
     <div className="relative">
       <span
         aria-hidden
         className="pointer-events-none absolute -inset-0.5 rounded-[30px] bg-gradient-to-br from-palette-yellow via-palette-orange-light to-palette-orange opacity-50 blur-[2px]"
       />
-      <div className="relative flex h-14 cursor-not-allowed items-center gap-3 rounded-[28px] border-2 border-transparent bg-white/95 px-6 text-base text-brand-light shadow-[inset_2px_2px_6px_color-mix(in_oklch,var(--border-muted)_15%,transparent),inset_-2px_-2px_6px_rgba(255,255,255,0.8),0_4px_12px_color-mix(in_oklch,var(--border-muted)_15%,transparent)] backdrop-blur-md">
-        <Search className="size-5" />
-        <span className="font-medium">搜索题目…（即将上线）</span>
+      <div className="relative flex h-14 items-center gap-3 rounded-[28px] border-2 border-transparent bg-white/95 px-6 text-base text-brand-light shadow-[inset_2px_2px_6px_color-mix(in_oklch,var(--border-muted)_15%,transparent),inset_-2px_-2px_6px_rgba(255,255,255,0.8),0_4px_12px_color-mix(in_oklch,var(--border-muted)_15%,transparent)] backdrop-blur-md focus-within:text-brand-medium focus-within:shadow-[0_6px_20px_color-mix(in_oklch,var(--palette-orange)_24%,transparent)]">
+        <Search className="size-5 shrink-0" />
+        <input
+          type="search"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="搜索题目内容…"
+          aria-label="搜索题目"
+          className="h-full min-w-0 flex-1 bg-transparent font-medium text-brand-dark outline-none placeholder:text-brand-light"
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label="清空搜索"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-palette-yellow-mist text-brand-medium transition hover:bg-palette-yellow-light hover:text-brand-dark"
+          >
+            <X className="size-3.5" strokeWidth={2.5} />
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -300,9 +335,8 @@ function Card({
       });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: bookmarksQueryKey() });
-      qc.invalidateQueries({ queryKey: mistakesQueryKey(true) });
-      qc.invalidateQueries({ queryKey: mistakesQueryKey(false) });
+      qc.invalidateQueries({ queryKey: ["me", "bookmarks"] });
+      qc.invalidateQueries({ queryKey: ["me", "mistakes"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

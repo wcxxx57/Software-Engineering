@@ -4,6 +4,7 @@ import { Rocket } from "lucide-react";
 import { ActiveSubjectArea } from "@/components/dashboard/active-subject-area";
 import { CreateSubjectButton } from "@/components/dashboard/create-subject-button";
 import { DashboardAside } from "@/components/dashboard/dashboard-aside";
+import { DashboardMobileAccount } from "@/components/dashboard/dashboard-mobile-account";
 import { DashboardSearch } from "@/components/dashboard/dashboard-search";
 import { FeatureGrid } from "@/components/dashboard/feature-grid";
 import { PlanToolbar } from "@/components/dashboard/plan-toolbar";
@@ -51,6 +52,7 @@ export default async function DashboardPage() {
       <div className="flex h-dvh w-full bg-canvas">
         <main className="flex min-w-0 flex-1 flex-col gap-12 overflow-y-auto px-12 py-10 pb-24 lg:px-20">
           <header className="flex flex-col items-center text-center">
+            <DashboardMobileAccount user={user} />
             <h1 className="mb-8 bg-gradient-to-br from-brand-dark to-palette-orange bg-clip-text text-4xl font-black tracking-tight text-transparent md:text-5xl">
               智映通学
               <span className="ml-1 animate-pulse font-normal text-palette-orange [text-shadow:0_0_10px_color-mix(in_oklch,var(--palette-orange)_50%,transparent)]">

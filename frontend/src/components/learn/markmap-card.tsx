@@ -15,7 +15,11 @@ export function MarkmapCard({ id }: { id: number }) {
   });
 
   return (
-    <ContentCard theme="yellow" icon={<BrainCircuit />} title="知识图谱导航">
+    <ContentCard
+      theme="yellow"
+      icon={<BrainCircuit />}
+      title="知识图谱导航"
+    >
       <div
         className="relative h-[500px] overflow-hidden rounded-2xl border-2 border-dashed border-[color-mix(in_oklch,var(--palette-orange-light)_40%,transparent)] bg-palette-yellow-mist shadow-[inset_0_2px_8px_color-mix(in_oklch,var(--palette-yellow)_50%,transparent)]"
       >

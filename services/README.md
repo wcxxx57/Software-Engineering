@@ -1,12 +1,13 @@
 # 生成域服务
 
-`services/` 统一存放需要独立构建、独立运行和独立扩缩容的生成服务。三个目录属于同一个业务域，但不是同一个部署单元：
+`services/` 统一存放需要独立构建、独立运行和独立扩缩容的生成服务。这些目录属于同一个业务域，但不是同一个部署单元：
 
 | 服务 | 职责 | 运行时 | 独立部署原因 |
 |---|---|---|---|
 | `core-generation/` | 课前测、计划、知识解析/思维导图、课后测 | Python、aio-pika | 轻量结构化 LLM 任务，共享同一套消息与回调模式 |
 | `education2d/` | 2D 可视化生成、播放、版本历史和自然语言编辑 | Node.js、React/Vite、Express | 同时提供浏览器应用和持久化版本服务 |
 | `knowledge2video/` | 教学规划、分镜、TTS、Manim/FFmpeg 渲染和视频上传 | Python、FastAPI、Celery、Redis、LaTeX、FFmpeg | 镜像和资源消耗远大于文本生成，需要单独扩缩容和故障隔离 |
+| `code2video/` | 编程题目与标准答案代码解析、讲解分镜、TTS、Manim/FFmpeg 渲染和视频上传 | Python、FastAPI、Celery、Redis、LaTeX、FFmpeg | 输入契约和生成提示词与知识视频不同，并使用独立 Celery 队列与输出卷避免重型任务互相干扰 |
 
 ## 服务边界
 

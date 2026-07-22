@@ -215,7 +215,8 @@ class TeachingVideoAgent:
         self.output_dir = get_output_dir(idx=idx, knowledge_point=self.learning_topic, base_dir=folder)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.assets_dir = Path(*self.output_dir.parts[: self.output_dir.parts.index("CASES")]) / "assets" / "icon"
+        static_root = Path(__file__).resolve().parent
+        self.assets_dir = static_root / "assets" / "icon"
         self.assets_dir.mkdir(exist_ok=True)
 
         """3. ScopeRefine & Anchor Visual"""
@@ -223,14 +224,10 @@ class TeachingVideoAgent:
         self.extractor = GridPositionExtractor()
 
         """4. External Database"""
-        knowledge_ref_mapping_path = (
-            Path(*self.output_dir.parts[: self.output_dir.parts.index("CASES")]) / "json_files" / "long_video_ref_mapping.json"
-        )
+        knowledge_ref_mapping_path = static_root / "json_files" / "long_video_ref_mapping.json"
         with open(knowledge_ref_mapping_path) as f:
             self.KNOWLEDGE2PATH = json.load(f)
-        self.knowledge_ref_img_folder = (
-            Path(*self.output_dir.parts[: self.output_dir.parts.index("CASES")]) / "assets" / "reference"
-        )
+        self.knowledge_ref_img_folder = static_root / "assets" / "reference"
         self.GRID_IMG_PATH = self.knowledge_ref_img_folder / "GRID.png"
 
         """5. Data structure"""

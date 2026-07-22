@@ -118,13 +118,21 @@ services:
       CHECKIN_REWARD_SEQUENCE: ${CHECKIN_REWARD_SEQUENCE:-1,2,3,4,6,8,10}
       CHECKIN_MAKEUP_GOLD_COST_PER_DAY: ${CHECKIN_MAKEUP_GOLD_COST_PER_DAY:-50}
       CHECKIN_MAKEUP_DIAMOND_COST: ${CHECKIN_MAKEUP_DIAMOND_COST:-1}
+      CHECKIN_EXP_REWARD: ${CHECKIN_EXP_REWARD:-5}
+      STUDY_TASK_EXP_REWARD: ${STUDY_TASK_EXP_REWARD:-10}
+      STUDY_QUIZ_EXP_REWARD: ${STUDY_QUIZ_EXP_REWARD:-15}
+      STUDY_SUBJECT_EXP_REWARD: ${STUDY_SUBJECT_EXP_REWARD:-200}
+      STUDY_SUBJECT_COMPLETION_REFUND_PERCENT: ${STUDY_SUBJECT_COMPLETION_REFUND_PERCENT:-50}
       KNOWLEDGE_EXPLANATION_GOLD_COST: ${KNOWLEDGE_EXPLANATION_GOLD_COST:-10}
       KNOWLEDGE_EXPLANATION_EXCHANGE: zhiying.knowledge_explanation
       KNOWLEDGE_EXPLANATION_API_KEY: ${KNOWLEDGE_EXPLANATION_API_KEY}
       KNOWLEDGE_VIDEO_DIAMOND_COST: ${KNOWLEDGE_VIDEO_DIAMOND_COST:-5}
       KNOWLEDGE_VIDEO_EXCHANGE: zhiying.knowledge_video
       KNOWLEDGE_VIDEO_API_KEY: ${KNOWLEDGE_VIDEO_API_KEY}
-      INTERACTIVE_HTML_DIAMOND_COST: ${INTERACTIVE_HTML_DIAMOND_COST:-20}
+      CODE_VIDEO_DIAMOND_COST: ${CODE_VIDEO_DIAMOND_COST:-5}
+      CODE_VIDEO_EXCHANGE: zhiying.code_video
+      CODE_VIDEO_API_KEY: ${CODE_VIDEO_API_KEY}
+      INTERACTIVE_HTML_DIAMOND_COST: ${INTERACTIVE_HTML_DIAMOND_COST:-5}
       INTERACTIVE_HTML_EXCHANGE: zhiying.interactive_html
       INTERACTIVE_HTML_API_KEY: ${INTERACTIVE_HTML_API_KEY}
       STUDY_SUBJECT_DIAMOND_COSTS: ${STUDY_SUBJECT_DIAMOND_COSTS:-3:10,7:20,15:40,30:80}
@@ -247,6 +255,17 @@ services:
       MANIM_RENDER_TIMEOUT_SECONDS: ${MANIM_RENDER_TIMEOUT_SECONDS:-21600}
       VIDEO_TASK_TIME_LIMIT_SECONDS: ${VIDEO_TASK_TIME_LIMIT_SECONDS:-43200}
       VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS: ${VIDEO_TASK_SOFT_TIME_LIMIT_SECONDS:-41400}
+      OUTPUT_SUCCESS_CLEANUP_DELAY_HOURS: ${OUTPUT_SUCCESS_CLEANUP_DELAY_HOURS:-6}
+      OUTPUT_FAILED_RETENTION_HOURS: ${OUTPUT_FAILED_RETENTION_HOURS:-24}
+      OUTPUT_ACTIVE_MARKER_STALE_HOURS: ${OUTPUT_ACTIVE_MARKER_STALE_HOURS:-16}
+      OUTPUT_JANITOR_INTERVAL_SECONDS: ${OUTPUT_JANITOR_INTERVAL_SECONDS:-300}
+      OUTPUT_DISK_WARNING_PERCENT: ${OUTPUT_DISK_WARNING_PERCENT:-85}
+      OUTPUT_DISK_MIN_FREE_GB: ${OUTPUT_DISK_MIN_FREE_GB:-10}
+      OUTPUT_DISK_ALERT_COOLDOWN_SECONDS: ${OUTPUT_DISK_ALERT_COOLDOWN_SECONDS:-3600}
+      OUTPUT_DISK_ALERT_WEBHOOK_URL: ${OUTPUT_DISK_ALERT_WEBHOOK_URL:-}
+      STORAGE_GC_INTERVAL_SECONDS: ${STORAGE_GC_INTERVAL_SECONDS:-3600}
+      STORAGE_GC_RECORD_GRACE_HOURS: ${STORAGE_GC_RECORD_GRACE_HOURS:-24}
+      STORAGE_GC_ORPHAN_GRACE_HOURS: ${STORAGE_GC_ORPHAN_GRACE_HOURS:-24}
       OUTPUT_DIR: /outputs
       VIDEO_DIR: /outputs/videos
       METADATA_DIR: /outputs/metadata
@@ -299,6 +318,104 @@ services:
       INTEGRATION_WORKER_PREFETCH: ${KNOWLEDGE_VIDEO_WORKER_PREFETCH:-1}
     volumes: *knowledge-video-volumes
 
+  code-video-api:
+    build:
+      context: ./services/code2video
+    image: zhiying/code2video:local
+    container_name: zhiying-code-video-api
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment: &code-video-environment
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      VIDEO_TASK_QUEUE: code_video_generation
+      API_KEYS: ${CODE_VIDEO_SERVICE_API_KEY:-dev-api-key-12345}
+      DEFAULT_API: ${CODE_VIDEO_DEFAULT_API:-gpt-5}
+      DMX_BASE_URL: ${LLM_BASE_URL}
+      DMX_API_KEY: ${LLM_API_KEY}
+      LOGIC_MODEL: ${CODE_VIDEO_LOGIC_MODEL:-${LLM_MODEL}}
+      CODE_MODEL: ${CODE_VIDEO_CODE_MODEL:-${LLM_MODEL}}
+      TTS_PROVIDER: ${CODE_VIDEO_TTS_PROVIDER:-vivo}
+      VIVO_TTS_APP_ID: ${VIVO_TTS_APP_ID:-}
+      VIVO_TTS_APP_KEY: ${VIVO_TTS_APP_KEY:-}
+      VIVO_TTS_BASE_URL: ${VIVO_TTS_BASE_URL:-wss://api-ai.vivo.com.cn}
+      VIVO_TTS_ENGINE_ID: ${VIVO_TTS_ENGINE_ID:-tts_humanoid_lam}
+      VIVO_TTS_VOICE: ${VIVO_TTS_VOICE:-F245_natural}
+      VIVO_TTS_SPEED: ${VIVO_TTS_SPEED:-50}
+      VIVO_TTS_VOLUME: ${VIVO_TTS_VOLUME:-50}
+      C2V_RENDER_PROFILE: 1080p30
+      C2V_RENDER_WORKERS: ${CODE_VIDEO_RENDER_WORKERS:-1}
+      MANIM_RENDER_TIMEOUT_1080P_SECONDS: ${CODE_VIDEO_MANIM_RENDER_TIMEOUT_1080P_SECONDS:-1200}
+      MANIM_RENDER_KILL_GRACE_SECONDS: ${CODE_VIDEO_MANIM_RENDER_KILL_GRACE_SECONDS:-10}
+      VIDEO_TASK_TIMEOUT_SECONDS: ${VIDEO_TASK_TIME_LIMIT_SECONDS:-43200}
+      OUTPUT_SUCCESS_CLEANUP_DELAY_HOURS: ${OUTPUT_SUCCESS_CLEANUP_DELAY_HOURS:-6}
+      OUTPUT_FAILED_RETENTION_HOURS: ${OUTPUT_FAILED_RETENTION_HOURS:-24}
+      OUTPUT_ACTIVE_MARKER_STALE_HOURS: ${OUTPUT_ACTIVE_MARKER_STALE_HOURS:-16}
+      OUTPUT_JANITOR_INTERVAL_SECONDS: ${OUTPUT_JANITOR_INTERVAL_SECONDS:-300}
+      OUTPUT_DISK_WARNING_PERCENT: ${OUTPUT_DISK_WARNING_PERCENT:-85}
+      OUTPUT_DISK_MIN_FREE_GB: ${OUTPUT_DISK_MIN_FREE_GB:-10}
+      OUTPUT_DISK_ALERT_COOLDOWN_SECONDS: ${OUTPUT_DISK_ALERT_COOLDOWN_SECONDS:-3600}
+      OUTPUT_DISK_ALERT_WEBHOOK_URL: ${OUTPUT_DISK_ALERT_WEBHOOK_URL:-}
+      STORAGE_GC_INTERVAL_SECONDS: ${STORAGE_GC_INTERVAL_SECONDS:-3600}
+      STORAGE_GC_RECORD_GRACE_HOURS: ${STORAGE_GC_RECORD_GRACE_HOURS:-24}
+      STORAGE_GC_ORPHAN_GRACE_HOURS: ${STORAGE_GC_ORPHAN_GRACE_HOURS:-24}
+      OUTPUT_DIR: /outputs
+      VIDEO_DIR: /outputs/videos
+      METADATA_DIR: /outputs/metadata
+      NO_PROXY: api-ai.vivo.com.cn,vip.dmxapi.com,localhost,127.0.0.1,redis,code-video-api,code-video-worker
+      no_proxy: api-ai.vivo.com.cn,vip.dmxapi.com,localhost,127.0.0.1,redis,code-video-api,code-video-worker
+    volumes: &code-video-volumes
+      - code-video-output:/outputs
+
+  code-video-worker:
+    build:
+      context: ./services/code2video
+    image: zhiying/code2video:local
+    container_name: zhiying-code-video-worker
+    restart: unless-stopped
+    command: >-
+      python -m celery -A src.api.tasks.celery_app worker
+      --loglevel=info --pool=solo -Q code_video_generation --concurrency=1
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment: *code-video-environment
+    volumes: *code-video-volumes
+
+  code-video-bridge:
+    build:
+      context: ./services/code2video
+    image: zhiying/code2video:local
+    container_name: zhiying-code-video-bridge
+    restart: unless-stopped
+    command: python -m src.integration_worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
+      code-video-worker:
+        condition: service_started
+    environment:
+      <<: *code-video-environment
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
+      BACKEND_BASE_URL: http://backend:9000
+      CODE_VIDEO_API_KEY: ${CODE_VIDEO_API_KEY}
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-zhiying-content}
+      INTEGRATION_WORKER_PREFETCH: ${CODE_VIDEO_WORKER_PREFETCH:-1}
+    volumes: *code-video-volumes
+
   frontend:
     build:
       context: ./frontend
@@ -321,6 +438,7 @@ volumes:
   minio-data:
   education2d-data:
   knowledge-video-output:
+  code-video-output:
   npm-data:
   npm-letsencrypt:
 

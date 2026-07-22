@@ -7,6 +7,7 @@
 /.monorepo-git/
 /.pnpm-store/
 /.test-venv/
+/backups/
 
 # 操作系统与编辑器文件
 .DS_Store
