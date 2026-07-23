@@ -43,8 +43,6 @@ pub struct Config {
     pub study_subject_diamond_costs: BTreeMap<i32, i32>,
     pub curriculum_exchange: String,
     pub curriculum_api_key: String,
-    pub curriculum_source_domains: Vec<String>,
-    pub curriculum_auto_publish_min_score: f64,
     pub pretest_exchange: String,
     pub pretest_api_key: String,
     pub plan_exchange: String,
@@ -193,24 +191,6 @@ impl Config {
             env::var("CURRICULUM_EXCHANGE").unwrap_or_else(|_| "zhiying.curriculum".to_owned());
         let curriculum_api_key =
             env::var("CURRICULUM_API_KEY").unwrap_or_else(|_| "sk-curriculum-dev".to_owned());
-        let curriculum_source_domains = env::var("CURRICULUM_SOURCE_DOMAINS")
-            .unwrap_or_else(|_| "icourse163.org,shuishan.net.cn".to_owned())
-            .split(',')
-            .map(|value| value.trim().to_ascii_lowercase())
-            .filter(|value| !value.is_empty())
-            .collect::<Vec<_>>();
-        if curriculum_source_domains.is_empty() {
-            return Err(AppError::internal("CURRICULUM_SOURCE_DOMAINS is empty"));
-        }
-        let curriculum_auto_publish_min_score = env::var("CURRICULUM_AUTO_PUBLISH_MIN_SCORE")
-            .unwrap_or_else(|_| "0.85".to_owned())
-            .parse::<f64>()
-            .map_err(|_| AppError::internal("CURRICULUM_AUTO_PUBLISH_MIN_SCORE is invalid"))?;
-        if !(0.0..=1.0).contains(&curriculum_auto_publish_min_score) {
-            return Err(AppError::internal(
-                "CURRICULUM_AUTO_PUBLISH_MIN_SCORE must be between 0 and 1",
-            ));
-        }
 
         let pretest_exchange =
             env::var("PRETEST_EXCHANGE").unwrap_or_else(|_| "zhiying.pretest".to_owned());
@@ -290,8 +270,6 @@ impl Config {
             study_subject_diamond_costs,
             curriculum_exchange,
             curriculum_api_key,
-            curriculum_source_domains,
-            curriculum_auto_publish_min_score,
             pretest_exchange,
             pretest_api_key,
             plan_exchange,

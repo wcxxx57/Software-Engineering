@@ -27,14 +27,9 @@ Generator = Callable[[LlmClient, Settings, BaseModel], Awaitable[dict]]
 def _failure_code(spec: WorkerSpec, exc: Exception) -> str:
     if spec.name != "curriculum":
         return f"{spec.name.upper()}_GENERATION_FAILED"
-    detail = str(exc)
-    if "TAVILY_API_KEY" in detail:
-        return "CURRICULUM_SEARCH_NOT_CONFIGURED"
-    if "no curriculum pages" in detail:
-        return "CURRICULUM_SOURCE_NOT_FOUND"
-    if "unknown template id" in detail:
+    if "unknown template id" in str(exc):
         return "CURRICULUM_TEMPLATE_SELECTION_INVALID"
-    return "CURRICULUM_ACQUISITION_FAILED"
+    return "CURRICULUM_GENERATION_FAILED"
 
 
 @dataclass(frozen=True)

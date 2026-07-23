@@ -24,7 +24,7 @@ use zhiying_backend::{
     entities::{
         code_video, common::ProblemAnswer, interactive_html, knowledge_explanation,
         knowledge_video, study_quiz, study_quiz_problem, study_stage, study_subject, study_task,
-        user,
+        user, user_code_video_link, user_interactive_html_link, user_knowledge_video_link,
     },
     services::message_queue::{InMemoryPublisher, PublishedMessage},
 };
@@ -72,11 +72,6 @@ impl TestApp {
             study_subject_diamond_costs: BTreeMap::from([(3, 10), (7, 20), (15, 40), (30, 80)]),
             curriculum_exchange: "test.curriculum".to_owned(),
             curriculum_api_key: "sk-test-curriculum".to_owned(),
-            curriculum_source_domains: vec![
-                "icourse163.org".to_owned(),
-                "shuishan.net.cn".to_owned(),
-            ],
-            curriculum_auto_publish_min_score: 0.85,
             pretest_exchange: "test.pretest".to_owned(),
             pretest_api_key: "sk-test-pretest".to_owned(),
             plan_exchange: "test.plan".to_owned(),
@@ -150,7 +145,11 @@ impl TestApp {
             .await
             .expect("failed to read response body")
             .to_bytes();
-        let json = serde_json::from_slice(&bytes).expect("response is not valid json");
+        let json = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).expect("response is not valid json")
+        };
 
         (status, json)
     }
@@ -437,6 +436,14 @@ impl TestApp {
         .insert(&db)
         .await
         .expect("insert knowledge_video");
+        user_knowledge_video_link::ActiveModel {
+            knowledge_video_id: Set(record.id),
+            user_id: Set(user_id),
+            created_at: Set(now),
+        }
+        .insert(&db)
+        .await
+        .expect("insert user knowledge_video link");
         record.id
     }
 
@@ -459,6 +466,14 @@ impl TestApp {
         .insert(&db)
         .await
         .expect("insert code_video");
+        user_code_video_link::ActiveModel {
+            code_video_id: Set(record.id),
+            user_id: Set(user_id),
+            created_at: Set(now),
+        }
+        .insert(&db)
+        .await
+        .expect("insert user code_video link");
         record.id
     }
 
@@ -481,6 +496,14 @@ impl TestApp {
         .insert(&db)
         .await
         .expect("insert interactive_html");
+        user_interactive_html_link::ActiveModel {
+            interactive_html_id: Set(record.id),
+            user_id: Set(user_id),
+            created_at: Set(now),
+        }
+        .insert(&db)
+        .await
+        .expect("insert user interactive_html link");
         record.id
     }
 

@@ -82,18 +82,18 @@ export function DashboardSearch() {
   );
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(q.trim()), 250);
+    const t = setTimeout(() => {
+      const nextQuery = q.trim();
+      setDebounced(nextQuery);
+      setLoading(nextQuery.length > 0);
+      if (!nextQuery) setResults(EMPTY);
+    }, 250);
     return () => clearTimeout(t);
   }, [q]);
 
   useEffect(() => {
-    if (!debounced) {
-      setResults(EMPTY);
-      setLoading(false);
-      return;
-    }
+    if (!debounced) return;
     const ctrl = new AbortController();
-    setLoading(true);
     const params = new URLSearchParams({ q: debounced });
     if (scope !== "all") params.set("scope", scope);
     fetch(`/api/search?${params.toString()}`, {

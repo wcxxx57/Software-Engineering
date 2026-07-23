@@ -13,7 +13,11 @@ use crate::{
     entities::{knowledge_explanation, user},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::{asset_transaction::{self, GOLD}, content::dispatch_payload, personalization::LearnerProfileSnapshot},
+    services::{
+        asset_transaction::{self, GOLD},
+        content::dispatch_payload,
+        personalization::LearnerProfileSnapshot,
+    },
     state::AppState,
 };
 
@@ -80,7 +84,15 @@ pub async fn create(
     active_user.gold = Set(new_gold);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
-    asset_transaction::record(&tx, existing_user.id, GOLD, -cost, new_gold, "生成独立知识解析").await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        GOLD,
+        -cost,
+        new_gold,
+        "生成独立知识解析",
+    )
+    .await?;
 
     let record = knowledge_explanation::ActiveModel {
         user_id: Set(auth_user.user_id),
@@ -125,7 +137,15 @@ pub async fn create(
         active_user.gold = Set(new_gold);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, refund_user.id, GOLD, cost, new_gold, "知识解析生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            refund_user.id,
+            GOLD,
+            cost,
+            new_gold,
+            "知识解析生成失败退款",
+        )
+        .await?;
 
         tx.commit().await?;
         return Err(err);
@@ -198,7 +218,15 @@ pub async fn update(
         active_user.gold = Set(new_gold);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, existing_user.id, GOLD, -cost, new_gold, "重新生成知识解析").await?;
+        asset_transaction::record(
+            &tx,
+            existing_user.id,
+            GOLD,
+            -cost,
+            new_gold,
+            "重新生成知识解析",
+        )
+        .await?;
 
         active.status = Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing);
         active.content = Set(None);
@@ -244,7 +272,15 @@ pub async fn update(
                 active_user.gold = Set(new_gold);
                 active_user.updated_at = Set(Utc::now());
                 active_user.update(&tx).await?;
-                asset_transaction::record(&tx, refund_user.id, GOLD, cost, new_gold, "知识解析生成失败退款").await?;
+                asset_transaction::record(
+                    &tx,
+                    refund_user.id,
+                    GOLD,
+                    cost,
+                    new_gold,
+                    "知识解析生成失败退款",
+                )
+                .await?;
 
                 tx.commit().await?;
                 return Err(err);

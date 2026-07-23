@@ -302,7 +302,11 @@ pub async fn complete(
         EXP,
         exp_reward,
         new_exp,
-        if completed_subject { "完成学习任务与学习计划" } else { "完成学习任务" },
+        if completed_subject {
+            "完成学习任务与学习计划"
+        } else {
+            "完成学习任务"
+        },
     )
     .await?;
     asset_transaction::record(
@@ -386,7 +390,15 @@ pub async fn create_knowledge_video(
     active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
-    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成知识视频").await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        -cost,
+        new_diamond,
+        "生成知识视频",
+    )
+    .await?;
 
     let kv_record = knowledge_video::ActiveModel {
         status: Set(knowledge_video::KnowledgeVideoStatus::Queuing),
@@ -437,7 +449,15 @@ pub async fn create_knowledge_video(
         active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "知识视频生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            refund_user.id,
+            DIAMOND,
+            cost,
+            new_diamond,
+            "知识视频生成失败退款",
+        )
+        .await?;
 
         tx.commit().await?;
         return Err(err);
@@ -484,7 +504,15 @@ pub async fn create_interactive_html(
     active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
-    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成 2D 交互内容").await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        -cost,
+        new_diamond,
+        "生成 2D 交互内容",
+    )
+    .await?;
 
     let ih_record = interactive_html::ActiveModel {
         status: Set(interactive_html::InteractiveHtmlStatus::Queuing),
@@ -531,7 +559,15 @@ pub async fn create_interactive_html(
         active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "2D 交互生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            refund_user.id,
+            DIAMOND,
+            cost,
+            new_diamond,
+            "2D 交互生成失败退款",
+        )
+        .await?;
 
         tx.commit().await?;
         return Err(err);
@@ -687,7 +723,15 @@ pub async fn create_quiz(
         active_user.gold = Set(new_gold);
         active_user.updated_at = Set(now);
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, existing_user.id, GOLD, -cost, new_gold, "生成额外知识点测验").await?;
+        asset_transaction::record(
+            &tx,
+            existing_user.id,
+            GOLD,
+            -cost,
+            new_gold,
+            "生成额外知识点测验",
+        )
+        .await?;
     }
 
     let quiz_record = study_quiz::ActiveModel {
@@ -733,7 +777,15 @@ pub async fn create_quiz(
             active_user.gold = Set(new_gold);
             active_user.updated_at = Set(Utc::now());
             active_user.update(&tx).await?;
-            asset_transaction::record(&tx, refund_user.id, GOLD, cost, new_gold, "知识点测验生成失败退款").await?;
+            asset_transaction::record(
+                &tx,
+                refund_user.id,
+                GOLD,
+                cost,
+                new_gold,
+                "知识点测验生成失败退款",
+            )
+            .await?;
         }
 
         tx.commit().await?;

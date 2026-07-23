@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { ClipboardCheck, NotebookPen, Plus, Rocket } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { ContentCard } from "@/components/learn/content-card";
 import { NewQuizDialog } from "@/components/learn/new-quiz-dialog";
@@ -55,21 +55,12 @@ export function QuizSection({
     [list],
   );
 
-  const [activeQuizId, setActiveQuizId] = useState<number | null>(null);
+  const [selectedQuizId, setSelectedQuizId] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (sorted.length === 0) {
-      setActiveQuizId(null);
-      return;
-    }
-    if (
-      activeQuizId == null ||
-      !sorted.some((q) => q.id === activeQuizId)
-    ) {
-      setActiveQuizId(sorted[sorted.length - 1].id);
-    }
-  }, [sorted, activeQuizId]);
+  const activeQuizId =
+    selectedQuizId != null && sorted.some((quiz) => quiz.id === selectedQuizId)
+      ? selectedQuizId
+      : (sorted[sorted.length - 1]?.id ?? null);
 
   const locked = taskStatus === "LOCKED";
   const latest = sorted[sorted.length - 1];
@@ -85,7 +76,7 @@ export function QuizSection({
   const handleSuccess = (quizId: number) => {
     qc.invalidateQueries({ queryKey: taskQuizzesQueryKey(taskId) });
     qc.invalidateQueries({ queryKey: meQueryKey });
-    setActiveQuizId(quizId);
+    setSelectedQuizId(quizId);
   };
 
   return (
@@ -145,7 +136,7 @@ export function QuizSection({
                     <button
                       key={quiz.id}
                       type="button"
-                      onClick={() => setActiveQuizId(quiz.id)}
+                      onClick={() => setSelectedQuizId(quiz.id)}
                       className={cn(
                         "flex min-w-[96px] flex-col items-center justify-center rounded-2xl px-4 py-2 text-center transition",
                         isActive

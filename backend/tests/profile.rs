@@ -21,7 +21,6 @@ async fn user_patch_set_public_works() {
         status: Set(knowledge_explanation::KnowledgeExplanationStatus::Finished),
         prompt: Set("explain polymorphism".to_owned()),
         content: Set(Some("多态是...".to_owned())),
-        mindmap: Set(Some(r#"{"title":"多态"}"#.to_owned())),
         public: Set(false),
         cost: Set(10),
         created_at: Set(Utc::now()),
@@ -56,7 +55,6 @@ async fn user_patch_set_public_works() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["public"], true);
     assert_eq!(body["data"]["content"], "多态是...");
-    assert_eq!(body["data"]["mindmap"]["title"], "多态");
 }
 
 #[tokio::test]
@@ -88,22 +86,22 @@ async fn profile_update_gender() {
             "PATCH",
             "/api/v1/me",
             Some(&token),
-            Some(json!({"gender": "Male"})),
+            Some(json!({"gender": "MALE"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["gender"], "Male");
+    assert_eq!(body["data"]["gender"], "MALE");
 
     let (status, body) = app
         .request(
             "PATCH",
             "/api/v1/me",
             Some(&token),
-            Some(json!({"gender": "Female"})),
+            Some(json!({"gender": "FEMALE"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["gender"], "Female");
+    assert_eq!(body["data"]["gender"], "FEMALE");
 }
 
 #[tokio::test]
@@ -229,14 +227,14 @@ async fn profile_update_all_fields_at_once() {
             Some(&token),
             Some(json!({
                 "birth_year": 2005,
-                "gender": "Male",
+                "gender": "MALE",
                 "introduction": "你好，世界"
             })),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["birth_year"], 2005);
-    assert_eq!(body["data"]["gender"], "Male");
+    assert_eq!(body["data"]["gender"], "MALE");
     assert_eq!(body["data"]["introduction"], "你好，世界");
 }
 
@@ -249,7 +247,7 @@ async fn profile_get_returns_default_values() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["username"], "alice");
     assert_eq!(body["data"]["gold"], 0);
-    assert_eq!(body["data"]["diamond"], 0);
+    assert_eq!(body["data"]["diamond"], 80);
     assert_eq!(body["data"]["streak_checkins"], 0);
     assert_eq!(body["data"]["total_checkins"], 0);
     assert_eq!(body["data"]["birth_year"], serde_json::Value::Null);

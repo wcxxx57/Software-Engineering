@@ -14,7 +14,10 @@ use crate::{
     entities::{interactive_html, user, user_interactive_html_link},
     error::{AppError, BusinessError},
     response::{created, ok},
-    services::{asset_transaction::{self, DIAMOND}, content::{GenerateRequest, dispatch_to_service}},
+    services::{
+        asset_transaction::{self, DIAMOND},
+        content::{GenerateRequest, dispatch_to_service},
+    },
     state::AppState,
 };
 
@@ -76,7 +79,15 @@ pub async fn create(
     active_user.diamond = Set(new_diamond);
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
-    asset_transaction::record(&tx, existing_user.id, DIAMOND, -cost, new_diamond, "生成 2D 交互内容").await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        -cost,
+        new_diamond,
+        "生成 2D 交互内容",
+    )
+    .await?;
 
     let record = interactive_html::ActiveModel {
         status: Set(interactive_html::InteractiveHtmlStatus::Queuing),
@@ -126,7 +137,15 @@ pub async fn create(
         active_user.diamond = Set(new_diamond);
         active_user.updated_at = Set(Utc::now());
         active_user.update(&tx).await?;
-        asset_transaction::record(&tx, refund_user.id, DIAMOND, cost, new_diamond, "2D 交互生成失败退款").await?;
+        asset_transaction::record(
+            &tx,
+            refund_user.id,
+            DIAMOND,
+            cost,
+            new_diamond,
+            "2D 交互生成失败退款",
+        )
+        .await?;
 
         tx.commit().await?;
         return Err(err);

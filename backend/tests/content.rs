@@ -24,7 +24,7 @@ async fn knowledge_video_create_dispatch_success_charges_diamonds() {
         )
         .await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["data"]["status"], "Queuing");
+    assert_eq!(body["data"]["status"], "QUEUING");
     assert_eq!(body["data"]["prompt"], "explain ownership");
     assert_eq!(body["data"]["public"], true);
 
@@ -55,7 +55,7 @@ async fn code_video_create_dispatch_success_charges_diamonds() {
         )
         .await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["data"]["status"], "Queuing");
+    assert_eq!(body["data"]["status"], "QUEUING");
     assert_eq!(body["data"]["prompt"], "explain this code");
 
     let payload = app.published_json(&app.config.code_video_exchange);
@@ -81,7 +81,7 @@ async fn interactive_html_create_dispatch_success_charges_diamonds() {
         )
         .await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["data"]["status"], "Queuing");
+    assert_eq!(body["data"]["status"], "QUEUING");
     assert_eq!(body["data"]["prompt"], "build a sorting demo");
 
     let payload = app.published_json(&app.config.interactive_html_exchange);
@@ -107,7 +107,7 @@ async fn knowledge_explanation_create_dispatch_success_charges_gold() {
         )
         .await;
     assert_eq!(status, StatusCode::CREATED);
-    assert_eq!(body["data"]["status"], "Queuing");
+    assert_eq!(body["data"]["status"], "QUEUING");
     assert_eq!(body["data"]["prompt"], "explain trait bounds");
 
     let payload = app.published_json(&app.config.knowledge_explanation_exchange);
@@ -135,7 +135,7 @@ async fn internal_callback_updates_knowledge_video_status() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-videos/1",
+            "/internal/knowledge-videos/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -147,9 +147,9 @@ async fn internal_callback_updates_knowledge_video_status() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-videos/1",
+            "/internal/knowledge-videos/1",
             Some(api_key),
-            Some(json!({"status": "FINISHED", "url": "https://cdn.example.com/v1.mp4"})),
+            Some(json!({"status": "FINISHED", "object_key": "knowledge-videos/v1.mp4"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -160,7 +160,7 @@ async fn internal_callback_updates_knowledge_video_status() {
         .request("GET", "/api/v1/knowledge-videos/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["url"], "https://cdn.example.com/v1.mp4");
+    assert_eq!(body["data"]["object_key"], "knowledge-videos/v1.mp4");
 }
 
 #[tokio::test]
@@ -169,7 +169,8 @@ async fn internal_callback_failed_triggers_refund() {
     let token = app.create_user_and_login("gen_user2", "password123").await;
     let api_key = &app.config.interactive_html_api_key;
 
-    app.update_user_state("gen_user2", None, 0, 0, 100, 45).await;
+    app.update_user_state("gen_user2", None, 0, 0, 100, 45)
+        .await;
     app.insert_interactive_html(1, interactive_html::InteractiveHtmlStatus::Queuing)
         .await;
 
@@ -177,7 +178,7 @@ async fn internal_callback_failed_triggers_refund() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/interactive-htmls/1",
+            "/internal/interactive-htmls/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -188,7 +189,7 @@ async fn internal_callback_failed_triggers_refund() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/interactive-htmls/1",
+            "/internal/interactive-htmls/1",
             Some(api_key),
             Some(json!({"status": "FAILED"})),
         )
@@ -213,7 +214,7 @@ async fn internal_callback_invalid_transition_rejected() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/code-videos/1",
+            "/internal/code-videos/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -235,7 +236,7 @@ async fn internal_callback_wrong_api_key_rejected() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-videos/1",
+            "/internal/knowledge-videos/1",
             Some(wrong_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -247,7 +248,7 @@ async fn internal_callback_wrong_api_key_rejected() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-videos/1",
+            "/internal/knowledge-videos/1",
             Some("sk-nonexistent"),
             Some(json!({"status": "GENERATING"})),
         )
@@ -257,7 +258,7 @@ async fn internal_callback_wrong_api_key_rejected() {
 }
 
 #[tokio::test]
-async fn knowledge_explanation_callback_with_content_and_mindmap() {
+async fn knowledge_explanation_callback_with_content() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("gen_user6", "password123").await;
     let api_key = &app.config.knowledge_explanation_api_key;
@@ -273,24 +274,22 @@ async fn knowledge_explanation_callback_with_content_and_mindmap() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-explanations/1",
+            "/internal/knowledge-explanations/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
 
-    // GENERATING -> FINISHED with content and mindmap
-    let mindmap = r#"{"title":"接口","children":[{"title":"定义","children":[]}]}"#;
+    // GENERATING -> FINISHED with generated content
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-explanations/1",
+            "/internal/knowledge-explanations/1",
             Some(api_key),
             Some(json!({
                 "status": "FINISHED",
-                "content": "接口是一种抽象类型...",
-                "mindmap": mindmap
+                "content": "接口是一种抽象类型..."
             })),
         )
         .await;
@@ -307,7 +306,6 @@ async fn knowledge_explanation_callback_with_content_and_mindmap() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["content"], "接口是一种抽象类型...");
-    assert_eq!(body["data"]["mindmap"]["title"], "接口");
 }
 
 #[tokio::test]
@@ -366,7 +364,7 @@ async fn content_get_nonexistent_knowledge_explanation_returns_404() {
 }
 
 #[tokio::test]
-async fn content_retry_non_failed_knowledge_video_returns_400() {
+async fn knowledge_video_patch_is_not_supported() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
     app.update_user_state("alice", None, 0, 0, 100, 50).await;
@@ -382,12 +380,12 @@ async fn content_retry_non_failed_knowledge_video_returns_400() {
             Some(json!({"retry": true})),
         )
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INVALID_CONTENT_STATUS");
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, serde_json::Value::Null);
 }
 
 #[tokio::test]
-async fn content_retry_non_failed_code_video_returns_400() {
+async fn code_video_patch_is_not_supported() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
 
@@ -402,8 +400,8 @@ async fn content_retry_non_failed_code_video_returns_400() {
             Some(json!({"retry": true})),
         )
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INVALID_CONTENT_STATUS");
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, serde_json::Value::Null);
 }
 
 #[tokio::test]
@@ -420,7 +418,7 @@ async fn code_video_callback_full_lifecycle() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/code-videos/1",
+            "/internal/code-videos/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -432,9 +430,9 @@ async fn code_video_callback_full_lifecycle() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/code-videos/1",
+            "/internal/code-videos/1",
             Some(api_key),
-            Some(json!({"status": "FINISHED", "url": "https://cdn.example.com/cv.mp4"})),
+            Some(json!({"status": "FINISHED", "object_key": "code-videos/cv.mp4"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -445,7 +443,7 @@ async fn code_video_callback_full_lifecycle() {
         .request("GET", "/api/v1/code-videos/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["url"], "https://cdn.example.com/cv.mp4");
+    assert_eq!(body["data"]["object_key"], "code-videos/cv.mp4");
 }
 
 #[tokio::test]
@@ -463,7 +461,7 @@ async fn code_video_callback_failed_refunds_diamond() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/code-videos/1",
+            "/internal/code-videos/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -474,7 +472,7 @@ async fn code_video_callback_failed_refunds_diamond() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/code-videos/1",
+            "/internal/code-videos/1",
             Some(api_key),
             Some(json!({"status": "FAILED"})),
         )
@@ -500,7 +498,7 @@ async fn interactive_html_callback_full_lifecycle() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/interactive-htmls/1",
+            "/internal/interactive-htmls/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -511,9 +509,9 @@ async fn interactive_html_callback_full_lifecycle() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/interactive-htmls/1",
+            "/internal/interactive-htmls/1",
             Some(api_key),
-            Some(json!({"status": "FINISHED", "url": "https://cdn.example.com/ih.html"})),
+            Some(json!({"status": "FINISHED", "object_key": "interactive-htmls/ih.html"})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -523,7 +521,7 @@ async fn interactive_html_callback_full_lifecycle() {
         .request("GET", "/api/v1/interactive-htmls/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["url"], "https://cdn.example.com/ih.html");
+    assert_eq!(body["data"]["object_key"], "interactive-htmls/ih.html");
 }
 
 #[tokio::test]
@@ -545,7 +543,7 @@ async fn knowledge_explanation_failed_refunds_gold() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-explanations/1",
+            "/internal/knowledge-explanations/1",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -556,7 +554,7 @@ async fn knowledge_explanation_failed_refunds_gold() {
     let (status, _) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-explanations/1",
+            "/internal/knowledge-explanations/1",
             Some(api_key),
             Some(json!({"status": "FAILED"})),
         )
@@ -569,7 +567,7 @@ async fn knowledge_explanation_failed_refunds_gold() {
 }
 
 #[tokio::test]
-async fn content_retry_failed_kv_insufficient_diamonds_returns_400() {
+async fn failed_knowledge_video_patch_is_not_supported() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
     // 0 diamonds
@@ -586,12 +584,12 @@ async fn content_retry_failed_kv_insufficient_diamonds_returns_400() {
             Some(json!({"retry": true})),
         )
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INSUFFICIENT_DIAMONDS");
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, serde_json::Value::Null);
 }
 
 #[tokio::test]
-async fn content_retry_failed_ih_insufficient_diamonds_returns_400() {
+async fn failed_interactive_html_patch_is_not_supported() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
     // 0 diamonds
@@ -608,8 +606,8 @@ async fn content_retry_failed_ih_insufficient_diamonds_returns_400() {
             Some(json!({"retry": true})),
         )
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INSUFFICIENT_DIAMONDS");
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, serde_json::Value::Null);
 }
 
 #[tokio::test]
@@ -639,7 +637,7 @@ async fn content_retry_failed_ke_insufficient_gold_returns_400() {
 }
 
 #[tokio::test]
-async fn content_retry_non_failed_interactive_html_returns_400() {
+async fn interactive_html_patch_is_not_supported() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
 
@@ -654,12 +652,12 @@ async fn content_retry_non_failed_interactive_html_returns_400() {
             Some(json!({"retry": true})),
         )
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["code"], "INVALID_CONTENT_STATUS");
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, serde_json::Value::Null);
 }
 
 #[tokio::test]
-async fn content_patch_nonexistent_knowledge_video_returns_404() {
+async fn nonexistent_knowledge_video_patch_is_not_supported() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
 
@@ -671,8 +669,8 @@ async fn content_patch_nonexistent_knowledge_video_returns_404() {
             Some(json!({"public": true})),
         )
         .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(body["code"], "CONTENT_NOT_FOUND");
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(body, serde_json::Value::Null);
 }
 
 #[tokio::test]
@@ -714,7 +712,7 @@ async fn internal_callback_cross_service_key_on_ih_rejected() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/interactive-htmls/1",
+            "/internal/interactive-htmls/1",
             Some(wrong_key),
             Some(json!({"status": "GENERATING"})),
         )
@@ -731,7 +729,7 @@ async fn internal_callback_nonexistent_resource_returns_404() {
     let (status, body) = app
         .request(
             "PATCH",
-            "/api/v1/internal/knowledge-videos/999",
+            "/internal/knowledge-videos/999",
             Some(api_key),
             Some(json!({"status": "GENERATING"})),
         )

@@ -1,6 +1,8 @@
 use axum::{Json, extract::State};
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+};
 use serde::Deserialize;
 use validator::Validate;
 
@@ -9,7 +11,10 @@ use crate::{
     error::{AppError, BusinessError},
     response::created,
     routes::user_views::UserView,
-    services::{asset_transaction::{self, DIAMOND}, password::hash_password},
+    services::{
+        asset_transaction::{self, DIAMOND},
+        password::hash_password,
+    },
     state::AppState,
 };
 

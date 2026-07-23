@@ -28,11 +28,6 @@ class Settings(BaseSettings):
     plan_tasks_per_stage: int = 3
     worker_prefetch: int = 2
 
-    tavily_api_key: str | None = None
-    curriculum_source_domains: str = "icourse163.org,shuishan.net.cn"
-    curriculum_search_max_results: int = 3
-    curriculum_auto_publish_min_score: float = 0.85
-
     pretest_api_key: str
     plan_api_key: str
     quiz_api_key: str
@@ -83,7 +78,6 @@ class Settings(BaseSettings):
         "quiz_problem_count",
         "plan_tasks_per_stage",
         "worker_prefetch",
-        "curriculum_search_max_results",
         "callback_max_retries",
     )
     @classmethod
@@ -106,14 +100,4 @@ class Settings(BaseSettings):
             <= self.explanation_target_chars_max
         ):
             raise ValueError("EXPLANATION_TARGET_CHARS must be within its min/max bounds")
-        if not 0 <= self.curriculum_auto_publish_min_score <= 1:
-            raise ValueError("CURRICULUM_AUTO_PUBLISH_MIN_SCORE must be between 0 and 1")
         return self
-
-    @property
-    def curriculum_domains(self) -> list[str]:
-        return [
-            domain.strip().lower()
-            for domain in self.curriculum_source_domains.split(",")
-            if domain.strip()
-        ]

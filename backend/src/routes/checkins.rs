@@ -14,11 +14,11 @@ use crate::{
     entities::{user, user_checkin},
     error::{AppError, BusinessError},
     response::{created, ok},
+    services::asset_transaction::{self, DIAMOND, EXP, GOLD},
     services::checkin::{
         makeup_cost, makeup_dates, missed_days_since_last_checkin, next_streak,
         reward_for_streak_day, reward_sum_for_streak_range,
     },
-    services::asset_transaction::{self, DIAMOND, EXP, GOLD},
     state::AppState,
 };
 
@@ -176,9 +176,33 @@ pub async fn check_in(
     active_user.updated_at = Set(now);
     active_user.update(&tx).await?;
 
-    asset_transaction::record(&tx, existing_user.id, GOLD, gold_reward, existing_user.gold + gold_reward, "签到奖励").await?;
-    asset_transaction::record(&tx, existing_user.id, GOLD, -gold_cost, new_gold, "补签消耗").await?;
-    asset_transaction::record(&tx, existing_user.id, DIAMOND, -diamond_cost, new_diamond, "补签消耗").await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        GOLD,
+        gold_reward,
+        existing_user.gold + gold_reward,
+        "签到奖励",
+    )
+    .await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        GOLD,
+        -gold_cost,
+        new_gold,
+        "补签消耗",
+    )
+    .await?;
+    asset_transaction::record(
+        &tx,
+        existing_user.id,
+        DIAMOND,
+        -diamond_cost,
+        new_diamond,
+        "补签消耗",
+    )
+    .await?;
     asset_transaction::record(&tx, existing_user.id, EXP, exp_reward, new_exp, "签到经验").await?;
 
     tx.commit().await?;

@@ -20,6 +20,7 @@ from zhiying_core_generation.models import (
     CurriculumTemplateSummary,
     ExplanationPayload,
     ExplanationSizingPayload,
+    GeneratedCurriculumPayload,
     KnowledgeExplanationRequest,
     LearnerProfile,
     PlanPayload,
@@ -163,6 +164,59 @@ class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["existing_template_id"], 17)
         self.assertEqual(len(client.calls), 1)
+
+    async def test_curriculum_ai_generates_outline_when_database_has_no_match(self) -> None:
+        nodes = [
+            CurriculumNode(
+                node_key="root",
+                title="分布式系统课程",
+                description="完整课程知识结构",
+                depth=0,
+                sort_order=0,
+            ),
+            *[
+                CurriculumNode(
+                    node_key=f"topic-{index}",
+                    parent_node_key="root",
+                    title=f"知识模块 {index}",
+                    description=f"掌握第 {index} 个核心知识模块",
+                    depth=1,
+                    sort_order=index,
+                )
+                for index in range(1, 6)
+            ],
+        ]
+        client = FakeClient(
+            CurriculumSelectionPayload(existing_template_id=None, reason="数据库无匹配模板"),
+            GeneratedCurriculumPayload(
+                canonical_name="分布式系统基础",
+                slug="distributed-systems-basics",
+                language="GENERAL",
+                aliases=["分布式系统"],
+                raw_outline=(
+                    "课程大纲\n本课程从分布式系统基础概念开始，依次覆盖节点通信、时间与顺序、"
+                    "复制与一致性、故障检测与容错、分布式存储，以及完整的工程设计与实践。"
+                ),
+                nodes=nodes,
+            ),
+        )
+        request = CurriculumAcquisitionRequest(
+            task_id=2,
+            prompt="分布式系统",
+            language="GENERAL",
+            target="掌握一致性与容错设计",
+            available_templates=[],
+        )
+
+        result = await generate_curriculum_acquisition(
+            client, settings(), request  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(result["status"], "FINISHED")
+        self.assertEqual(result["curriculum"]["source_url"], "ai://generated")
+        self.assertEqual(result["curriculum"]["platform"], "AI_GENERATED")
+        self.assertEqual(len(result["curriculum"]["content_hash"]), 64)
+        self.assertEqual(len(client.calls), 2)
 
     async def test_pretest_uses_ai_selected_count_in_generation(self) -> None:
         client = FakeClient(

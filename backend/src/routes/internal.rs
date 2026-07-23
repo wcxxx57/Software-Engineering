@@ -790,22 +790,9 @@ async fn callback_curriculum_acquisition(
         {
             existing_id
         } else {
-            if let Err(code) = curriculum::validate_acquired(
-                &curriculum_payload,
-                &state.config.curriculum_source_domains,
-                state.config.curriculum_auto_publish_min_score,
-            ) {
-                if curriculum::source_is_allowed(
-                    &curriculum_payload.source_url,
-                    &state.config.curriculum_source_domains,
-                ) {
-                    curriculum::persist_pending_review(&state.db, &curriculum_payload, code)
-                        .await?;
-                }
-                fail_curriculum_subject(&state, &subject, code, "课程大纲待审核退款").await?;
-                return Ok(ok(
-                    serde_json::json!({"success": true, "review_required": true}),
-                ));
+            if let Err(code) = curriculum::validate_generated(&curriculum_payload) {
+                fail_curriculum_subject(&state, &subject, code, "AI课程大纲生成失败退款").await?;
+                return Ok(ok(serde_json::json!({"success": true})));
             }
             curriculum::persist_acquired(&state.db, &curriculum_payload).await?
         }

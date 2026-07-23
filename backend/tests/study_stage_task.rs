@@ -25,8 +25,8 @@ async fn study_stage_get_returns_tasks() {
     let tasks = body["data"]["tasks"].as_array().expect("tasks");
     assert_eq!(tasks.len(), 3);
     assert_eq!(tasks[0]["id"], task_ids[0][0]);
-    assert_eq!(tasks[0]["status"], "Studying");
-    assert_eq!(tasks[1]["status"], "Locked");
+    assert_eq!(tasks[0]["status"], "STUDYING");
+    assert_eq!(tasks[1]["status"], "LOCKED");
 }
 
 #[tokio::test]
@@ -77,7 +77,7 @@ async fn study_task_get_returns_data() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["title"], "Task 1.1");
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
 }
 
 #[tokio::test]
@@ -124,7 +124,7 @@ async fn study_task_complete_unlocks_next() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Finished");
+    assert_eq!(body["data"]["status"], "FINISHED");
 
     // Second task is now Studying
     let (_, body) = app
@@ -135,7 +135,7 @@ async fn study_task_complete_unlocks_next() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
 
     // Stage has finished_tasks=1
     let (_, body) = app
@@ -152,7 +152,9 @@ async fn study_task_complete_unlocks_next() {
 #[tokio::test]
 async fn study_task_completing_subject_rewards_exp_and_refunds_diamonds() {
     let app = TestApp::new().await;
-    let token = app.create_user_and_login("subject_reward", "password123").await;
+    let token = app
+        .create_user_and_login("subject_reward", "password123")
+        .await;
     let (_, _, task_ids) = app.insert_study_subject_with_plan(1, 1, 1).await;
 
     let (status, body) = app
@@ -251,7 +253,7 @@ async fn study_task_complete_last_in_stage_finishes_stage_unlocks_next() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Finished");
+    assert_eq!(body["data"]["status"], "FINISHED");
 
     // Stage 2 is now Studying
     let (_, body) = app
@@ -262,7 +264,7 @@ async fn study_task_complete_last_in_stage_finishes_stage_unlocks_next() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
 
     // Stage 2's task is now Studying
     let (_, body) = app
@@ -273,7 +275,7 @@ async fn study_task_complete_last_in_stage_finishes_stage_unlocks_next() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
 
     // Subject finished_stages = 1
     let (_, body) = app
@@ -285,7 +287,7 @@ async fn study_task_complete_last_in_stage_finishes_stage_unlocks_next() {
         )
         .await;
     assert_eq!(body["data"]["finished_stages"], 1);
-    assert_eq!(body["data"]["status"], "Studying");
+    assert_eq!(body["data"]["status"], "STUDYING");
 }
 
 #[tokio::test]
@@ -315,7 +317,7 @@ async fn study_task_complete_last_in_last_stage_finishes_subject() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Finished");
+    assert_eq!(body["data"]["status"], "FINISHED");
     assert_eq!(body["data"]["finished_stages"], 1);
 }
 

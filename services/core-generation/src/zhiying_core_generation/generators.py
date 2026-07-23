@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import importlib.util
 import json
@@ -12,10 +11,10 @@ from .adaptive import select_explanation_length, select_pretest_problem_count
 from .config import Settings
 from .llm import LlmClient, LlmError
 from .models import (
-    AcquiredCurriculumPayload,
     CurriculumAcquisitionRequest,
     CurriculumSelectionPayload,
     ExplanationPayload,
+    GeneratedCurriculumPayload,
     KnowledgeExplanationRequest,
     PlanPayload,
     PlanRequest,
@@ -23,15 +22,10 @@ from .models import (
     ProblemsPayload,
     QuizRequest,
 )
-from .web_search import TavilyWebSearchProvider
 
 PROBLEM_SYSTEM = """你是严谨的中文教育测评专家。只返回合法 JSON，不要返回 Markdown。
 每道题必须有四个互不相同的选项，answer 只能为 A、B、C、D，explanation 要说明答案理由。
 题目必须围绕用户主题，避免歧义、冷僻事实和无法验证的答案。"""
-
-_WEB_ACQUISITION_LOCK = asyncio.Lock()
-_WEB_ACQUISITION_TASKS: dict[str, asyncio.Task[dict]] = {}
-_WEB_ACQUISITION_RESULTS: dict[str, dict] = {}
 
 
 def _skill_directory() -> Path:
@@ -161,76 +155,41 @@ async def generate_curriculum_acquisition(
             raise LlmError("curriculum selector returned an unknown template id")
         return {"status": "FINISHED", "existing_template_id": selection.existing_template_id}
 
-    cache_key = json.dumps(
-        [request.prompt.strip().casefold(), request.language, request.target.strip().casefold()],
-        ensure_ascii=False,
-    )
-    async with _WEB_ACQUISITION_LOCK:
-        cached = _WEB_ACQUISITION_RESULTS.get(cache_key)
-        if cached is not None:
-            return dict(cached)
-        task = _WEB_ACQUISITION_TASKS.get(cache_key)
-        if task is None:
-            task = asyncio.create_task(_acquire_curriculum_from_web(client, settings, request))
-            _WEB_ACQUISITION_TASKS[cache_key] = task
-    try:
-        result = await asyncio.shield(task)
-    except Exception:
-        async with _WEB_ACQUISITION_LOCK:
-            if _WEB_ACQUISITION_TASKS.get(cache_key) is task:
-                _WEB_ACQUISITION_TASKS.pop(cache_key, None)
-        raise
-    async with _WEB_ACQUISITION_LOCK:
-        _WEB_ACQUISITION_TASKS.pop(cache_key, None)
-        _WEB_ACQUISITION_RESULTS[cache_key] = result
-        while len(_WEB_ACQUISITION_RESULTS) > 128:
-            _WEB_ACQUISITION_RESULTS.pop(next(iter(_WEB_ACQUISITION_RESULTS)))
-    return dict(result)
-
-
-async def _acquire_curriculum_from_web(
-    client: LlmClient, settings: Settings, request: CurriculumAcquisitionRequest
-) -> dict:
-
-    if not settings.tavily_api_key:
-        raise LlmError("TAVILY_API_KEY is required when no curriculum template matches")
-    query = f"{request.prompt} {request.target} 课程大纲 授课大纲"
-    provider = TavilyWebSearchProvider(settings.tavily_api_key)
-    search_results = await provider.search(
-        query,
-        include_domains=settings.curriculum_domains,
-        max_results=settings.curriculum_search_max_results,
-        timeout_s=settings.llm_timeout_s,
-    )
-    candidates = [
-        {"url": item.url, "title": item.title, "content": item.content}
-        for item in search_results
-    ]
-    if not candidates:
-        raise LlmError("no curriculum pages found in allowed domains")
-
-    extracted = await client.generate(
+    generated = await client.generate(
         system=(
-            "你是严谨的课程大纲结构化专家。只从给定候选网页提取课程信息，不补写网页没有的章节。"
-            "只有网页明确含课程大纲、授课大纲、教学大纲或syllabus章节时才可选用，raw_outline必须保留该标题。"
+            "你是严谨的课程大纲设计专家。当数据库没有合适的已发布课程模板时，"
+            "根据用户主题和学习目标直接生成可用于个性化学习路径的权威课程大纲。"
+            "raw_outline必须以“课程大纲”为标题，覆盖从基础概念到实践应用的渐进知识结构。"
             "节点必须构成一棵树：一个depth=0根节点，至少五个下级知识节点；node_key使用简短小写英文和连字符。"
-            "match_score表示网页课程与用户主题的一致度。只返回JSON。"
+            "parent_node_key、depth和sort_order必须彼此一致，节点标题不得重复。只返回JSON。"
         ),
         user=f"""用户主题：{request.prompt}
 学习语言：{request.language}
 学习目标：{request.target}
-候选网页：{json.dumps(candidates, ensure_ascii=False)}
-返回课程名称、slug、语言、别名、平台、学校、教师、所选source_url、原始大纲文本、match_score和nodes。""",
-        schema=AcquiredCurriculumPayload,
+数据库中没有合适的已发布课程模板。
+请直接生成课程名称、slug、语言、别名、完整原始课程大纲和结构化nodes。""",
+        schema=GeneratedCurriculumPayload,
     )
-    assert isinstance(extracted, AcquiredCurriculumPayload)
-    candidate_by_url = {candidate["url"]: candidate for candidate in candidates}
-    chosen = candidate_by_url.get(extracted.source_url)
-    if chosen is None:
-        raise LlmError("curriculum extractor returned a URL outside search results")
-    result = extracted.model_dump()
-    result["content_hash"] = hashlib.sha256(chosen["content"].encode("utf-8")).hexdigest()
-    result["raw_outline"] = extracted.raw_outline[:30_000]
+    assert isinstance(generated, GeneratedCurriculumPayload)
+    result = generated.model_dump()
+    result["platform"] = "AI_GENERATED"
+    result["institution"] = "智映通学 AI"
+    result["instructor"] = None
+    result["source_url"] = "ai://generated"
+    result["match_score"] = 1.0
+    result["raw_outline"] = generated.raw_outline[:30_000]
+    hash_payload = json.dumps(
+        {
+            "prompt": request.prompt.strip(),
+            "language": request.language,
+            "target": request.target.strip(),
+            "outline": result["raw_outline"],
+            "nodes": result["nodes"],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    result["content_hash"] = hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()
     return {"status": "FINISHED", "curriculum": result}
 
 

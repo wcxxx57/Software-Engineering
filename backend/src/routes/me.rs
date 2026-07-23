@@ -12,7 +12,8 @@ use validator::Validate;
 use crate::{
     auth::AuthUser,
     entities::{
-        asset_transaction, common::{Gender, ProblemAnswer},
+        asset_transaction,
+        common::{Gender, ProblemAnswer},
         study_quiz, study_quiz_problem, study_stage, study_subject, study_task, user,
     },
     error::{AppError, BusinessError},

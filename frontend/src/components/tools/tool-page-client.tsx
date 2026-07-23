@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Package } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { ToolCard } from "@/components/tools/tool-card";
@@ -66,7 +66,7 @@ export function ToolPageClient<T extends ToolResource>({
   const balance = me ? (currency === "diamond" ? me.diamond : me.gold) : 0;
   const qc = useQueryClient();
 
-  const [focusId, setFocusId] = useState<number | null>(null);
+  const [selectedFocusId, setSelectedFocusId] = useState<number | null>(null);
   const [, startTransition] = useTransition();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -86,12 +86,10 @@ export function ToolPageClient<T extends ToolResource>({
     staleTime: 0,
   });
 
-  // 默认焦点：列表里最新的一条
-  useEffect(() => {
-    if (focusId == null && list.length > 0) {
-      setFocusId(list[0].id);
-    }
-  }, [list, focusId]);
+  const focusId =
+    selectedFocusId != null && list.some((item) => item.id === selectedFocusId)
+      ? selectedFocusId
+      : (list[0]?.id ?? null);
 
   const focusItem = useMemo(
     () => list.find((it) => it.id === focusId) ?? null,
@@ -106,7 +104,7 @@ export function ToolPageClient<T extends ToolResource>({
   }
 
   const handleCreateSuccess = (id: number) => {
-    setFocusId(id);
+    setSelectedFocusId(id);
     qc.invalidateQueries({ queryKey: ["tool-list", listEndpoint] });
     qc.invalidateQueries({ queryKey: meQueryKey });
     scrollToPlayer();
@@ -122,7 +120,7 @@ export function ToolPageClient<T extends ToolResource>({
         return;
       }
       toast.success("已从工具画廊移除");
-      if (focusId === id) setFocusId(null);
+      if (focusId === id) setSelectedFocusId(null);
       qc.invalidateQueries({ queryKey: ["tool-list", listEndpoint] });
     });
   };
@@ -182,7 +180,7 @@ export function ToolPageClient<T extends ToolResource>({
                 thumbnailIcon={cardThumbnailIcon}
                 active={item.id === focusId}
                 onClick={() => {
-                  setFocusId(item.id);
+                  setSelectedFocusId(item.id);
                   scrollToPlayer();
                 }}
                 onDelete={() => handleDelete(item.id)}

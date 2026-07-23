@@ -15,7 +15,7 @@ async fn recharge_add_gold_and_diamond() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": 100, "diamond": 50})),
         )
@@ -23,7 +23,7 @@ async fn recharge_add_gold_and_diamond() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["gold"], 100);
-    assert_eq!(body["data"]["diamond"], 50);
+    assert_eq!(body["data"]["diamond"], 130);
 }
 
 #[tokio::test]
@@ -36,7 +36,7 @@ async fn recharge_add_gold_only() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": 200})),
         )
@@ -44,7 +44,7 @@ async fn recharge_add_gold_only() {
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["gold"], 200);
-    assert_eq!(body["data"]["diamond"], 0);
+    assert_eq!(body["data"]["diamond"], 80);
 }
 
 #[tokio::test]
@@ -61,7 +61,7 @@ async fn recharge_deduct_gold() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": -200})),
         )
@@ -82,7 +82,7 @@ async fn recharge_insufficient_gold_returns_400() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": -1})),
         )
@@ -102,9 +102,9 @@ async fn recharge_insufficient_diamond_returns_400() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
-            Some(json!({"diamond": -1})),
+            Some(json!({"diamond": -81})),
         )
         .await;
 
@@ -120,7 +120,7 @@ async fn recharge_user_not_found_returns_404() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/999/balance",
+            "/internal/users/999/balance",
             Some(api_key),
             Some(json!({"gold": 100})),
         )
@@ -140,7 +140,7 @@ async fn recharge_empty_body_returns_400() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({})),
         )
@@ -159,7 +159,7 @@ async fn recharge_wrong_api_key_returns_401() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some("sk-wrong-key"),
             Some(json!({"gold": 100})),
         )
@@ -180,7 +180,7 @@ async fn recharge_other_service_key_returns_401() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(wrong_service_key),
             Some(json!({"gold": 100})),
         )
@@ -201,27 +201,27 @@ async fn recharge_accumulates_correctly() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": 100, "diamond": 20})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["gold"], 100);
-    assert_eq!(body["data"]["diamond"], 20);
+    assert_eq!(body["data"]["diamond"], 100);
 
     // Second recharge
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": 50, "diamond": -10})),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["gold"], 150);
-    assert_eq!(body["data"]["diamond"], 10);
+    assert_eq!(body["data"]["diamond"], 90);
 }
 
 #[tokio::test]
@@ -237,7 +237,7 @@ async fn recharge_zero_values_succeeds() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": 0, "diamond": 0})),
         )
@@ -261,7 +261,7 @@ async fn recharge_deduct_to_exact_zero_succeeds() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/users/1/balance",
+            "/internal/users/1/balance",
             Some(api_key),
             Some(json!({"gold": -100, "diamond": -50})),
         )

@@ -185,6 +185,15 @@ class AcquiredCurriculumPayload(BaseModel):
     nodes: list[CurriculumNode] = Field(min_length=6)
 
 
+class GeneratedCurriculumPayload(BaseModel):
+    canonical_name: str = Field(min_length=2)
+    slug: str = Field(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    language: str
+    aliases: list[str] = Field(min_length=1)
+    raw_outline: str = Field(min_length=50)
+    nodes: list[CurriculumNode] = Field(min_length=6)
+
+
 class PretestSizingPayload(BaseModel):
     problem_count: int = Field(gt=0)
     reason: str = Field(min_length=1, max_length=200)

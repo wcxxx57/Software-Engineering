@@ -519,33 +519,9 @@ pub async fn load_outline(
     })
 }
 
-pub fn source_is_allowed(url: &str, allowed_domains: &[String]) -> bool {
-    let Some(rest) = url.strip_prefix("https://") else {
-        return false;
-    };
-    let host = rest
-        .split('/')
-        .next()
-        .unwrap_or_default()
-        .split(':')
-        .next()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    allowed_domains
-        .iter()
-        .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
-}
-
-pub fn validate_acquired(
-    payload: &AcquiredCurriculum,
-    allowed_domains: &[String],
-    min_score: f64,
-) -> Result<(), &'static str> {
-    if !source_is_allowed(&payload.source_url, allowed_domains) {
-        return Err("SOURCE_NOT_ALLOWED");
-    }
-    if payload.match_score < min_score {
-        return Err("CURRICULUM_LOW_CONFIDENCE");
+pub fn validate_generated(payload: &AcquiredCurriculum) -> Result<(), &'static str> {
+    if payload.source_url != "ai://generated" || payload.platform != "AI_GENERATED" {
+        return Err("CURRICULUM_SOURCE_INVALID");
     }
     if payload.canonical_name.trim().is_empty()
         || payload.platform.trim().is_empty()

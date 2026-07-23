@@ -37,7 +37,7 @@ async fn study_quiz_callback_creates_problems() {
     let (status, _) = app
         .request(
             "POST",
-            "/api/v1/internal/study-quizzes/1",
+            "/internal/study-quizzes/1",
             Some(api_key),
             Some(json!({
                 "status": "FINISHED",
@@ -63,7 +63,7 @@ async fn study_quiz_callback_creates_problems() {
         .request("GET", "/api/v1/study-quizzes/1", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], "Ready");
+    assert_eq!(body["data"]["status"], "READY");
     assert_eq!(body["data"]["total_problems"], 2);
     let problems = body["data"]["problems"].as_array().expect("problems");
     assert_eq!(problems.len(), 2);
@@ -99,7 +99,7 @@ async fn study_quiz_callback_failed_refunds_gold() {
     let (status, _) = app
         .request(
             "POST",
-            "/api/v1/internal/study-quizzes/1",
+            "/internal/study-quizzes/1",
             Some(api_key),
             Some(json!({"status": "FAILED"})),
         )
@@ -173,10 +173,10 @@ async fn study_quiz_get_detail_with_problems() {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["data"]["status"], "Ready");
+    assert_eq!(body["data"]["status"], "READY");
     let problems = body["data"]["problems"].as_array().expect("problems");
     assert_eq!(problems.len(), 2);
-    assert_eq!(problems[0]["problem"]["content"], "Q1");
+    assert_eq!(problems[0]["content"], "Q1");
     assert_eq!(problems[0]["chosen_answer"], serde_json::Value::Null);
 }
 
@@ -621,7 +621,7 @@ async fn study_quiz_submit_all_wrong() {
             None,
         )
         .await;
-    assert_eq!(body["data"]["status"], "Submitted");
+    assert_eq!(body["data"]["status"], "SUBMITTED");
     assert_eq!(body["data"]["correct_problems"], 0);
     assert_eq!(body["data"]["total_problems"], 2);
 }
@@ -677,7 +677,7 @@ async fn study_quiz_callback_wrong_service_key_rejected() {
     let (status, body) = app
         .request(
             "POST",
-            "/api/v1/internal/study-quizzes/1",
+            "/internal/study-quizzes/1",
             Some(wrong_key),
             Some(json!({"status": "GENERATING"})),
         )
