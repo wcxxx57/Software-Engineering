@@ -1,0 +1,140 @@
+- generic [ref=f2e1]:
+  - generic [ref=f2e3]:
+    - main [ref=f2e4]:
+      - generic [ref=f2e5]:
+        - heading "智映通学|" [level=1] [ref=f2e6]
+        - generic [ref=f2e8]:
+          - button "全部" [ref=f2e9]
+          - searchbox "搜索知识点、计划或问题…" [ref=f2e16]
+      - generic [ref=f2e17]:
+        - generic [ref=f2e18]:
+          - generic [ref=f2e20]:
+            - generic [ref=f2e23]: Python 基础
+            - generic [ref=f2e24]: 学习中
+            - generic [ref=f2e25]: Day 1/3
+          - button "切换主题" [ref=f2e29]
+        - generic [ref=f2e31]:
+          - tablist [ref=f2e33]:
+            - tab "计划" [ref=f2e34]
+            - tab "知识树" [active] [selected] [ref=f2e35]
+          - tabpanel "知识树" [ref=f2e204]:
+            - generic [ref=f2e205]:
+              - generic [ref=f2e206]:
+                - generic [ref=f2e207]: Python 语言基础 · v1
+                - generic [ref=f2e208]:
+                  - text: 来源：
+                  - link "内置课程目录 / 智映通学" [ref=f2e209] [cursor=pointer]:
+                    - /url: https://icourse163.org
+              - application [ref=f2e211]:
+                - generic [ref=f2e213]:
+                  - generic:
+                    - generic:
+                      - img:
+                        - group "Edge from python to env"
+                      - img:
+                        - group "Edge from python to variables"
+                      - img:
+                        - group "Edge from python to flow"
+                      - img:
+                        - group "Edge from python to functions"
+                      - img:
+                        - group "Edge from python to files"
+                    - generic:
+                      - group [ref=f2e214]:
+                        - button "Python 语言基础 从程序结构到文件处理 50%" [ref=f2e217]:
+                          - generic [ref=f2e221]:
+                            - paragraph [ref=f2e222]: Python 语言基础
+                            - paragraph [ref=f2e223]: 从程序结构到文件处理
+                          - generic [ref=f2e224]: 50%
+                      - group [ref=f2e228]:
+                        - button "开发环境与程序结构 解释器、脚本和输出 100%" [ref=f2e231]:
+                          - generic [ref=f2e235]:
+                            - paragraph [ref=f2e236]: 开发环境与程序结构
+                            - paragraph [ref=f2e237]: 解释器、脚本和输出
+                          - generic [ref=f2e238]: 100%
+                      - group [ref=f2e244]:
+                        - button "变量、类型与运算 用变量组织数据 100%" [ref=f2e247]:
+                          - generic [ref=f2e251]:
+                            - paragraph [ref=f2e252]: 变量、类型与运算
+                            - paragraph [ref=f2e253]: 用变量组织数据
+                          - generic [ref=f2e254]: 100%
+                      - group [ref=f2e260]:
+                        - button "分支与循环 当前正在学习的核心控制流 30%" [ref=f2e263]:
+                          - generic [ref=f2e267]:
+                            - paragraph [ref=f2e268]: 分支与循环
+                            - paragraph [ref=f2e269]: 当前正在学习的核心控制流
+                          - generic [ref=f2e270]: 30%
+                      - group [ref=f2e276]:
+                        - button "函数与模块 将逻辑封装为可复用单元 0%" [ref=f2e279]:
+                          - generic [ref=f2e284]:
+                            - paragraph [ref=f2e285]: 函数与模块
+                            - paragraph [ref=f2e286]: 将逻辑封装为可复用单元
+                          - generic [ref=f2e287]: 0%
+                      - group [ref=f2e292]:
+                        - button [ref=f2e295]:
+                          - generic [ref=f2e300]:
+                            - paragraph [ref=f2e301]: 容器与文件处理
+                            - paragraph [ref=f2e302]: 列表、字典和文件读写
+                - generic "Control Panel" [ref=f2e304]:
+                  - button "Zoom In" [ref=f2e305] [cursor=pointer]
+                  - button "Zoom Out" [ref=f2e308] [cursor=pointer]
+                  - button "Fit View" [ref=f2e311] [cursor=pointer]
+                - link "React Flow attribution" [ref=f2e315] [cursor=pointer]:
+                  - /url: https://reactflow.dev?utm_source=attribution
+                  - text: React Flow
+      - generic [ref=f2e97]:
+        - link [ref=f2e98] [cursor=pointer]:
+          - /url: /k2v
+          - generic [ref=f2e105]:
+            - heading "K2V 知识点视频生成" [level=3] [ref=f2e106]
+            - paragraph [ref=f2e107]: 将枯燥知识点一键转化为活泼的精美解说视频
+        - link [ref=f2e108] [cursor=pointer]:
+          - /url: /c2v
+          - generic [ref=f2e115]:
+            - heading "C2V 编程题目解说" [level=3] [ref=f2e116]
+            - paragraph [ref=f2e117]: 由编程题目和答案自动生成易懂的逻辑讲解视频
+        - link [ref=f2e118] [cursor=pointer]:
+          - /url: /interactive
+          - generic [ref=f2e122]:
+            - heading "交互式实验室" [level=3] [ref=f2e123]
+            - paragraph [ref=f2e124]: AI 生成可交互的演示页面，动手探索算法、数据结构与可视化
+        - link [ref=f2e125] [cursor=pointer]:
+          - /url: /mistakes
+          - generic [ref=f2e130]:
+            - heading "错题本/收藏夹" [level=3] [ref=f2e131]
+            - paragraph [ref=f2e132]: 智能收集错题与收藏题目，精准定位薄弱环节
+    - complementary [ref=f2e133]:
+      - generic [ref=f2e134]:
+        - generic [ref=f2e135]:
+          - button "编辑个人资料" [ref=f2e137] [cursor=pointer]
+          - heading "视觉验收用户" [level=4] [ref=f2e142]
+          - button "编辑资料" [ref=f2e143]
+          - paragraph [ref=f2e147]:
+            - text: 初学乍练 · Lv.1 · 累计签到
+            - strong [ref=f2e148]: "8"
+            - text: 天
+          - generic [ref=f2e149]:
+            - button "EXP 260" [ref=f2e150]:
+              - generic [ref=f2e151]: EXP
+              - generic [ref=f2e155]: "260"
+            - generic [ref=f2e156]:
+              - generic [ref=f2e157]: 连续登录天数
+              - generic [ref=f2e160]: 3 天
+            - button "金币 40" [ref=f2e161]:
+              - generic [ref=f2e162]: 金币
+              - generic [ref=f2e168]: "40"
+            - button "钻石 70" [ref=f2e169]:
+              - generic [ref=f2e170]: 钻石
+              - generic [ref=f2e174]: "70"
+          - generic [ref=f2e175]:
+            - button "新手图鉴" [ref=f2e176]
+            - button "签到" [ref=f2e179]
+            - button "退出登录" [ref=f2e183]
+        - generic [ref=f2e187]:
+          - heading "AI 伴学" [level=4] [ref=f2e193]
+          - generic [ref=f2e194]: 嗨呀！欢迎来到智映通学 👋选择一个学习主题开始，或随时来问我问题。
+          - generic [ref=f2e197]:
+            - textbox "问点什么吧..." [disabled] [ref=f2e198]
+            - button [disabled] [ref=f2e199]
+  - region "Notifications alt+T"
+  - alert [ref=f2e203]

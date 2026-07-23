@@ -70,6 +70,9 @@ export function KnowledgeTreeView({ subjectId }: { subjectId: number }) {
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable={false}
+          // Keep the canvas read-only while allowing controls inside custom nodes
+          // (expand task links) to receive pointer events.
+          onNodeClick={() => undefined}
           fitView
           fitViewOptions={{ padding: 0.2, maxZoom: 1.15 }}
           minZoom={0.25}
@@ -112,7 +115,7 @@ function buildFlow(items: KnowledgeTreeNode[]): { nodes: CurriculumFlowNode[]; e
       type: "smoothstep",
       animated: item.available,
       style: {
-        stroke: item.progress === 100 ? "var(--palette-green)" : item.planned ? "var(--palette-orange)" : "var(--border-muted)",
+        stroke: item.progress === 100 ? "var(--palette-blue)" : item.planned ? "var(--palette-orange)" : "var(--border-muted)",
         strokeWidth: item.planned ? 2 : 1,
       },
     }));
@@ -129,18 +132,18 @@ function CurriculumNodeCard({ data }: NodeProps<CurriculumFlowNode>) {
         !data.planned && "border-border/25 bg-white/65 text-brand-light",
         data.planned && !data.available && !complete && "border-palette-yellow/60 bg-palette-yellow-light text-brand-dark",
         data.available && !complete && "border-palette-orange bg-white text-brand-dark shadow-[0_6px_20px_color-mix(in_oklch,var(--palette-orange)_25%,transparent)]",
-        complete && "border-palette-green bg-palette-green-lighter text-brand-dark",
+        complete && "border-palette-blue-light bg-palette-blue-mist text-brand-dark",
       )}
     >
       <Handle type="target" position={Position.Left} className="opacity-0" />
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="nodrag flex w-full items-start gap-2 text-left"
+        className="nodrag nopan flex w-full items-start gap-2 text-left"
         aria-expanded={expanded}
       >
         <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-white/80">
-          {complete ? <Check className="size-4 text-palette-green" /> : data.available ? <Play className="size-4 text-palette-orange" /> : <Lock className="size-3.5" />}
+          {complete ? <Check className="size-4 text-palette-blue" /> : data.available ? <Play className="size-4 text-palette-orange" /> : <Lock className="size-3.5" />}
         </span>
         <div className="min-w-0 flex-1">
           <p className="font-bold leading-snug">{data.title}</p>
@@ -153,7 +156,7 @@ function CurriculumNodeCard({ data }: NodeProps<CurriculumFlowNode>) {
       </button>
       {data.planned && (
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/70">
-          <div className="h-full rounded-full bg-gradient-to-r from-palette-orange to-palette-green" style={{ width: `${data.progress}%` }} />
+          <div className="h-full rounded-full bg-gradient-to-r from-palette-blue-lighter to-palette-blue-light" style={{ width: `${data.progress}%` }} />
         </div>
       )}
       {expanded && data.tasks.length > 0 && (
