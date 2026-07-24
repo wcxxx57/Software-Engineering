@@ -1,6 +1,6 @@
 # Education2D
 
-Education2D 使用 LLM、结构化可视化协议和版本存储生成可播放、可缩放、可通过自然语言继续编辑的 2D 教学内容。根目录 `compose.yaml` 已将其接入 RabbitMQ 和主后端；比赛评审应按 [`../../USER_MANUAL.md`](../../USER_MANUAL.md) 从仓库根目录启动。
+Education2D 使用 LLM、结构化可视化协议和版本存储生成可播放、可缩放、可通过自然语言继续编辑的 2D 教学内容。根目录 `compose.yaml` 已将其接入 RabbitMQ 和主后端；可按 [`../../项目运行指南.md`](../../项目运行指南.md) 从仓库根目录启动。
 
 主要目录：
 

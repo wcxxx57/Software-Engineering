@@ -1,6 +1,6 @@
 # Code2Video
 
-Code2Video 将题目描述和标准答案代码转换为 1080p 教学视频。根目录 `compose.yaml` 已将其接入 RabbitMQ、Redis、MinIO 和主后端；比赛评审应按 [`../../USER_MANUAL.md`](../../USER_MANUAL.md) 从仓库根目录启动，无需单独运行本目录的 Compose。
+Code2Video 将题目描述和标准答案代码转换为 1080p 教学视频。根目录 `compose.yaml` 已将其接入 RabbitMQ、Redis、MinIO 和主后端；可按 [`../../项目运行指南.md`](../../项目运行指南.md) 从仓库根目录启动，无需单独运行本目录的 Compose。
 
 主要模块：
 

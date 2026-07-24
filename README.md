@@ -35,7 +35,7 @@ Windows：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\init-env.ps1
-# 按 USER_MANUAL.md 填写 LLM API；TTS 可选，不填时生成无声视频
+# 按 项目运行指南.md 填写 LLM API；TTS 可选，不填时生成无声视频
 docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
@@ -43,7 +43,7 @@ Linux/macOS：
 
 ```bash
 bash scripts/init-env.sh
-# 按 USER_MANUAL.md 填写 LLM API；TTS 可选，不填时生成无声视频
+# 按 项目运行指南.md 填写 LLM API；TTS 可选，不填时生成无声视频
 docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
@@ -53,7 +53,7 @@ docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --bui
 
 ## 进一步说明
 
-- 完整本地运行：[`USER_MANUAL.md`](./USER_MANUAL.md)
+- 完整本地运行：[`项目运行指南.md`](./项目运行指南.md)
 - Knowledge2Video：[`services/knowledge2video/README.md`](./services/knowledge2video/README.md)
 - Code2Video：[`services/code2video/README.md`](./services/code2video/README.md)
 - Education2D：[`services/education2d/README.md`](./services/education2d/README.md)

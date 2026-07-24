@@ -1,6 +1,6 @@
 # Knowledge2Video
 
-Knowledge2Video 将知识点和学习画像转换为教学视频。根目录 `compose.yaml` 已将其接入 RabbitMQ、Redis、MinIO 和主后端；比赛评审应按 [`../../USER_MANUAL.md`](../../USER_MANUAL.md) 从仓库根目录启动。
+Knowledge2Video 将知识点和学习画像转换为教学视频。根目录 `compose.yaml` 已将其接入 RabbitMQ、Redis、MinIO 和主后端；可按 [`../../项目运行指南.md`](../../项目运行指南.md) 从仓库根目录启动。
 
 主要模块：
 
