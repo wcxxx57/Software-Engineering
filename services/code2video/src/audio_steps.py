@@ -24,6 +24,14 @@ from src.vivo_tts import synthesize_vivo_tts_audio
 DEFAULT_TTS_BASE_URL = "https://vip.dmxapi.com/v1"
 DEFAULT_TTS_MODEL = "tts-pro"
 DEFAULT_TTS_VOICE = "alloy"
+DEFAULT_SILENT_CHARS_PER_SECOND = 4.5
+DEFAULT_SILENT_MIN_SECONDS = 1.0
+DEFAULT_SILENT_MAX_SECONDS = 90.0
+SILENT_TTS_PROVIDERS = {"", "none", "silent", "off", "disabled"}
+
+
+def current_tts_provider() -> str:
+    return os.getenv("TTS_PROVIDER", "none").strip().lower()
 
 
 def extract_response_text(response) -> str:
@@ -183,6 +191,42 @@ def get_tts_endpoint_config() -> tuple[str, str, str, str]:
     return api_key, base_url.rstrip("/"), model, voice
 
 
+def synthesize_silent_tts_audio(text: str, output_path: Path) -> Path:
+    """Create a physical silent WAV so the existing timing/render pipeline still works."""
+    chars_per_second = float(
+        os.getenv("TTS_SILENT_CHARS_PER_SECOND", str(DEFAULT_SILENT_CHARS_PER_SECOND))
+    )
+    min_seconds = float(os.getenv("TTS_SILENT_MIN_SECONDS", str(DEFAULT_SILENT_MIN_SECONDS)))
+    max_seconds = float(os.getenv("TTS_SILENT_MAX_SECONDS", str(DEFAULT_SILENT_MAX_SECONDS)))
+    if chars_per_second <= 0 or min_seconds <= 0 or max_seconds < min_seconds:
+        raise ValueError("Invalid silent TTS duration configuration")
+
+    visible_chars = max(1, len(re.sub(r"\s+", "", text)))
+    punctuation_count = sum(text.count(mark) for mark in "，。！？；：,.!?;:")
+    duration_seconds = visible_chars / chars_per_second + punctuation_count * 0.12
+    duration_seconds = min(max(duration_seconds, min_seconds), max_seconds)
+
+    output_path = Path(output_path).resolve().with_suffix(".wav")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    sample_rate = 48_000
+    channels = 2
+    sample_width = 2
+    remaining_frames = max(1, round(duration_seconds * sample_rate))
+    silent_frame = b"\x00" * sample_width * channels
+    chunk_frames = sample_rate
+
+    with wave.open(str(output_path), "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(sample_rate)
+        while remaining_frames > 0:
+            frames = min(remaining_frames, chunk_frames)
+            wav_file.writeframesraw(silent_frame * frames)
+            remaining_frames -= frames
+
+    return output_path
+
+
 def synthesize_tts_audio(
     text: str,
     output_path: Path,
@@ -191,7 +235,9 @@ def synthesize_tts_audio(
 ) -> Path:
     output_path = Path(output_path).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    provider = os.getenv("TTS_PROVIDER", "openai").strip().lower()
+    provider = current_tts_provider()
+    if provider in SILENT_TTS_PROVIDERS:
+        return synthesize_silent_tts_audio(text=text, output_path=output_path)
     if provider in {"vivo", "bluelm", "vivo_bluelm"}:
         return retry_with_backoff(
             operation_name=f"vivo TTS synthesis for {output_path.name}",
@@ -290,10 +336,14 @@ def measure_audio_duration(audio_path: Path) -> float:
 
 
 def validate_tts_audio_clip(audio_path: Path, maximum_silence_seconds: float = 3.5) -> float:
-    """返回可听且不存在异常内部静音的落盘音频物理时长。"""
+    """Return the physical duration and validate audible providers for abnormal silence."""
     audio_path = Path(audio_path).resolve()
     audio = AudioSegment.from_file(audio_path)
-    if len(audio) < 250 or audio.rms == 0:
+    if len(audio) < 250:
+        raise ValueError(f"TTS clip is too short: {audio_path}")
+    if current_tts_provider() in SILENT_TTS_PROVIDERS:
+        return len(audio) / 1000.0
+    if audio.rms == 0:
         raise ValueError(f"invalid or silent TTS clip: {audio_path}")
     silence_threshold = max(-50.0, audio.dBFS - 22.0)
     if detect_silence(
@@ -313,7 +363,11 @@ def normalize_audio_for_manim(source_path: Path, target_path: Path) -> Path:
     if len(audio) < 250:
         raise RuntimeError(f"TTS audio is too short to be valid: {source_path} ({len(audio)} ms)")
     if audio.rms == 0:
-        raise RuntimeError(f"TTS audio is silent: {source_path}")
+        if current_tts_provider() not in SILENT_TTS_PROVIDERS:
+            raise RuntimeError(f"TTS audio is silent: {source_path}")
+        normalized = audio.set_frame_rate(48000).set_channels(2).set_sample_width(2)
+        normalized.export(target_path, format="wav")
+        return target_path
 
     normalized = audio.set_frame_rate(48000).set_channels(2).set_sample_width(2)
     silence_threshold = max(-50.0, normalized.dBFS - 22.0)

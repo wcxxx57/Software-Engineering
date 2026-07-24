@@ -133,15 +133,6 @@ dependencies = [
     "boto3>=1.35.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.0.0",
-    "isort>=5.12.0",
-    "mypy>=1.0.0",
-]
-
 [project.scripts]
 code2video-api = "src.api.main:main"
 
@@ -152,28 +143,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src", "prompts"]
 
-[dependency-groups]
-dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-]
-
 [tool.uv]
 # UV 配置
 
 [[tool.uv.index]]
 url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/"
 default = true
-
-[tool.black]
-line-length = 120
-target-version = ['py310', 'py311', 'py312']
-
-[tool.isort]
-profile = "black"
-line_length = 120
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true

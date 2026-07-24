@@ -1,185 +1,59 @@
-# 智映通学核心学习链路
+# 智映通学
 
-本仓库是智映通学的单仓库部署版本，当前维护核心学习链路与独立的多模态生成工具：
+智映通学是一套面向计算机学习场景的个性化多模态学习系统。系统根据课前测结果和用户画像生成学习计划，并在任务过程中提供深度解析、知识导图、2D 交互内容、知识视频、代码题讲解视频和课后小测。
+
+运行手册请阅读 [`项目运行指南.md`](./项目运行指南.md)。手册包含本地配置初始化、API 填写、一键 Docker 启动、完整体验流程和排错步骤。
+
+## 核心流程
 
 ```text
-课前测试
-→ 个性化学习计划
-→ 每个任务的深度解析与知识导图
-→ 每个任务的 2D 可视化操作
-→ 每个任务的知识视频
-→ 每个任务的课后小测
+注册 / 登录
+  → 创建学习主题
+  → 课前测试
+  → 个性化学习计划
+  → 深度解析 / 知识导图 / 2D 交互 / 知识视频
+  → 课后小测
+  → 学习进度、错题与资源管理
 ```
 
-课前测、计划、深度解析和课后测由 `core-generation` 生成；2D 可视化由 `education2d` 的 LangGraph Agent 生成；知识视频由 `knowledge2video` 的 FastAPI、Celery、Manim、FFmpeg 与 TTS 管线生成。仓库不包含离线生成替代服务。
+## 技术组成
 
-独立工具中的代码题讲解视频由 `code2video` 生成。它接收题目描述和用户提供的标准答案代码，保留原生 SSE/API，并通过 RabbitMQ bridge、MinIO 和后端内部回调接入现有 `/code-videos` 资源链路。
-
-目标远端仓库：[`wcxxx57/Software-Engineering`](https://github.com/wcxxx57/Software-Engineering)
-
-## 1. 目录
-
-| 目录 | 作用 | 技术栈 |
+| 目录 | 作用 | 主要技术 |
 |---|---|---|
-| `frontend/` | 注册登录、课前测试、学习计划、任务深度解析、知识导图、课后小测 | Next.js 16、React 19、TypeScript |
-| `backend/` | REST API、JWT、学习状态机、数据库、RabbitMQ 发布与内部回调 | Rust、Axum、SeaORM |
-| `services/core-generation/` | 四个真实 LLM 消费者 | Python 3.13、aio-pika、httpx、Pydantic |
-| `services/education2d/` | 2D 可视化生成、播放、缩放、版本历史和自然语言编辑 | React、Vite、Express、LangGraph |
-| `services/knowledge2video/` | 知识视频规划、分镜、旁白、Manim 渲染、合并与 API | Python、FastAPI、Celery、Redis、Manim、FFmpeg |
-| `services/code2video/` | 编程题目与标准答案代码讲解、分镜、旁白、Manim 渲染、合并与 API | Python、FastAPI、Celery、Redis、Manim、FFmpeg |
-| `infra/` | 可选的本地中间件编排 | PostgreSQL、RabbitMQ、MinIO |
-| `scripts/` | 服务器发布脚本 | Bash、Docker Compose |
+| `frontend/` | Web 界面与后端代理 | Next.js 16、React 19、TypeScript |
+| `backend/` | REST API、认证、学习状态与资源管理 | Rust、Axum、SeaORM |
+| `services/core-generation/` | 课前测、计划、解析与小测生成 | Python、RabbitMQ、OpenAI-compatible API |
+| `services/education2d/` | 可交互 2D 教学内容生成 | React、Express、LangGraph |
+| `services/knowledge2video/` | 知识视频生成 | FastAPI、Celery、Manim、FFmpeg、TTS |
+| `services/code2video/` | 代码题讲解视频生成 | FastAPI、Celery、Manim、FFmpeg、TTS |
 
-生成服务的目录与部署边界见 [`services/README.md`](./services/README.md)。部署与验收步骤见 [`docs/CORE_FLOW_DEPLOYMENT.md`](./docs/CORE_FLOW_DEPLOYMENT.md)，生产架构和排障见 [`docs/DEPLOYMENT_AND_ARCHITECTURE.md`](./docs/DEPLOYMENT_AND_ARCHITECTURE.md)，后续增加其他真实生成服务的边界见 [`docs/MICROSERVICE_EXTENSION.md`](./docs/MICROSERVICE_EXTENSION.md)。
+运行时还会启动 PostgreSQL、RabbitMQ、Redis 和 MinIO。服务之间通过 RabbitMQ 分发异步生成任务，通过后端内部 HTTP 接口回调状态与结果；视频和交互资源保存在 MinIO。
 
-多模态本地联调步骤见 [`docs/MULTIMODAL_LOCAL_VALIDATION.md`](./docs/MULTIMODAL_LOCAL_VALIDATION.md)；Code2Video 本次迭代接入说明见 [`docs/CODE2VIDEO_INTEGRATION.md`](./docs/CODE2VIDEO_INTEGRATION.md)；知识视频服务的内部结构见 [`services/knowledge2video/README.md`](./services/knowledge2video/README.md)，代码题讲解视频的原生 API 与部署说明见 [`services/code2video/README.md`](./services/code2video/README.md)。
+## 快速启动
 
-## 2. 架构
-
-```mermaid
-flowchart LR
-    U["浏览器"] -->|"HTTPS"| NPM["Nginx Proxy Manager"]
-    NPM --> FE["Next.js frontend"]
-    FE -->|"REST"| BE["Rust backend"]
-    BE --> PG[("PostgreSQL")]
-    BE -->|"发布生成任务"| MQ[("RabbitMQ")]
-    MQ --> CORE["core-generation（4 个文本消费者）"]
-    MQ --> EDU["education2d"]
-    MQ --> K2V["knowledge2video bridge"]
-    MQ --> C2V["code2video bridge"]
-    CORE --> LLM["OpenAI-compatible LLM API"]
-    EDU --> LLM
-    K2V --> CELERY["Celery 视频 Worker"]
-    C2V --> C2VCELERY["独立 Celery 代码视频 Worker"]
-    CELERY --> TTS["LLM + TTS + Manim/FFmpeg"]
-    C2VCELERY --> TTS
-    K2V --> MINIO[("MinIO")]
-    C2V --> MINIO
-    CORE -->|"内部状态与结果回调"| BE
-    EDU -->|"可视化 ID 回调"| BE
-    K2V -->|"视频对象 Key 回调"| BE
-    C2V -->|"代码视频对象 Key 回调"| BE
-```
-
-正常学习链路不会由浏览器直接调用 Knowledge2Video API。后端把任务发布到 RabbitMQ，`knowledge-video-bridge` 使用稳定的 Celery task ID 提交长任务，Worker 完成渲染后由 bridge 上传 MinIO 并回调后端。`knowledge-video-api` 仅用于保留原生 SSE/API 能力和独立调试。
-
-Code2Video 使用同样的桥接模式，但消费独立的 `zhiying.code_video.generate` 队列，并把渲染任务发送到 `code_video_generation` Celery 队列。独立队列、Redis DB 和输出卷可防止它与 Knowledge2Video 的同名 Celery 任务发生串消费。`code-video-api` 保留原生 `/api/v1/generate-video` SSE 能力。
-
-`core-generation` 在一个容器中运行四个独立 RabbitMQ 消费者：
-
-| 消费者 | Exchange | Queue |
-|---|---|---|
-| `pretest` | `zhiying.pretest` | `zhiying.pretest.generate` |
-| `plan` | `zhiying.plan` | `zhiying.plan.generate` |
-| `knowledge_explanation` | `zhiying.knowledge_explanation` | `zhiying.knowledge_explanation.generate` |
-| `quiz` | `zhiying.quiz` | `zhiying.quiz.generate` |
-
-## 3. 本地 Docker 启动
-
-要求：
-
-- Docker Desktop 或 Docker Engine；
-- Docker Compose v2；
-- 可访问的 OpenAI-compatible Chat Completions API。
-- 生成真实知识视频时可用的 vivo TTS `APP_ID` 与 `APP_KEY`。
-- 生成真实代码题讲解视频时同样需要可用的 LLM 与 TTS 配置。
-
-复制配置：
+Windows：
 
 ```powershell
-Copy-Item .env.example .env
-```
-
-填写 `.env` 中的数据库密码、RabbitMQ 密码、JWT、各生成服务的回调/服务 Key、对象存储配置，以及：
-
-```dotenv
-LLM_BASE_URL=https://provider.example/v1
-LLM_API_KEY=...
-LLM_MODEL=...
-
-VIVO_TTS_APP_ID=...
-VIVO_TTS_APP_KEY=...
-```
-
-启动唯一的真实版本：
-
-```powershell
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml config --quiet
+powershell -ExecutionPolicy Bypass -File .\scripts\init-env.ps1
+# 按 USER_MANUAL.md 填写 LLM API；TTS 可选，不填时生成无声视频
 docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --build
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml ps
 ```
 
-本地入口：
-
-| 服务 | 地址 |
-|---|---|
-| 前端 | `http://127.0.0.1:3080` |
-| 后端健康检查 | `http://127.0.0.1:9000/health` |
-| RabbitMQ 管理台 | `http://127.0.0.1:15672` |
-| NPM 管理台 | `http://127.0.0.1:81` |
-| Knowledge2Video API | `http://127.0.0.1:8080/docs` |
-| Code2Video API | `http://127.0.0.1:8081/docs` |
-| MinIO API / 管理台 | `http://127.0.0.1:9100` / `http://127.0.0.1:9101` |
-
-查看核心日志：
-
-```powershell
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml logs -f --tail 200 backend core-generation education2d knowledge-video-bridge knowledge-video-worker code-video-bridge code-video-worker frontend
-```
-
-停止但保留数据库和证书：
-
-```powershell
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml down
-```
-
-禁止使用 `down -v`，否则可能删除 PostgreSQL、RabbitMQ、NPM 配置和 HTTPS 证书卷。
-
-## 4. 生产镜像和部署
-
-合并到 `main` 后，[`.github/workflows/publish-images.yml`](./.github/workflows/publish-images.yml) 发布：
-
-```text
-ghcr.io/wcxxx57/software-engineering-backend
-ghcr.io/wcxxx57/software-engineering-frontend
-ghcr.io/wcxxx57/software-engineering-core-generation
-ghcr.io/wcxxx57/software-engineering-education2d
-ghcr.io/wcxxx57/software-engineering-knowledge2video
-ghcr.io/wcxxx57/software-engineering-code2video
-```
-
-服务器部署目录默认为 `/opt/zhiying`：
+Linux/macOS：
 
 ```bash
-cd /opt/zhiying
-git pull --ff-only
-chmod 750 scripts/deploy.sh
-./scripts/deploy.sh sha-<commit>
+bash scripts/init-env.sh
+# 按 USER_MANUAL.md 填写 LLM API；TTS 可选，不填时生成无声视频
+docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --build
 ```
 
-若使用 `latest`：
+主页面：<http://127.0.0.1:3080>
 
-```bash
-./scripts/deploy.sh latest
-```
+源码和 `.env.example` 不包含任何可用 Token。初始化脚本只随机生成数据库、JWT、内部回调与对象存储密钥；第三方 API 必须由使用者写入被 Git 忽略的 `.env`。TTS 默认关闭，知识视频和代码讲解视频会使用静音轨继续生成；需要旁白时可选择 OpenAI-compatible、DMX 或 vivo TTS。
 
-生产脚本会校验 Compose、拉取全部业务镜像并执行 `up -d --remove-orphans`，不会删除数据卷。
+## 进一步说明
 
-## 5. 提交前校验
-
-```powershell
-# Compose
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml config --quiet
-
-# 真实生成服务
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml build core-generation
-
-# 后端与前端生产镜像
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml build backend frontend
-
-# 运行状态
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d
-docker compose --env-file .env -f compose.yaml -f compose.local.yaml ps
-```
-
-生产 `.env`、API Key、Token 和服务器凭据不得提交 Git。
+- 完整本地运行：[`USER_MANUAL.md`](./USER_MANUAL.md)
+- Knowledge2Video：[`services/knowledge2video/README.md`](./services/knowledge2video/README.md)
+- Code2Video：[`services/code2video/README.md`](./services/code2video/README.md)
+- Education2D：[`services/education2d/README.md`](./services/education2d/README.md)

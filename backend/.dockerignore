@@ -7,9 +7,6 @@ target
 docs
 tests
 README.md
-PROGRESS.md
-AGENTS.md
-CLAUDE.md
 justfile
 skills-lock.json
 Dockerfile

@@ -27,7 +27,6 @@ pub enum BusinessError {
     InsufficientDiamonds,
     ServiceUnavailable,
     FeatureDisabled,
-    FeatureNotImplemented,
     StudySubjectNotFound,
     InvalidStudySubjectStatus,
     InvalidStudyTaskStatus,
@@ -58,7 +57,6 @@ impl BusinessError {
             Self::InsufficientDiamonds => "INSUFFICIENT_DIAMONDS",
             Self::ServiceUnavailable => "SERVICE_UNAVAILABLE",
             Self::FeatureDisabled => "FEATURE_DISABLED",
-            Self::FeatureNotImplemented => "FEATURE_NOT_IMPLEMENTED",
             Self::StudySubjectNotFound => "STUDY_SUBJECT_NOT_FOUND",
             Self::InvalidStudySubjectStatus => "INVALID_STUDY_SUBJECT_STATUS",
             Self::InvalidStudyTaskStatus => "INVALID_STUDY_TASK_STATUS",
@@ -89,7 +87,6 @@ impl BusinessError {
             Self::InsufficientDiamonds => "钻石不足",
             Self::ServiceUnavailable => "生成服务暂时不可用，请稍后再试",
             Self::FeatureDisabled => "当前测试版本暂未开放该功能",
-            Self::FeatureNotImplemented => "该功能暂未实现",
             Self::StudySubjectNotFound => "学习主题不存在",
             Self::InvalidStudySubjectStatus => "当前学习主题状态不允许此操作",
             Self::InvalidStudyTaskStatus => "当前学习任务状态不允许此操作",
@@ -119,7 +116,6 @@ impl BusinessError {
             | Self::QuizNotFound
             | Self::StudyQuizProblemNotFound => StatusCode::NOT_FOUND,
             Self::UsernameAlreadyExists => StatusCode::CONFLICT,
-            Self::FeatureNotImplemented => StatusCode::NOT_IMPLEMENTED,
             Self::ServiceUnavailable | Self::FeatureDisabled => StatusCode::SERVICE_UNAVAILABLE,
             Self::AlreadyCheckedInToday
             | Self::InsufficientGold

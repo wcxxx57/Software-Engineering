@@ -1,9 +1,0 @@
-{
-  "knowledge_point": "优先队列与二叉堆",
-  "language": "Python",
-  "difficulty": "medium",
-  "extra_info": "我是经济管理专业学生，正在自学 Python，希望用它做数据分析和业务自动化，但没有系统的计算机专业基础。请结合电商订单优先级、客户请求排队和任务调度等商科场景，帮助我理解优先队列与二叉堆。",
-  "use_feedback": true,
-  "use_assets": true,
-  "api_model": "gpt-5"
-}

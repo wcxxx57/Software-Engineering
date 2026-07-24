@@ -1,5 +1,5 @@
 {
-    "api_key": "真实的全局api_key",
+    "api_key": "",
     "gemini": {
         "base_url": "https://vip.dmxapi.com/v1",
         "api_version": "", 
@@ -26,6 +26,6 @@
         "model": "gpt-4o"
     },
     "iconfinder": {
-        "api_key": "YOUR_ICONFINDER_KEY"
+        "api_key": ""
     }
 }

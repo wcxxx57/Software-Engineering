@@ -6,9 +6,6 @@ node_modules
 .env.*
 !.env.example
 README.md
-AGENTS.md
-CLAUDE.md
-PROGRESS.md
 Dockerfile
 .dockerignore
 npm-debug.log

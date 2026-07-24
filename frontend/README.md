@@ -59,8 +59,3 @@ src/
 │   ├── api/                # API 客户端、Schema、错误处理
 │   └── auth/               # 会话管理
 ```
-
-## 协作文档
-
-- `AGENTS.md`：项目长期约定与开发规范
-- `PROGRESS.md`：当前开发进度与待办

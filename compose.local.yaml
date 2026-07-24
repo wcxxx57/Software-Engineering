@@ -1,7 +1,12 @@
 services:
+  npm:
+    profiles: ["production-proxy"]
+
   backend:
     ports:
       - "127.0.0.1:9000:9000"
+    environment:
+      CORS_ALLOW_ORIGIN: http://127.0.0.1:3080
 
   frontend:
     ports:

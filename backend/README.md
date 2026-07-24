@@ -142,8 +142,6 @@ src/
 
 ## 文档
 
-- [AGENTS.md](AGENTS.md)：协作约定与长期规则
-- [PROGRESS.md](PROGRESS.md)：当前实现进度与后续计划
 
 ## 课程大纲审核
 

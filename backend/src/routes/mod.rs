@@ -5,7 +5,6 @@ mod internal;
 mod knowledge_explanations;
 mod knowledge_videos;
 mod me;
-mod placeholders;
 mod public_config;
 mod quiz_problems;
 mod study_quizzes;
@@ -170,7 +169,6 @@ fn api_router() -> Router<AppState> {
             "/quiz-problems/{id}/mistake-visibility",
             axum::routing::patch(quiz_problems::toggle_mistake_visibility),
         )
-        .merge(placeholders::router())
 }
 
 #[derive(Serialize)]

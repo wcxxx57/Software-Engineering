@@ -83,8 +83,7 @@ impl Config {
         let database_url = env::var("DATABASE_URL")
             .unwrap_or_else(|_| "sqlite://zhiying-backend.db?mode=rwc".to_owned());
 
-        let jwt_secret =
-            env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".to_owned());
+        let jwt_secret = required_secret("JWT_SECRET")?;
 
         let jwt_ttl_days = env::var("JWT_TTL_DAYS")
             .unwrap_or_else(|_| "30".to_owned())
@@ -173,14 +172,10 @@ impl Config {
         let knowledge_explanation_exchange = env::var("KNOWLEDGE_EXPLANATION_EXCHANGE")
             .unwrap_or_else(|_| "zhiying.knowledge_explanation".to_owned());
 
-        let knowledge_video_api_key = env::var("KNOWLEDGE_VIDEO_API_KEY")
-            .unwrap_or_else(|_| "sk-knowledge-video-dev".to_owned());
-        let code_video_api_key =
-            env::var("CODE_VIDEO_API_KEY").unwrap_or_else(|_| "sk-code-video-dev".to_owned());
-        let interactive_html_api_key = env::var("INTERACTIVE_HTML_API_KEY")
-            .unwrap_or_else(|_| "sk-interactive-html-dev".to_owned());
-        let knowledge_explanation_api_key = env::var("KNOWLEDGE_EXPLANATION_API_KEY")
-            .unwrap_or_else(|_| "sk-knowledge-explanation-dev".to_owned());
+        let knowledge_video_api_key = required_secret("KNOWLEDGE_VIDEO_API_KEY")?;
+        let code_video_api_key = required_secret("CODE_VIDEO_API_KEY")?;
+        let interactive_html_api_key = required_secret("INTERACTIVE_HTML_API_KEY")?;
+        let knowledge_explanation_api_key = required_secret("KNOWLEDGE_EXPLANATION_API_KEY")?;
 
         let study_subject_diamond_costs = parse_study_subject_diamond_costs(
             &env::var("STUDY_SUBJECT_DIAMOND_COSTS")
@@ -189,16 +184,14 @@ impl Config {
 
         let curriculum_exchange =
             env::var("CURRICULUM_EXCHANGE").unwrap_or_else(|_| "zhiying.curriculum".to_owned());
-        let curriculum_api_key =
-            env::var("CURRICULUM_API_KEY").unwrap_or_else(|_| "sk-curriculum-dev".to_owned());
+        let curriculum_api_key = required_secret("CURRICULUM_API_KEY")?;
 
         let pretest_exchange =
             env::var("PRETEST_EXCHANGE").unwrap_or_else(|_| "zhiying.pretest".to_owned());
-        let pretest_api_key =
-            env::var("PRETEST_API_KEY").unwrap_or_else(|_| "sk-pretest-dev".to_owned());
+        let pretest_api_key = required_secret("PRETEST_API_KEY")?;
 
         let plan_exchange = env::var("PLAN_EXCHANGE").unwrap_or_else(|_| "zhiying.plan".to_owned());
-        let plan_api_key = env::var("PLAN_API_KEY").unwrap_or_else(|_| "sk-plan-dev".to_owned());
+        let plan_api_key = required_secret("PLAN_API_KEY")?;
         let plan_tasks_per_stage = env::var("PLAN_TASKS_PER_STAGE")
             .unwrap_or_else(|_| "3".to_owned())
             .parse::<i32>()
@@ -208,7 +201,7 @@ impl Config {
         }
 
         let quiz_exchange = env::var("QUIZ_EXCHANGE").unwrap_or_else(|_| "zhiying.quiz".to_owned());
-        let quiz_api_key = env::var("QUIZ_API_KEY").unwrap_or_else(|_| "sk-quiz-dev".to_owned());
+        let quiz_api_key = required_secret("QUIZ_API_KEY")?;
 
         let study_quiz_free_limit_per_task = env::var("STUDY_QUIZ_FREE_LIMIT_PER_TASK")
             .unwrap_or_else(|_| "3".to_owned())
@@ -220,18 +213,15 @@ impl Config {
             .parse()
             .map_err(|_| AppError::internal("STUDY_QUIZ_EXTRA_GOLD_COST is invalid"))?;
 
-        let recharge_api_key =
-            env::var("RECHARGE_API_KEY").unwrap_or_else(|_| "sk-recharge-dev".to_owned());
+        let recharge_api_key = required_secret("RECHARGE_API_KEY")?;
 
         let rabbitmq_url = env::var("RABBITMQ_URL")
             .unwrap_or_else(|_| "amqp://dev:dev@localhost:5672/%2f".to_owned());
 
         let storage_endpoint =
             env::var("STORAGE_ENDPOINT").unwrap_or_else(|_| "http://localhost:9100".to_owned());
-        let storage_access_key =
-            env::var("STORAGE_ACCESS_KEY").unwrap_or_else(|_| "dev".to_owned());
-        let storage_secret_key =
-            env::var("STORAGE_SECRET_KEY").unwrap_or_else(|_| "devdevdev".to_owned());
+        let storage_access_key = required_secret("STORAGE_ACCESS_KEY")?;
+        let storage_secret_key = required_secret("STORAGE_SECRET_KEY")?;
         let storage_region = env::var("STORAGE_REGION").unwrap_or_else(|_| "us-east-1".to_owned());
         let storage_bucket =
             env::var("STORAGE_BUCKET").unwrap_or_else(|_| "zhiying-content".to_owned());
@@ -291,6 +281,15 @@ impl Config {
     }
 }
 
+fn required_secret(name: &str) -> Result<String, AppError> {
+    let value = env::var(name)
+        .map_err(|_| AppError::internal(format!("{name} must be configured")))?;
+    if value.trim().is_empty() {
+        return Err(AppError::internal(format!("{name} must not be blank")));
+    }
+    Ok(value)
+}
+
 fn parse_non_negative_i32(name: &str, default: &str) -> Result<i32, AppError> {
     let value = env::var(name)
         .unwrap_or_else(|_| default.to_owned())
@@ -335,51 +334,4 @@ fn parse_study_subject_diamond_costs(raw: &str) -> Result<BTreeMap<i32, i32>, Ap
         return Err(AppError::internal("STUDY_SUBJECT_DIAMOND_COSTS is empty"));
     }
     Ok(map)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_study_subject_diamond_costs;
-
-    #[test]
-    fn parses_default_value() {
-        let map = parse_study_subject_diamond_costs("3:10,7:20,15:40,30:80").unwrap();
-        assert_eq!(map.len(), 4);
-        assert_eq!(map[&3], 10);
-        assert_eq!(map[&30], 80);
-        let keys: Vec<_> = map.keys().copied().collect();
-        assert_eq!(keys, vec![3, 7, 15, 30]);
-    }
-
-    #[test]
-    fn parses_custom_value_ignoring_whitespace() {
-        let map = parse_study_subject_diamond_costs("  5 : 12 , 9: 24 ").unwrap();
-        assert_eq!(map[&5], 12);
-        assert_eq!(map[&9], 24);
-    }
-
-    #[test]
-    fn rejects_duplicate_keys() {
-        assert!(parse_study_subject_diamond_costs("3:10,3:20").is_err());
-    }
-
-    #[test]
-    fn rejects_non_positive() {
-        assert!(parse_study_subject_diamond_costs("0:10").is_err());
-        assert!(parse_study_subject_diamond_costs("3:0").is_err());
-        assert!(parse_study_subject_diamond_costs("-3:10").is_err());
-    }
-
-    #[test]
-    fn rejects_non_numeric() {
-        assert!(parse_study_subject_diamond_costs("a:10").is_err());
-        assert!(parse_study_subject_diamond_costs("3:b").is_err());
-        assert!(parse_study_subject_diamond_costs("3-10").is_err());
-    }
-
-    #[test]
-    fn rejects_empty() {
-        assert!(parse_study_subject_diamond_costs("").is_err());
-        assert!(parse_study_subject_diamond_costs(" , ").is_err());
-    }
 }

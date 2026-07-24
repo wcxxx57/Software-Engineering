@@ -4,7 +4,6 @@
 """
 
 import os
-import json
 import pathlib
 from typing import List, Optional
 from dataclasses import dataclass, field
@@ -53,9 +52,8 @@ class Settings:
         if api_keys_env:
             self.api_keys = [k.strip() for k in api_keys_env.split(",") if k.strip()]
         
-        # 如果没有配置 API Keys，使用默认的开发密钥
         if not self.api_keys:
-            self.api_keys = ["dev-api-key-12345"]
+            raise ValueError("API_KEYS 必须配置且不能为空")
         
         # Redis
         self.redis_url = os.getenv("REDIS_URL", self.redis_url)

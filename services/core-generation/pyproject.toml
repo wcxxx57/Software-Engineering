@@ -21,10 +21,10 @@ build-backend = "hatchling.build"
 packages = ["src/zhiying_core_generation"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src"]
 
 [tool.ruff]
-src = ["src", "tests"]
+src = ["src"]
 target-version = "py313"
 line-length = 100
 

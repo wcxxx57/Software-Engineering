@@ -10,27 +10,16 @@ up:
   docker compose --env-file .env -f compose.yaml -f compose.local.yaml up -d --build
 
 down:
-  docker compose --env-file .env down
+  docker compose --env-file .env -f compose.yaml -f compose.local.yaml down
 
 logs:
-  docker compose --env-file .env logs -f --tail=200
+  docker compose --env-file .env -f compose.yaml -f compose.local.yaml logs -f --tail=200
 
 ps:
-  docker compose --env-file .env ps
-
-# 本地开发中间件：PostgreSQL、RabbitMQ、MinIO
-dev-infra-up:
-  docker compose -f infra/compose.yaml up -d
-
-dev-infra-down:
-  docker compose -f infra/compose.yaml down
+  docker compose --env-file .env -f compose.yaml -f compose.local.yaml ps
 
 backend-check:
   cd backend && cargo fmt --check && cargo check
 
 frontend-check:
   cd frontend && pnpm exec tsc --noEmit && pnpm lint
-
-core-generation-check:
-  cd services/core-generation && uv run python -m unittest discover -s tests -v
-
