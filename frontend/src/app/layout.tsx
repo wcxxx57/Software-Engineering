@@ -8,6 +8,15 @@ import { getPublicConfig } from "@/lib/api/public-config";
 import { getSession } from "@/lib/auth/session";
 import { configQueryKey, meQueryKey } from "@/lib/query/keys";
 import { QueryProvider } from "@/lib/query/provider";
+import type { PublicConfig } from "@/lib/api/schemas";
+
+const previewConfig: PublicConfig = {
+  study_subject: { pricing: [], completion_refund_percent: 50 },
+  storage: { public_base: "http://localhost", bucket: "preview" },
+  resource: { knowledge_video_diamond_cost: 5, code_video_diamond_cost: 5, interactive_html_diamond_cost: 5, study_quiz_free_limit_per_task: 3, study_quiz_extra_gold_cost: 20 },
+  checkin: { reward_sequence: [1], makeup_gold_cost_per_day: 50, makeup_diamond_cost: 1 },
+  experience: { checkin_reward: 5, study_task_reward: 10, study_quiz_reward: 15, study_subject_reward: 200 },
+};
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -33,7 +42,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [config, me] = await Promise.all([getPublicConfig(), getSession()]);
+  const previewMode = process.env.UI_PREVIEW === "true";
+  const [config, me] = previewMode
+    ? [previewConfig, null]
+    : await Promise.all([getPublicConfig(), getSession()]);
 
   const queryClient = new QueryClient();
   queryClient.setQueryData(configQueryKey, config);

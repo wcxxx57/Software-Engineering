@@ -11,6 +11,8 @@ import {
   ToolResultPlayer,
   type ToolFocusKind,
 } from "@/components/tools/tool-result-player";
+import { FeaturedResourceSection } from "@/components/tools/featured-resource-section";
+import type { FeaturedResource, RecommendationResourceKind } from "@/lib/api/schemas";
 import { meQueryKey } from "@/lib/query/keys";
 import { useMe } from "@/lib/query/me";
 import { getJson } from "@/lib/query/utils";
@@ -46,6 +48,9 @@ export interface ToolPageClientProps<T extends ToolResource> {
   cardThumbnailIcon?: ReactNode;
   emptyHint: string;
   primaryCtaLabel: string;
+  featuredKind?: RecommendationResourceKind;
+  featuredPreviewData?: FeaturedResource[];
+  previewOnly?: boolean;
 }
 
 export function ToolPageClient<T extends ToolResource>({
@@ -61,8 +66,11 @@ export function ToolPageClient<T extends ToolResource>({
   cardThumbnailIcon,
   emptyHint,
   primaryCtaLabel,
+  featuredKind,
+  featuredPreviewData,
+  previewOnly = false,
 }: ToolPageClientProps<T>) {
-  const me = useMe();
+  const me = useMe(!previewOnly);
   const balance = me ? (currency === "diamond" ? me.diamond : me.gold) : 0;
   const qc = useQueryClient();
 
@@ -84,6 +92,7 @@ export function ToolPageClient<T extends ToolResource>({
       return inflight ? 2000 : false;
     },
     staleTime: 0,
+    enabled: !previewOnly,
   });
 
   const focusId =
@@ -127,6 +136,16 @@ export function ToolPageClient<T extends ToolResource>({
 
   return (
     <>
+      {featuredKind ? (
+        <FeaturedResourceSection
+          kind={featuredKind}
+          previewData={featuredPreviewData}
+          onOpen={(id) => {
+            setSelectedFocusId(id);
+            scrollToPlayer();
+          }}
+        />
+      ) : null}
       <ToolConsole
         title={consoleTitle}
         mode={consoleMode}

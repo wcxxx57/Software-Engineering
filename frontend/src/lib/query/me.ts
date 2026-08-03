@@ -8,13 +8,14 @@ import { getJson } from "./utils";
 
 export { meQueryKey };
 
-export function useMe(): User | null {
+export function useMe(enabled = true): User | null {
   const { data } = useQuery({
     queryKey: meQueryKey,
     queryFn: async () => userSchema.parse(await getJson("/api/me")),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
+    enabled,
   });
   return data ?? null;
 }

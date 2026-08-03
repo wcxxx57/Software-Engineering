@@ -44,6 +44,7 @@ export default async function K2VPage() {
         detailKind="knowledge-video"
         emptyHint="还没有创建过任何 K2V 视频。给 AI 一个知识点，让它给你拍一支讲解短片。"
         primaryCtaLabel="在线生成"
+        featuredKind="knowledge-video"
       />
     </ToolPageShell>
   );

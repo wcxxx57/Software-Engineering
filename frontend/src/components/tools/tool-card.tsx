@@ -17,6 +17,8 @@ export interface ToolCardProps {
   onClick: () => void;
   onDelete: () => void;
   deleting?: boolean;
+  showDelete?: boolean;
+  showStatus?: boolean;
 }
 
 const COVER_GRADIENTS = [
@@ -50,6 +52,8 @@ export function ToolCard({
   onClick,
   onDelete,
   deleting = false,
+  showDelete = true,
+  showStatus = true,
 }: ToolCardProps) {
   const gradient = COVER_GRADIENTS[colorIndex % COVER_GRADIENTS.length];
   return (
@@ -75,21 +79,21 @@ export function ToolCard({
         <div className="relative text-brand-gold [&>svg]:size-12">
           {thumbnailIcon ?? <PlayCircle strokeWidth={1.75} />}
         </div>
-        <span
+        {showStatus ? <span
           className={cn(
             "absolute right-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-bold backdrop-blur",
             STATUS_BG[status],
           )}
         >
           {STATUS_LABEL[status]}
-        </span>
+        </span> : null}
       </div>
 
       <h4 className="truncate px-1 text-base font-semibold text-brand-medium">
         {title}
       </h4>
 
-      <Button
+      {showDelete ? <Button
         variant="ghost"
         size="sm"
         className="absolute right-2 bottom-2 size-8 rounded-full p-0 opacity-0 transition group-hover:opacity-100 hover:bg-destructive/10"
@@ -105,7 +109,7 @@ export function ToolCard({
         ) : (
           <Trash2 className="size-4 text-destructive" />
         )}
-      </Button>
+      </Button> : null}
     </div>
   );
 }

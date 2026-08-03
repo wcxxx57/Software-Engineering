@@ -8,6 +8,7 @@ import { DashboardMobileAccount } from "@/components/dashboard/dashboard-mobile-
 import { DashboardSearch } from "@/components/dashboard/dashboard-search";
 import { FeatureGrid } from "@/components/dashboard/feature-grid";
 import { PlanToolbar } from "@/components/dashboard/plan-toolbar";
+import { PlanRecommendationCard } from "@/components/dashboard/plan-recommendation-card";
 import { pickActiveSubject } from "@/lib/api/active-subject";
 import { serverFetch } from "@/lib/api/client";
 import { getPublicConfig } from "@/lib/api/public-config";
@@ -74,6 +75,9 @@ export default async function DashboardPage() {
                   pricing={pricing}
                   currentDiamond={user.diamond}
                 />
+                {active.status === "PRETEST_READY" ? (
+                  <PlanRecommendationCard subjectId={active.id} />
+                ) : null}
                 <ActiveSubjectArea subject={active} />
               </>
             )}

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ExplanationGenerateCard } from "@/components/learn/explanation-generate-card";
 import { ExplanationViewer } from "@/components/learn/explanation-viewer";
 import { MarkmapCard } from "@/components/learn/markmap-card";
+import { KnowledgePointRecommendations } from "@/components/learn/knowledge-point-recommendations";
 import { QuizSection } from "@/components/learn/quiz-section";
 import { TaskCompleteCard } from "@/components/learn/task-complete-card";
 import { TaskNavigation } from "@/components/learn/task-navigation";
@@ -78,6 +79,9 @@ export default async function TaskPage({
     taskIndex >= 0 && taskIndex < orderedTasks.length - 1
       ? orderedTasks[taskIndex + 1]
       : null;
+  const subjectCompleted =
+    orderedTasks.length > 0 &&
+    orderedTasks.every((item) => item.status === "FINISHED");
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-canvas">
@@ -125,7 +129,7 @@ export default async function TaskPage({
           </div>
         )}
 
-        {!coreFlowOnly ? <ExtendedLearningResources task={task} /> : null}
+        {!coreFlowOnly ? <KnowledgePointRecommendations task={task} /> : null}
 
         <div id="quiz" className="scroll-mt-24">
           <QuizSection
@@ -141,6 +145,8 @@ export default async function TaskPage({
             taskId={task.id}
             taskStatus={task.status}
             nextTaskId={nextTask?.id ?? null}
+            subjectId={stage?.study_subject_id ?? null}
+            subjectCompleted={subjectCompleted}
           />
         </div>
 
@@ -149,48 +155,5 @@ export default async function TaskPage({
 
       <TaskSidebar task={task} stage={stage} />
     </div>
-  );
-}
-
-async function ExtendedLearningResources({ task }: { task: StudyTask }) {
-  const [
-    { InteractiveHtmlViewer },
-    { ResourceGenerateCard },
-    { VideoViewer },
-  ] = await Promise.all([
-    import("@/components/learn/interactive-html-viewer"),
-    import("@/components/learn/resource-generate-card"),
-    import("@/components/learn/video-viewer"),
-  ]);
-
-  return (
-    <>
-      <div id="knowledge-video" className="scroll-mt-24">
-        {task.knowledge_video_id != null ? (
-          <VideoViewer source={{ kind: "task", taskId: task.id }} />
-        ) : (
-          <ResourceGenerateCard
-            taskId={task.id}
-            taskStatus={task.status}
-            kind="knowledge-video"
-          />
-        )}
-      </div>
-      <div id="interactive-html" className="scroll-mt-24">
-        {task.interactive_html_id != null ? (
-          <InteractiveHtmlViewer
-            source={{ kind: "task", taskId: task.id }}
-            title="2D 可视化操作"
-            subtitle="播放步骤、缩放画布并用自然语言调整图形"
-          />
-        ) : (
-          <ResourceGenerateCard
-            taskId={task.id}
-            taskStatus={task.status}
-            kind="interactive-html"
-          />
-        )}
-      </div>
-    </>
   );
 }

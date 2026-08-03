@@ -44,6 +44,7 @@ export default async function C2VPage() {
         detailKind="code-video"
         emptyHint="还没有生成过任何 C2V 视频。给 AI 一道题和你的解法，它会做成讲解短片。"
         primaryCtaLabel="在线生成"
+        featuredKind="code-video"
       />
     </ToolPageShell>
   );
