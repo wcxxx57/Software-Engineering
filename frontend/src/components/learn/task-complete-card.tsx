@@ -21,6 +21,7 @@ import { useStudyTaskQuizzes } from "@/lib/query/study-quiz";
 import type { StudyTaskStatus } from "@/lib/api/schemas";
 
 import { ContentCard } from "./content-card";
+import { PlanRecommendationCard } from "@/components/dashboard/plan-recommendation-card";
 
 const CONSOLIDATION_THRESHOLD = 60;
 
@@ -28,13 +29,18 @@ export function TaskCompleteCard({
   taskId,
   taskStatus,
   nextTaskId,
+  subjectId,
+  subjectCompleted: initialSubjectCompleted,
 }: {
   taskId: number;
   taskStatus: StudyTaskStatus;
   nextTaskId: number | null;
+  subjectId: number | null;
+  subjectCompleted: boolean;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [subjectCompleted, setSubjectCompleted] = useState(initialSubjectCompleted);
 
   const finished = taskStatus === "FINISHED";
   const locked = taskStatus === "LOCKED";
@@ -62,6 +68,7 @@ export function TaskCompleteCard({
             : "已记录学习进度，继续加油!",
           { description: rewards.join(" · ") },
         );
+        setSubjectCompleted(result.data.subject_completed);
         setConfirmOpen(false);
       } else {
         toast.error(result.message);
@@ -121,6 +128,10 @@ export function TaskCompleteCard({
           )}
         </div>
       </div>
+
+      {subjectCompleted && subjectId != null ? (
+        <div className="mt-6"><PlanRecommendationCard subjectId={subjectId} next /></div>
+      ) : null}
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

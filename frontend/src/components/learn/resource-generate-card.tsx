@@ -72,10 +72,12 @@ export function ResourceGenerateCard({
   taskId,
   taskStatus,
   kind,
+  compact = false,
 }: {
   taskId: number;
   taskStatus: StudyTaskStatus;
   kind: Kind;
+  compact?: boolean;
 }) {
   const meta = META[kind];
   const config = useConfig();
@@ -109,6 +111,38 @@ export function ResourceGenerateCard({
       }
     });
   };
+
+  const confirmDialog = (
+    <SpendConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title={`生成${meta.title}`}
+      description={`将根据本任务自动生成${meta.title}，确认消耗`}
+      currency={meta.currency}
+      amount={amount}
+      currentBalance={balance}
+      refundHint="若生成失败，系统会自动退还消耗"
+      loading={isPending}
+      onConfirm={onConfirm}
+    />
+  );
+
+  if (compact) {
+    return (
+      <>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={submitDisabled}
+          onClick={() => setConfirmOpen(true)}
+          className="rounded-full border-white/80 bg-white/60 text-brand-dark hover:bg-white/90"
+        >
+          {locked ? "请先完成前置任务" : "为当前知识点重新生成"}
+        </Button>
+        {confirmDialog}
+      </>
+    );
+  }
 
   return (
     <ContentCard
@@ -148,18 +182,7 @@ export function ResourceGenerateCard({
         </div>
       </div>
 
-      <SpendConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title={`生成${meta.title}`}
-        description={`将根据本任务自动生成${meta.title}，确认消耗`}
-        currency={meta.currency}
-        amount={amount}
-        currentBalance={balance}
-        refundHint="若生成失败，系统会自动退还消耗"
-        loading={isPending}
-        onConfirm={onConfirm}
-      />
+      {confirmDialog}
     </ContentCard>
   );
 }

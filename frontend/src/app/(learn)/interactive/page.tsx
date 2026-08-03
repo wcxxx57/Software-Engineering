@@ -50,6 +50,7 @@ export default async function InteractivePage() {
         cardThumbnailIcon={<Box strokeWidth={1.75} />}
         emptyHint="还没有生成过任何交互式实验。让 AI 把抽象的概念变成可玩的沙盒。"
         primaryCtaLabel="在线生成"
+        featuredKind="interactive-html"
       />
     </ToolPageShell>
   );

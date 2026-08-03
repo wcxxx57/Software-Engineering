@@ -376,6 +376,71 @@ export type CodeVideo = z.infer<typeof codeVideoSchema>;
 export type InteractiveHtml = z.infer<typeof interactiveHtmlSchema>;
 export type KnowledgeExplanation = z.infer<typeof knowledgeExplanationSchema>;
 
+// ── Recommendations ────────────────────────────────────────────────
+
+export const recommendationResourceKind = z.enum([
+  "knowledge-video",
+  "code-video",
+  "interactive-html",
+]);
+export type RecommendationResourceKind = z.infer<
+  typeof recommendationResourceKind
+>;
+
+export const recommendedResourceSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  summary: z.string(),
+  reasons: z.array(z.string()).min(1).max(2),
+  learner_count: z.number().int().nonnegative().nullable(),
+});
+export type RecommendedResource = z.infer<typeof recommendedResourceSchema>;
+
+export const taskRecommendationsSchema = z.object({
+  eligible: z.boolean(),
+  knowledge_point_title: z.string().nullable(),
+  resources: z.object({
+    knowledge_video: z.array(recommendedResourceSchema),
+    interactive_html: z.array(recommendedResourceSchema),
+  }),
+});
+export type TaskRecommendations = z.infer<typeof taskRecommendationsSchema>;
+
+export const featuredResourcesSchema = z.array(
+  z.object({
+    id: z.number().int(),
+    title: z.string(),
+    summary: z.string(),
+  }),
+);
+export type FeaturedResource = z.infer<typeof featuredResourcesSchema>;
+
+export const chatQuestionSchema = z.object({ question: z.string() });
+export const popularChatQuestionSchema = chatQuestionSchema.extend({
+  learner_count: z.number().int().positive(),
+});
+export const taskChatContextSchema = z.object({
+  course_title: z.string(),
+  stage_title: z.string(),
+  knowledge_point_title: z.string(),
+  suggested_questions: z.array(chatQuestionSchema),
+  popular_questions: z.array(popularChatQuestionSchema),
+});
+export type TaskChatContext = z.infer<typeof taskChatContextSchema>;
+
+export const recommendedPlanSchema = z.object({
+  id: z.number().int(),
+  title: z.string(),
+  reason: z.string(),
+  stage_count: z.number().int().positive(),
+  task_count: z.number().int().positive(),
+  estimated_weeks: z.number().int().positive().nullable(),
+  stages: z.array(
+    z.object({ title: z.string(), task_count: z.number().int().positive() }),
+  ),
+});
+export type RecommendedPlan = z.infer<typeof recommendedPlanSchema>;
+
 // ── Mistakes / bookmarks ──
 
 export const quizProblemSourceSchema = z.object({
