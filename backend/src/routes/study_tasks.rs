@@ -405,6 +405,7 @@ pub async fn create_knowledge_video(
         prompt: Set(prompt.clone()),
         object_key: Set(None),
         public: Set(false),
+        bookmarked: Set(false),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
@@ -635,6 +636,7 @@ pub async fn create_explanation(
         prompt: Set(prompt.clone()),
         content: Set(None),
         public: Set(false),
+        bookmarked: Set(false),
         cost: Set(0),
         created_at: Set(now),
         updated_at: Set(now),

@@ -36,6 +36,7 @@ pub struct KnowledgeVideoView {
     pub prompt: String,
     pub object_key: Option<String>,
     pub public: bool,
+    pub bookmarked: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -55,6 +56,7 @@ impl From<knowledge_video::Model> for KnowledgeVideoView {
             prompt: m.prompt,
             object_key: m.object_key,
             public: m.public,
+            bookmarked: m.bookmarked,
             created_at: m.created_at.timestamp_millis(),
             updated_at: m.updated_at.timestamp_millis(),
         }
@@ -103,6 +105,7 @@ pub async fn create(
         prompt: Set(payload.prompt.clone()),
         object_key: Set(None),
         public: Set(payload.public),
+        bookmarked: Set(false),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
@@ -228,4 +231,28 @@ pub async fn delete(
     }
 
     Ok(ok(serde_json::json!({"deleted": true})))
+}
+
+/// PATCH /api/v1/knowledge-videos/{id}/bookmark
+pub async fn toggle_bookmark(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let link = user_knowledge_video_link::Entity::find_by_id(id)
+        .filter(user_knowledge_video_link::Column::UserId.eq(auth_user.user_id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+    let record = knowledge_video::Entity::find_by_id(link.knowledge_video_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+
+    let bookmarked = !record.bookmarked;
+    let mut active: knowledge_video::ActiveModel = record.into();
+    active.bookmarked = Set(bookmarked);
+    active.updated_at = Set(Utc::now());
+    active.update(&state.db).await?;
+    Ok(ok(serde_json::json!({"bookmarked": bookmarked})))
 }

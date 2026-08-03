@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { BookOpen, Loader2, RefreshCw, Star, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import ReactMarkdown from "react-markdown";
@@ -11,6 +11,8 @@ import { createKnowledgeExplanationAction } from "@/app/(learn)/tasks/[id]/actio
 import { Button } from "@/components/ui/button";
 import { knowledgeExplanationSchema } from "@/lib/api/schemas";
 import { useResource } from "@/lib/query/resource";
+import { requestJson } from "@/lib/query/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ContentCard } from "./content-card";
 
@@ -46,6 +48,20 @@ export function ExplanationViewer({
     source: { kind: "explanation", id },
     schema: knowledgeExplanationSchema,
   });
+  const queryClient = useQueryClient();
+  const toggleBookmark = useMutation({
+    mutationFn: async () => {
+      const response = await requestJson(`/api/knowledge-explanations/${id}`, {
+        method: "PATCH",
+      });
+      return response as { bookmarked: boolean };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me", "bookmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-explanations", id] });
+    },
+  });
+  const bookmarked = toggleBookmark.data?.bookmarked ?? data?.bookmarked ?? false;
 
   const retry = () => {
     startRetry(async () => {
@@ -64,6 +80,20 @@ export function ExplanationViewer({
     <ContentCard
       theme="purple"
       icon={<BookOpen />}
+      action={
+        data ? (
+          <button
+            type="button"
+            onClick={() => toggleBookmark.mutate()}
+            disabled={toggleBookmark.isPending}
+            aria-label={bookmarked ? "取消收藏知识点" : "收藏知识点"}
+            title={bookmarked ? "取消收藏" : "收藏知识点"}
+            className="inline-flex size-9 items-center justify-center rounded-xl border border-white/70 bg-white/60 text-brand-medium shadow-sm transition hover:-translate-y-px hover:bg-white/90 hover:text-palette-purple disabled:opacity-60"
+          >
+            <Star className={bookmarked ? "size-4 fill-current text-palette-purple" : "size-4"} />
+          </button>
+        ) : null
+      }
       title="深度解析"
       subtitle="文字化讲解"
     >

@@ -196,8 +196,7 @@ export function QuizRound({
         >
           <ChevronRight className="size-4" />
         </Button>
-        {submitted ? (
-          <button
+        <button
             type="button"
             onClick={handleToggleFav}
             disabled={toggleBookmark.isPending}
@@ -217,8 +216,7 @@ export function QuizRound({
                 current.bookmarked && "fill-current",
               )}
             />
-          </button>
-        ) : null}
+        </button>
       </div>
 
       <div

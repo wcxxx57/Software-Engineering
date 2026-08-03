@@ -76,6 +76,10 @@ fn api_router() -> Router<AppState> {
             get(knowledge_videos::get_by_id).delete(knowledge_videos::delete),
         )
         .route(
+            "/knowledge-videos/{id}/bookmark",
+            axum::routing::patch(knowledge_videos::toggle_bookmark),
+        )
+        .route(
             "/code-videos",
             axum::routing::post(code_videos::create).get(code_videos::list),
         )
@@ -98,6 +102,10 @@ fn api_router() -> Router<AppState> {
         .route(
             "/knowledge-explanations/{id}",
             get(knowledge_explanations::get_by_id).patch(knowledge_explanations::update),
+        )
+        .route(
+            "/knowledge-explanations/{id}/bookmark",
+            axum::routing::patch(knowledge_explanations::toggle_bookmark),
         )
         // Study subjects
         .route(

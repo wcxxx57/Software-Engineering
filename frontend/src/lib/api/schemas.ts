@@ -362,6 +362,7 @@ const resourceBase = {
 export const knowledgeVideoSchema = z.object({
   ...resourceBase,
   object_key: z.string().nullable(),
+  bookmarked: z.boolean().optional().default(false),
 });
 export const codeVideoSchema = knowledgeVideoSchema;
 export const interactiveHtmlSchema = knowledgeVideoSchema;
@@ -369,6 +370,7 @@ export const interactiveHtmlSchema = knowledgeVideoSchema;
 export const knowledgeExplanationSchema = z.object({
   ...resourceBase,
   content: z.string().nullable(),
+  bookmarked: z.boolean(),
 });
 
 export type KnowledgeVideo = z.infer<typeof knowledgeVideoSchema>;
@@ -407,3 +409,13 @@ export const quizProblemReviewSchema = z.object({
 });
 export const quizProblemReviewListSchema = z.array(quizProblemReviewSchema);
 export type QuizProblemReview = z.infer<typeof quizProblemReviewSchema>;
+
+export const bookmarkItemSchema = z.object({
+  id: z.number().int(),
+  kind: z.enum(["quiz_problem", "knowledge_video", "knowledge_explanation"]),
+  title: z.string(),
+  description: z.string(),
+  created_at: z.number().int(),
+});
+export const bookmarkItemListSchema = z.array(bookmarkItemSchema);
+export type BookmarkItem = z.infer<typeof bookmarkItemSchema>;

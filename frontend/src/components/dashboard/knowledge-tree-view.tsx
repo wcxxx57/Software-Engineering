@@ -96,12 +96,14 @@ function buildFlow(items: KnowledgeTreeNode[]): { nodes: CurriculumFlowNode[]; e
   const nodes: CurriculumFlowNode[] = [];
   for (const [depth, level] of byDepth) {
     level.sort((a, b) => a.sort_order - b.sort_order);
-    const height = Math.max(1, level.length - 1) * 150;
+    // Reserve enough vertical room for an expanded node's task list.  Fixed
+    // 150px rows allowed sibling cards to overlap as soon as one was opened.
+    const height = Math.max(1, level.length - 1) * 230;
     level.forEach((item, index) => {
       nodes.push({
         id: item.node_key,
         type: "curriculum",
-        position: { x: depth * 310, y: index * 150 - height / 2 },
+        position: { x: depth * 330, y: index * 230 - height / 2 },
         data: item,
       });
     });
@@ -128,7 +130,7 @@ function CurriculumNodeCard({ data }: NodeProps<CurriculumFlowNode>) {
   return (
     <div
       className={cn(
-        "w-64 rounded-2xl border-2 px-4 py-3 shadow-[var(--shadow-soft)] transition",
+        "w-64 min-h-28 rounded-2xl border-2 px-4 py-3 shadow-[var(--shadow-soft)] transition",
         !data.planned && "border-border/25 bg-white/65 text-brand-light",
         data.planned && !data.available && !complete && "border-palette-yellow/60 bg-palette-yellow-light text-brand-dark",
         data.available && !complete && "border-palette-orange bg-white text-brand-dark shadow-[0_6px_20px_color-mix(in_oklch,var(--palette-orange)_25%,transparent)]",
@@ -160,7 +162,7 @@ function CurriculumNodeCard({ data }: NodeProps<CurriculumFlowNode>) {
         </div>
       )}
       {expanded && data.tasks.length > 0 && (
-        <div className="nodrag nopan mt-2 flex flex-col gap-1">
+        <div className="nodrag nopan mt-2 flex max-h-24 flex-col gap-1 overflow-y-auto pr-1">
           {data.tasks.map((task) =>
             task.status === "LOCKED" ? (
               <span key={task.id} className="truncate rounded-full bg-border/20 px-2 py-1 text-[10px] text-brand-light">{task.title}</span>

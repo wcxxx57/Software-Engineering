@@ -1,12 +1,14 @@
 "use client";
 
-import { Film, Loader2, Play } from "lucide-react";
+import { Film, Loader2, Play, Star } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { knowledgeVideoSchema } from "@/lib/api/schemas";
 import { useConfig } from "@/lib/query/config";
 import { useResource, type ResourceSource } from "@/lib/query/resource";
 import { assetUrl } from "@/lib/storage";
+import { requestJson } from "@/lib/query/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ContentCard } from "./content-card";
 import { ResourceGenerateCard } from "./resource-generate-card";
@@ -40,6 +42,26 @@ export function VideoViewer({
     source: innerSource,
     schema: knowledgeVideoSchema,
   });
+  const queryClient = useQueryClient();
+  const toggleBookmark = useMutation({
+    mutationFn: async () => {
+      if (!data) throw new Error("视频尚未加载完成");
+      const response = await requestJson(
+        `/api/knowledge-videos/${data.id}`,
+        { method: "PATCH" },
+      );
+      return response as { bookmarked: boolean };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me", "bookmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-videos"] });
+      queryClient.invalidateQueries({ queryKey: ["task-resource"] });
+    },
+  });
+  const bookmarked = toggleBookmark.data?.bookmarked ?? data?.bookmarked ?? false;
+  const canBookmark =
+    data &&
+    (source.kind === "task" || source.resourceKind === "knowledge-videos");
 
   if (data?.status === "FAILED" && source.kind === "task") {
     return (
@@ -86,10 +108,47 @@ export function VideoViewer({
     </>
   );
 
-  if (!showCard) return body;
+  if (!showCard) {
+    return (
+      <div className="relative">
+        {body}
+        {canBookmark ? (
+          <button
+            type="button"
+            onClick={() => toggleBookmark.mutate()}
+            disabled={toggleBookmark.isPending}
+            aria-label={bookmarked ? "取消收藏视频" : "收藏视频"}
+            title={bookmarked ? "取消收藏" : "收藏视频"}
+            className="absolute right-3 top-3 inline-flex size-9 items-center justify-center rounded-xl border border-white/70 bg-white/90 text-brand-medium shadow-md backdrop-blur-sm transition hover:-translate-y-px hover:text-palette-orange disabled:opacity-60"
+          >
+            <Star className={bookmarked ? "size-4 fill-current text-palette-orange" : "size-4"} />
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
-    <ContentCard theme="blue" icon={<Film />} title={title} subtitle={subtitle}>
+    <ContentCard
+      theme="blue"
+      icon={<Film />}
+      title={title}
+      subtitle={subtitle}
+      action={
+        canBookmark ? (
+          <button
+            type="button"
+            onClick={() => toggleBookmark.mutate()}
+            disabled={toggleBookmark.isPending}
+            aria-label={bookmarked ? "取消收藏视频" : "收藏视频"}
+            title={bookmarked ? "取消收藏" : "收藏视频"}
+            className="inline-flex size-9 items-center justify-center rounded-xl border border-white/70 bg-white/60 text-brand-medium shadow-sm transition hover:-translate-y-px hover:bg-white/90 hover:text-palette-orange disabled:opacity-60"
+          >
+            <Star className={bookmarked ? "size-4 fill-current text-palette-orange" : "size-4"} />
+          </button>
+        ) : null
+      }
+    >
       {body}
     </ContentCard>
   );

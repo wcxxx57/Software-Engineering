@@ -14,7 +14,8 @@ use crate::{
     entities::{
         asset_transaction,
         common::{Gender, ProblemAnswer},
-        study_quiz, study_quiz_problem, study_stage, study_subject, study_task, user,
+        knowledge_explanation, knowledge_video, study_quiz, study_quiz_problem, study_stage,
+        study_subject, study_task, user, user_knowledge_video_link,
     },
     error::{AppError, BusinessError},
     response::ok,
@@ -229,6 +230,15 @@ pub struct QuizProblemSource {
     pub subject_name: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct BookmarkItemView {
+    pub id: i32,
+    pub kind: &'static str,
+    pub title: String,
+    pub description: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ProblemSearchQuery {
     #[serde(default)]
@@ -288,7 +298,7 @@ pub async fn list_mistakes(
     Ok(ok(views))
 }
 
-/// GET /api/v1/me/bookmarks
+/// GET /api/v1/me/bookmarks. Returns problems, videos, and knowledge explanations.
 pub async fn list_bookmarks(
     State(state): State<AppState>,
     auth_user: AuthUser,
@@ -329,9 +339,62 @@ pub async fn list_bookmarks(
         .map(|(qp, q)| (qp, q, None, None, None))
         .collect();
 
-    let views = build_review_views(&state, rows, |_| true).await?;
+    let mut items: Vec<BookmarkItemView> = build_review_views(&state, rows, |_| true)
+        .await?
+        .into_iter()
+        .map(|problem| BookmarkItemView {
+            id: problem.id,
+            kind: "quiz_problem",
+            title: "小测题目".to_owned(),
+            description: problem.content,
+            created_at: problem.created_at,
+        })
+        .collect();
 
-    Ok(ok(views))
+    let mut videos = user_knowledge_video_link::Entity::find()
+        .filter(user_knowledge_video_link::Column::UserId.eq(auth_user.user_id))
+        .find_also_related(knowledge_video::Entity)
+        .filter(knowledge_video::Column::Bookmarked.eq(true));
+    if let Some(ref q) = q {
+        videos = videos.filter(knowledge_video::Column::Prompt.contains(q));
+    }
+    items.extend(
+        videos
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .filter_map(|(_link, video)| video)
+            .map(|video| BookmarkItemView {
+                id: video.id,
+                kind: "knowledge_video",
+                title: "知识视频".to_owned(),
+                description: video.prompt,
+                created_at: video.created_at.timestamp_millis(),
+            }),
+    );
+
+    let mut explanations = knowledge_explanation::Entity::find()
+        .filter(knowledge_explanation::Column::UserId.eq(auth_user.user_id))
+        .filter(knowledge_explanation::Column::Bookmarked.eq(true));
+    if let Some(ref q) = q {
+        explanations = explanations.filter(knowledge_explanation::Column::Prompt.contains(q));
+    }
+    items.extend(
+        explanations
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .map(|explanation| BookmarkItemView {
+                id: explanation.id,
+                kind: "knowledge_explanation",
+                title: "知识点解析".to_owned(),
+                description: explanation.prompt,
+                created_at: explanation.created_at.timestamp_millis(),
+            }),
+    );
+
+    items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(ok(items))
 }
 
 async fn build_review_views(

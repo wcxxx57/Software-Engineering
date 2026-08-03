@@ -29,6 +29,7 @@ pub struct Model {
     pub prompt: String,
     pub object_key: Option<String>,
     pub public: bool,
+    pub bookmarked: bool,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

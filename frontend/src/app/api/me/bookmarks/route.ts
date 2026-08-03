@@ -1,5 +1,5 @@
 import { serverFetch } from "@/lib/api/client";
-import { quizProblemReviewListSchema } from "@/lib/api/schemas";
+import { bookmarkItemListSchema } from "@/lib/api/schemas";
 import { proxyJson } from "@/lib/server/proxy";
 
 export async function GET(req: Request) {
@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   return proxyJson(() =>
     serverFetch("/me/bookmarks", {
       query: { q },
-      schema: quizProblemReviewListSchema,
+      schema: bookmarkItemListSchema,
     }),
   );
 }

@@ -35,6 +35,7 @@ pub struct KnowledgeExplanationView {
     pub prompt: String,
     pub content: Option<String>,
     pub public: bool,
+    pub bookmarked: bool,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -54,6 +55,7 @@ impl From<knowledge_explanation::Model> for KnowledgeExplanationView {
             prompt: m.prompt,
             content: m.content,
             public: m.public,
+            bookmarked: m.bookmarked,
             created_at: m.created_at.timestamp_millis(),
             updated_at: m.updated_at.timestamp_millis(),
         }
@@ -100,6 +102,7 @@ pub async fn create(
         prompt: Set(payload.prompt.clone()),
         content: Set(None),
         public: Set(payload.public),
+        bookmarked: Set(false),
         cost: Set(cost),
         created_at: Set(now),
         updated_at: Set(now),
@@ -292,4 +295,23 @@ pub async fn update(
         tx.commit().await?;
         Ok(ok(KnowledgeExplanationView::from(record)))
     }
+}
+
+/// PATCH /api/v1/knowledge-explanations/{id}/bookmark
+pub async fn toggle_bookmark(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let record = knowledge_explanation::Entity::find_by_id(id)
+        .filter(knowledge_explanation::Column::UserId.eq(auth_user.user_id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+    let bookmarked = !record.bookmarked;
+    let mut active: knowledge_explanation::ActiveModel = record.into();
+    active.bookmarked = Set(bookmarked);
+    active.updated_at = Set(Utc::now());
+    active.update(&state.db).await?;
+    Ok(ok(serde_json::json!({"bookmarked": bookmarked})))
 }

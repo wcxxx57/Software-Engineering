@@ -36,3 +36,21 @@ export async function DELETE(
     return { ok: true };
   });
 }
+
+export async function PATCH(
+  _req: Request,
+  ctx: RouteContext<"/api/knowledge-videos/[id]">,
+) {
+  const { id } = await ctx.params;
+  const videoId = Number(id);
+  if (!Number.isInteger(videoId) || videoId <= 0) {
+    return NextResponse.json({ message: "Invalid id" }, { status: 400 });
+  }
+
+  return proxyJson(() =>
+    serverFetch(`/knowledge-videos/${videoId}/bookmark`, {
+      method: "PATCH",
+      body: {},
+    }),
+  );
+}

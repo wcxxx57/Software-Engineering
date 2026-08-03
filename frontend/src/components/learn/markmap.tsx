@@ -22,16 +22,43 @@ export function MarkmapView({ markdown }: { markdown: string }) {
       {
         zoom: true,
         pan: true,
-        autoFit: true,
+        // Keep the user's viewport stable when a node is collapsed or expanded.
+        // They can explicitly use the fit button whenever they want to reframe.
+        autoFit: false,
         fitRatio: 0.9,
         maxInitialScale: 1.2,
+        duration: 320,
+        nodeMinHeight: 34,
+        paddingX: 14,
+        spacingHorizontal: 105,
+        spacingVertical: 12,
+        maxWidth: 250,
         color: () => brandGold || "#be8944",
       },
       root,
     );
     markmapRef.current = mm;
 
+    // Larger node dots make expand/collapse work reliably at the default zoom.
+    // A mutation observer reapplies the target size after markmap rerenders nodes.
+    const enlargeNodeTargets = () => {
+      svgRef.current
+        ?.querySelectorAll<SVGCircleElement>(".markmap-node circle")
+        .forEach((circle) => {
+          circle.setAttribute("r", "9");
+          circle.style.cursor = "pointer";
+        });
+    };
+    const observer = new MutationObserver(enlargeNodeTargets);
+    observer.observe(svgRef.current, { childList: true, subtree: true });
+    enlargeNodeTargets();
+    const initialFit = requestAnimationFrame(() => {
+      void mm.fit(1.08);
+    });
+
     return () => {
+      cancelAnimationFrame(initialFit);
+      observer.disconnect();
       markmapRef.current = null;
       mm.destroy();
     };

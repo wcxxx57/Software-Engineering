@@ -3,7 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  bookmarkItemListSchema,
   quizProblemReviewListSchema,
+  type BookmarkItem,
   type QuizProblemReview,
 } from "@/lib/api/schemas";
 
@@ -30,10 +32,10 @@ export function useMistakes(includeHidden: boolean, q: string) {
 }
 
 export function useBookmarks(q: string) {
-  return useQuery<QuizProblemReview[], Error>({
+  return useQuery<BookmarkItem[], Error>({
     queryKey: bookmarksQueryKey(q),
     queryFn: async () =>
-      quizProblemReviewListSchema.parse(
+      bookmarkItemListSchema.parse(
         await getJson(`/api/me/bookmarks${q ? `?q=${encodeURIComponent(q)}` : ""}`),
       ),
     staleTime: 0,

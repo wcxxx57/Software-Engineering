@@ -24,3 +24,21 @@ export async function GET(
     ),
   );
 }
+
+export async function PATCH(
+  _req: Request,
+  ctx: RouteContext<"/api/knowledge-explanations/[id]">,
+) {
+  const { id } = await ctx.params;
+  const explanationId = Number(id);
+  if (!Number.isInteger(explanationId) || explanationId <= 0) {
+    return NextResponse.json({ message: "Invalid id" }, { status: 400 });
+  }
+
+  return proxyJson(() =>
+    serverFetch(`/knowledge-explanations/${explanationId}/bookmark`, {
+      method: "PATCH",
+      body: {},
+    }),
+  );
+}

@@ -7,9 +7,11 @@ import {
   ChevronRight,
   ClipboardList,
   Clock,
+  Film,
   Eye,
   EyeOff,
   FilePen,
+  BookOpen,
   Lightbulb,
   Search,
   Star,
@@ -38,7 +40,7 @@ import {
   useMistakes,
 } from "@/lib/query/mistakes";
 import { requestJson } from "@/lib/query/utils";
-import type { QuizProblemReview } from "@/lib/api/schemas";
+import type { BookmarkItem, QuizProblemReview } from "@/lib/api/schemas";
 import { cn } from "@/lib/utils";
 
 type Mode = "mistakes" | "bookmarks";
@@ -53,21 +55,14 @@ export function MistakesClient() {
   const mistakesQuery = useMistakes(includeHidden, deferredSearch);
   const bookmarksQuery = useBookmarks(deferredSearch);
 
-  const items = useMemo(
-    () =>
-      mode === "mistakes"
-        ? (mistakesQuery.data ?? [])
-        : (bookmarksQuery.data ?? []),
-    [mode, mistakesQuery.data, bookmarksQuery.data],
-  );
-  const isLoading =
-    mode === "mistakes" ? mistakesQuery.isLoading : bookmarksQuery.isLoading;
+  const mistakeItems = mistakesQuery.data ?? [];
+  const bookmarkItems = bookmarksQuery.data ?? [];
 
   const activeIndex = useMemo(
-    () => items.findIndex((it) => it.id === activeId),
-    [items, activeId],
+    () => mistakeItems.findIndex((it) => it.id === activeId),
+    [mistakeItems, activeId],
   );
-  const activeItem = activeIndex >= 0 ? items[activeIndex] : null;
+  const activeItem = activeIndex >= 0 ? mistakeItems[activeIndex] : null;
 
   return (
     <div className="min-h-dvh w-full bg-canvas">
@@ -118,7 +113,7 @@ export function MistakesClient() {
 
           <TabsContent value="mistakes" className="mt-6 flex flex-col gap-6">
             <ProblemSearch value={search} onChange={setSearch} />
-            <CountBar count={items.length} mode="mistakes">
+            <CountBar count={mistakeItems.length} mode="mistakes">
               <label className="flex cursor-pointer items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-xs font-semibold text-brand-medium shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
                 <Checkbox
                   checked={includeHidden}
@@ -128,8 +123,8 @@ export function MistakesClient() {
               </label>
             </CountBar>
             <CardGrid
-              items={items}
-              isLoading={isLoading}
+              items={mistakeItems}
+              isLoading={mistakesQuery.isLoading}
               mode="mistakes"
               onOpen={setActiveId}
               emptyHint={
@@ -142,12 +137,10 @@ export function MistakesClient() {
 
           <TabsContent value="bookmarks" className="mt-6 flex flex-col gap-6">
             <ProblemSearch value={search} onChange={setSearch} />
-            <CountBar count={items.length} mode="bookmarks" />
-            <CardGrid
-              items={items}
-              isLoading={isLoading}
-              mode="bookmarks"
-              onOpen={setActiveId}
+            <CountBar count={bookmarkItems.length} mode="bookmarks" />
+            <BookmarkGrid
+              items={bookmarkItems}
+              isLoading={bookmarksQuery.isLoading}
               emptyHint={
                 deferredSearch
                   ? "没有找到匹配的收藏题目，换个关键词试试"
@@ -161,15 +154,15 @@ export function MistakesClient() {
       <DetailDialog
         item={activeItem}
         index={activeIndex}
-        total={items.length}
+        total={mistakeItems.length}
         onClose={() => setActiveId(null)}
         onPrev={() =>
-          activeIndex > 0 && setActiveId(items[activeIndex - 1].id)
+          activeIndex > 0 && setActiveId(mistakeItems[activeIndex - 1].id)
         }
         onNext={() =>
           activeIndex >= 0 &&
-          activeIndex < items.length - 1 &&
-          setActiveId(items[activeIndex + 1].id)
+          activeIndex < mistakeItems.length - 1 &&
+          setActiveId(mistakeItems[activeIndex + 1].id)
         }
       />
     </div>
@@ -245,6 +238,91 @@ function CountBar({
         <span>题</span>
       </span>
       {children}
+    </div>
+  );
+}
+
+function BookmarkGrid({
+  items,
+  isLoading,
+  emptyHint,
+}: {
+  items: BookmarkItem[];
+  isLoading: boolean;
+  emptyHint: string;
+}) {
+  const queryClient = useQueryClient();
+  const toggleBookmark = useMutation({
+    mutationFn: async (item: BookmarkItem) => {
+      const url =
+        item.kind === "quiz_problem"
+          ? `/api/quiz-problems/${item.id}/bookmark`
+          : item.kind === "knowledge_video"
+            ? `/api/knowledge-videos/${item.id}`
+            : `/api/knowledge-explanations/${item.id}`;
+      await requestJson(url, { method: "PATCH" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me", "bookmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["me", "mistakes"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-44 animate-pulse rounded-2xl border border-border/30 bg-white/60" />
+        ))}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-[28px] border-2 border-dashed border-border/30 bg-white/40 px-10 py-20 text-center shadow-[0_2px_6px_color-mix(in_oklch,var(--border-muted)_20%,transparent)]">
+        <Star className="size-8 fill-palette-orange stroke-palette-orange" />
+        <p className="text-lg font-extrabold text-brand-dark">{emptyHint}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
+      {items.map((item) => {
+        const Icon =
+          item.kind === "knowledge_video"
+            ? Film
+            : item.kind === "knowledge_explanation"
+              ? BookOpen
+              : ClipboardList;
+        return (
+          <article
+            key={`${item.kind}-${item.id}`}
+            className="flex min-h-44 flex-col gap-3.5 rounded-[20px] border-[1.5px] border-white/70 bg-gradient-to-b from-white/85 to-palette-yellow-mist/50 p-6 shadow-[0_4px_12px_color-mix(in_oklch,var(--border-muted)_25%,transparent)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-palette-yellow-lighter to-palette-yellow-light text-palette-orange">
+                <Icon className="size-5" strokeWidth={2} />
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleBookmark.mutate(item)}
+                disabled={toggleBookmark.isPending}
+                aria-label="取消收藏"
+                title="取消收藏"
+                className="flex size-8 items-center justify-center rounded-[10px] bg-canvas text-palette-orange transition hover:scale-110 hover:bg-palette-yellow-light disabled:opacity-60"
+              >
+                <Star className="size-3.5 fill-current" />
+              </button>
+            </div>
+            <p className="text-sm font-bold text-palette-orange">{item.title}</p>
+            <p className="line-clamp-3 text-base font-bold leading-relaxed text-brand-dark">{item.description}</p>
+            <span className="mt-auto text-xs font-semibold text-brand-light">{formatTime(item.created_at)}</span>
+          </article>
+        );
+      })}
     </div>
   );
 }

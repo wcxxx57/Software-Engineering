@@ -31,6 +31,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     pub content: Option<String>,
     pub public: bool,
+    pub bookmarked: bool,
     pub cost: i32,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
