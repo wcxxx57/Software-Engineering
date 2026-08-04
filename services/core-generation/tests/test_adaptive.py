@@ -113,7 +113,8 @@ class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
                             PlanTask(
                                 title=f"任务 {index}",
                                 description="完成概念学习和练习",
-                                knowledge_node_keys=["root"],
+                                knowledge_node_key="root",
+                                day_index=index + 1,
                             )
                             for index in range(3)
                         ],
@@ -133,7 +134,7 @@ class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
 
         result = await generate_plan(client, settings(), request)  # type: ignore[arg-type]
 
-        self.assertEqual(result["stages"][0]["tasks"][0]["knowledge_node_keys"], ["root"])
+        self.assertEqual(result["stages"][0]["tasks"][0]["knowledge_node_key"], "root")
         self.assertIn("权威课程大纲", client.calls[0]["user"])
 
     async def test_curriculum_ai_selects_from_current_database_without_web_search(self) -> None:

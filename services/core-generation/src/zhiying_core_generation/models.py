@@ -30,9 +30,9 @@ class ProblemsPayload(BaseModel):
 
 
 class PlanTask(BaseModel):
-    title: str = Field(min_length=2)
     description: str = Field(min_length=3)
-    knowledge_node_keys: list[str] = Field(min_length=1)
+    knowledge_node_key: str = Field(min_length=1)
+    day_index: int = Field(ge=1)
 
 
 class PlanStage(BaseModel):

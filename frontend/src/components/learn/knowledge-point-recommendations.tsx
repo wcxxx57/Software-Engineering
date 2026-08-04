@@ -168,7 +168,7 @@ function TaskResourceCard({
             onLoad={recommendation && !hasTaskResource ? () => recordOpen(recommendation.catalog_id) : undefined}
           />
         )}
-        {recommendation && !hasTaskResource ? (
+        {!previewOnly ? (
           <div className="mt-5 flex flex-wrap items-center gap-3 text-sm font-semibold text-brand-medium">
             <span>觉得内容不合适？</span>
             <ResourceGenerateCard

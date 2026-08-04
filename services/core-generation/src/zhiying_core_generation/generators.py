@@ -119,7 +119,6 @@ async def generate_plan(client: LlmClient, settings: Settings, request: PlanRequ
                 generated.model_dump(),
                 valid_keys,
                 request.total_stages,
-                settings.plan_tasks_per_stage,
             )
         except ValueError as exc:
             last_error = str(exc)

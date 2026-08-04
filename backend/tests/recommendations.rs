@@ -255,6 +255,84 @@ async fn featured_code_video_is_playable_by_non_owner_and_open_is_idempotent() {
 }
 
 #[tokio::test]
+async fn non_owner_cannot_open_catalogued_resource_without_object_key() {
+    let app = TestApp::new().await;
+    let viewer_token = app
+        .create_user_and_login("empty_resource_viewer", "password123")
+        .await;
+    let _owner_token = app
+        .create_user_and_login("empty_resource_owner", "password123")
+        .await;
+    let db = app.db().await;
+    let owner_id = user::Entity::find()
+        .filter(user::Column::Username.eq("empty_resource_owner"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let (_template_id, node_id) = published_node(&app).await;
+    let now = Utc::now();
+    let video = knowledge_video::ActiveModel {
+        status: Set(knowledge_video::KnowledgeVideoStatus::Finished),
+        prompt: Set("空对象键测试".to_owned()),
+        object_key: Set(Some("   ".to_owned())),
+        public: Set(true),
+        bookmarked: Set(false),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    user_knowledge_video_link::ActiveModel {
+        knowledge_video_id: Set(video.id),
+        user_id: Set(owner_id),
+        created_at: Set(now),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    let catalog = recommendation_resource::ActiveModel {
+        resource_kind: Set(recommendation_resource::RecommendationResourceKind::KnowledgeVideo),
+        resource_id: Set(video.id),
+        curriculum_node_id: Set(Some(node_id)),
+        creator_user_id: Set(Some(owner_id)),
+        title: Set("空对象键测试".to_owned()),
+        summary: Set("不可打开的资源不应被推荐。".to_owned()),
+        quality_status: Set(recommendation_resource::RecommendationQualityStatus::Pending),
+        featured: Set(false),
+        display_priority: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let (status, _) = app
+        .request(
+            "GET",
+            &format!("/api/v1/knowledge-videos/{}", video.id),
+            Some(&viewer_token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = app
+        .request(
+            "POST",
+            &format!("/api/v1/recommendation-resources/{}/open", catalog.id),
+            Some(&viewer_token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn chat_context_hides_single_user_questions_and_returns_suggestions() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("chat_user_one", "password123").await;

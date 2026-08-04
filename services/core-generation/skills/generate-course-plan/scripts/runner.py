@@ -1,4 +1,4 @@
-"""Runtime helpers for the generate-course-plan skill."""
+"""Runtime helpers for the curriculum-backed course-plan skill."""
 
 from __future__ import annotations
 
@@ -9,38 +9,34 @@ from typing import Any
 def assemble_plan_prompt(
     skill_instructions: str,
     request: dict[str, Any],
-    tasks_per_stage: int,
+    _tasks_per_stage: int,
 ) -> str:
     return f"""{skill_instructions}
 
-根据用户的学习目标和课前测试结果生成个性化学习计划。
-主题：{request['prompt']}
-目标：{request['target']}
-学习语言：{request['language']}
-必须生成恰好 {request['total_stages']} 个阶段。
-每个阶段必须包含恰好 {tasks_per_stage} 个可执行任务。
-阶段应循序渐进；重点补足答错、未作答或低信心的知识点。
-课前测试结果：{json.dumps(request['pretest_results'], ensure_ascii=False)}
-学习者画像：{json.dumps(request['learner_profile'], ensure_ascii=False)}
-历史学习摘要：{json.dumps(request['learner_history'], ensure_ascii=False)}
-权威课程大纲：{json.dumps(request['authoritative_outline'], ensure_ascii=False)}
-只返回对象：{{"stages":[{{"title":"...","description":"...","tasks":[{{"title":"...","description":"...","knowledge_node_keys":["..."]}}]}}]}}"""
+Create exactly {request['total_stages']} stages from the authoritative outline.
+Tasks per stage may vary according to the learner's pretest and history. A stage may be empty when all of its outline nodes are already mastered; the backend will create a fixed-node review task for that stage.
+Each task must reference exactly one outline node via knowledge_node_key. Do not invent a task title: the backend uses the canonical outline title.
+day_index is a positive logical learning day and may vary by learner.
+Topic: {request['prompt']}
+Goal: {request['target']}
+Language: {request['language']}
+Pretest: {json.dumps(request['pretest_results'], ensure_ascii=False)}
+Learner profile: {json.dumps(request['learner_profile'], ensure_ascii=False)}
+History: {json.dumps(request['learner_history'], ensure_ascii=False)}
+Authoritative outline (权威课程大纲): {json.dumps(request['authoritative_outline'], ensure_ascii=False)}
+Return only JSON: {{"stages":[{{"title":"...","description":"...","tasks":[{{"description":"...","knowledge_node_key":"...","day_index":1}}]}}]}}"""
 
 
 def validate_plan_payload(
-    payload: dict[str, Any],
-    valid_node_keys: set[str],
-    stage_count: int,
-    tasks_per_stage: int,
+    payload: dict[str, Any], valid_node_keys: set[str], stage_count: int
 ) -> None:
     stages = payload.get("stages", [])
     if len(stages) != stage_count:
         raise ValueError(f"expected {stage_count} stages, got {len(stages)}")
     for stage in stages:
         tasks = stage.get("tasks", [])
-        if len(tasks) != tasks_per_stage:
-            raise ValueError("unexpected number of tasks in a stage")
         for task in tasks:
-            keys = task.get("knowledge_node_keys", [])
-            if not keys or any(key not in valid_node_keys for key in keys):
+            if task.get("knowledge_node_key") not in valid_node_keys:
                 raise ValueError("task references an unknown curriculum node")
+            if not isinstance(task.get("day_index"), int) or task["day_index"] < 1:
+                raise ValueError("task day_index must be positive")
