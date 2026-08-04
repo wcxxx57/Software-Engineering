@@ -168,22 +168,20 @@ function TaskResourceCard({
             onLoad={recommendation && !hasTaskResource ? () => recordOpen(recommendation.catalog_id) : undefined}
           />
         )}
-        {!previewOnly ? (
-          <div className="mt-5 flex flex-wrap items-center gap-3 text-sm font-semibold text-brand-medium">
-            <span>觉得内容不合适？</span>
-            <ResourceGenerateCard
-              taskId={task.id}
-              taskStatus={task.status}
-              kind={
-                kind === "knowledge_video"
-                  ? "knowledge-video"
-                  : "interactive-html"
-              }
-              compact
-              previewOnly={previewOnly}
-            />
-          </div>
-        ) : null}
+        <div className="mt-5 flex flex-wrap items-center gap-3 text-sm font-semibold text-brand-medium">
+          <span>觉得内容不合适？</span>
+          <ResourceGenerateCard
+            taskId={task.id}
+            taskStatus={task.status}
+            kind={
+              kind === "knowledge_video"
+                ? "knowledge-video"
+                : "interactive-html"
+            }
+            compact
+            previewOnly={previewOnly}
+          />
+        </div>
       </ContentCard>
     </div>
   );
