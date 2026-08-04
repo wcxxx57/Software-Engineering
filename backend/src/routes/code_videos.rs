@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::AuthUser,
-    entities::{code_video, user, user_code_video_link},
+    entities::{code_video, recommendation_resource, user, user_code_video_link},
     error::{AppError, BusinessError},
     response::{created, ok},
     services::{
@@ -188,16 +188,41 @@ pub async fn get_by_id(
     auth_user: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
-    let _link = user_code_video_link::Entity::find_by_id(id)
+    let owned = user_code_video_link::Entity::find_by_id(id)
         .filter(user_code_video_link::Column::UserId.eq(auth_user.user_id))
         .one(&state.db)
         .await?
-        .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+        .is_some();
 
     let record = code_video::Entity::find_by_id(id)
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
+
+    let catalog = recommendation_resource::Entity::find()
+        .filter(recommendation_resource::Column::ResourceKind.eq(
+            recommendation_resource::RecommendationResourceKind::CodeVideo,
+        ))
+        .filter(recommendation_resource::Column::ResourceId.eq(id))
+        .one(&state.db)
+        .await?;
+    let public_catalogued = catalog.as_ref().is_some_and(|item| {
+        item.curriculum_node_id.is_some()
+            || (item.featured
+                && item.quality_status
+                    == recommendation_resource::RecommendationQualityStatus::Passed)
+    });
+    if !owned
+        && !(public_catalogued
+            && record.public
+            && record.status == code_video::CodeVideoStatus::Finished
+            && record
+                .object_key
+                .as_deref()
+                .is_some_and(|key| !key.trim().is_empty()))
+    {
+        return Err(AppError::business(BusinessError::ContentNotFound));
+    }
 
     Ok(ok(CodeVideoView::from(record)))
 }

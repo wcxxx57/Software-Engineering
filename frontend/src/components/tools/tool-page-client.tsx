@@ -75,6 +75,8 @@ export function ToolPageClient<T extends ToolResource>({
   const qc = useQueryClient();
 
   const [selectedFocusId, setSelectedFocusId] = useState<number | null>(null);
+  const [featuredFocus, setFeaturedFocus] = useState<FeaturedResource | null>(null);
+  const featuredOpened = useRef(new Set<number>());
   const [, startTransition] = useTransition();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const playerRef = useRef<HTMLDivElement | null>(null);
@@ -95,14 +97,14 @@ export function ToolPageClient<T extends ToolResource>({
     enabled: !previewOnly,
   });
 
-  const focusId =
+  const historyFocusId =
     selectedFocusId != null && list.some((item) => item.id === selectedFocusId)
       ? selectedFocusId
       : (list[0]?.id ?? null);
 
   const focusItem = useMemo(
-    () => list.find((it) => it.id === focusId) ?? null,
-    [list, focusId],
+    () => list.find((it) => it.id === historyFocusId) ?? null,
+    [list, historyFocusId],
   );
 
   function scrollToPlayer() {
@@ -129,7 +131,7 @@ export function ToolPageClient<T extends ToolResource>({
         return;
       }
       toast.success("已从工具画廊移除");
-      if (focusId === id) setSelectedFocusId(null);
+      if (historyFocusId === id) setSelectedFocusId(null);
       qc.invalidateQueries({ queryKey: ["tool-list", listEndpoint] });
     });
   };
@@ -140,8 +142,8 @@ export function ToolPageClient<T extends ToolResource>({
         <FeaturedResourceSection
           kind={featuredKind}
           previewData={featuredPreviewData}
-          onOpen={(id) => {
-            setSelectedFocusId(id);
+          onOpen={(resource) => {
+            setFeaturedFocus(resource);
             scrollToPlayer();
           }}
         />
@@ -164,8 +166,14 @@ export function ToolPageClient<T extends ToolResource>({
       <div ref={playerRef}>
         <ToolResultPlayer
           detailKind={detailKind}
-          focusId={focusItem?.id ?? null}
-          prompt={focusItem?.prompt ?? null}
+          focusId={featuredFocus?.id ?? focusItem?.id ?? null}
+          prompt={featuredFocus ? null : focusItem?.prompt ?? null}
+          catalogId={featuredFocus?.catalog_id ?? null}
+          onCatalogOpen={() => {
+            if (!featuredFocus || featuredOpened.current.has(featuredFocus.catalog_id)) return;
+            featuredOpened.current.add(featuredFocus.catalog_id);
+            void fetch(`/api/recommendation-resources/${featuredFocus.catalog_id}/open`, { method: "POST" });
+          }}
         />
       </div>
 
@@ -197,9 +205,10 @@ export function ToolPageClient<T extends ToolResource>({
                 status={item.status}
                 colorIndex={index}
                 thumbnailIcon={cardThumbnailIcon}
-                active={item.id === focusId}
+                active={item.id === historyFocusId}
                 onClick={() => {
                   setSelectedFocusId(item.id);
+                  setFeaturedFocus(null);
                   scrollToPlayer();
                 }}
                 onDelete={() => handleDelete(item.id)}

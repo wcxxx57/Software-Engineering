@@ -22,6 +22,7 @@ FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/zhiying-backend /usr/local/bin/zhiying-backend
 COPY --from=builder /app/target/release/curriculum_review /usr/local/bin/curriculum_review
+COPY --from=builder /app/target/release/recommendation_seed /usr/local/bin/recommendation_seed
 EXPOSE 9000
 USER nonroot
 ENTRYPOINT ["/usr/local/bin/zhiying-backend"]

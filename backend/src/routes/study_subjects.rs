@@ -405,6 +405,8 @@ pub async fn list_stages(
             .or_default()
             .push(StudyTaskBriefView {
                 id: t.id,
+                curriculum_node_id: t.curriculum_node_id,
+                day_index: t.day_index,
                 title: t.title,
                 description: t.description,
                 sort_order: t.sort_order,

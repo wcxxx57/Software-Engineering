@@ -6,7 +6,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
-    TransactionTrait,
+    QueryOrder, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -19,6 +19,7 @@ use crate::{
         study_quiz::StudyQuizStatus, study_quiz_problem, study_stage,
         study_stage::StudyStageStatus, study_subject, study_subject::StudySubjectStatus,
         study_task, study_task::StudyTaskStatus, study_task_curriculum_node, user,
+        recommendation_resource,
         user_code_video_link, user_interactive_html_link, user_knowledge_video_link,
     },
     error::{AppError, BusinessError},
@@ -125,6 +126,40 @@ async fn resolve_interactive_html_owner<C: ConnectionTrait>(
         return Ok(Some(link.user_id));
     }
     resolve_owner_via_task(db, study_task::Column::InteractiveHtmlId, id).await
+}
+
+async fn sync_task_resource_catalog<C: ConnectionTrait>(
+    db: &C,
+    resource_kind: recommendation_resource::RecommendationResourceKind,
+    resource_id: i32,
+    title: String,
+    summary: String,
+) -> Result<(), AppError> {
+    let task_filter = match resource_kind {
+        recommendation_resource::RecommendationResourceKind::KnowledgeVideo => study_task::Column::KnowledgeVideoId,
+        recommendation_resource::RecommendationResourceKind::InteractiveHtml => study_task::Column::InteractiveHtmlId,
+        recommendation_resource::RecommendationResourceKind::CodeVideo => return Ok(()),
+    };
+    let Some(task) = study_task::Entity::find().filter(task_filter.eq(resource_id)).one(db).await? else { return Ok(()); };
+    let Some(curriculum_node_id) = task.curriculum_node_id else { return Ok(()); };
+    let Some(owner_id) = resolve_owner_via_task(db, task_filter, resource_id).await? else { return Ok(()); };
+    if let Some(existing) = recommendation_resource::Entity::find()
+        .filter(recommendation_resource::Column::ResourceKind.eq(resource_kind))
+        .filter(recommendation_resource::Column::ResourceId.eq(resource_id)).one(db).await? {
+        let mut active: recommendation_resource::ActiveModel = existing.into();
+        active.curriculum_node_id = Set(Some(curriculum_node_id));
+        active.creator_user_id = Set(Some(owner_id));
+        active.title = Set(title);
+        active.summary = Set(summary);
+        active.updated_at = Set(Utc::now());
+        active.update(db).await?;
+    } else {
+        recommendation_resource::ActiveModel {
+            resource_kind: Set(resource_kind), resource_id: Set(resource_id), curriculum_node_id: Set(Some(curriculum_node_id)), creator_user_id: Set(Some(owner_id)),
+            title: Set(title), summary: Set(summary), quality_status: Set(recommendation_resource::RecommendationQualityStatus::Pending), featured: Set(false), display_priority: Set(0), created_at: Set(Utc::now()), updated_at: Set(Utc::now()), ..Default::default()
+        }.insert(db).await?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
@@ -349,6 +384,7 @@ async fn update_knowledge_video(
 
     if new_status == knowledge_video::KnowledgeVideoStatus::Finished {
         active.object_key = Set(payload.object_key);
+        sync_task_resource_catalog(&tx, recommendation_resource::RecommendationResourceKind::KnowledgeVideo, id, record.prompt.clone(), "当前知识点的知识讲解视频".to_owned()).await?;
     }
 
     if new_status == knowledge_video::KnowledgeVideoStatus::Failed {
@@ -529,6 +565,7 @@ async fn update_interactive_html(
 
     if new_status == interactive_html::InteractiveHtmlStatus::Finished {
         active.object_key = Set(payload.object_key);
+        sync_task_resource_catalog(&tx, recommendation_resource::RecommendationResourceKind::InteractiveHtml, id, record.prompt.clone(), "当前知识点的可操控 2D 内容".to_owned()).await?;
     }
 
     if new_status == interactive_html::InteractiveHtmlStatus::Failed {
@@ -877,10 +914,13 @@ struct CallbackStage {
 
 #[derive(Debug, Deserialize)]
 struct CallbackTask {
-    title: String,
+    #[serde(default)]
+    title: Option<String>,
     description: String,
     #[serde(default)]
-    knowledge_node_keys: Vec<String>,
+    knowledge_node_key: Option<String>,
+    #[serde(default)]
+    day_index: Option<i32>,
 }
 
 async fn callback_study_subject(
@@ -1018,15 +1058,10 @@ async fn callback_study_subject(
     // Handle Plan FINISHED → create stages and tasks + initialize unlock
     let mut explanations_to_dispatch: Vec<(i32, String)> = Vec::new();
     if new_status == StudySubjectStatus::Studying {
-        let stages = payload
+        let mut stages = payload
             .stages
             .ok_or_else(|| AppError::internal("plan FINISHED callback missing stages data"))?;
-        if subject.curriculum_template_id.is_some()
-            && (stages.len() != subject.total_stages as usize
-                || stages
-                    .iter()
-                    .any(|stage| stage.tasks.len() != state.config.plan_tasks_per_stage as usize))
-        {
+        if subject.curriculum_template_id.is_some() && stages.len() != subject.total_stages as usize {
             return Err(AppError::internal(
                 "plan stage or task count does not match the requested shape",
             ));
@@ -1044,6 +1079,139 @@ async fn callback_study_subject(
             } else {
                 std::collections::HashMap::new()
             };
+
+        if let Some(template_id) = subject.curriculum_template_id {
+            if node_ids_by_key.is_empty() {
+                return Err(AppError::internal("plan curriculum template has no knowledge nodes"));
+            }
+
+            // A successful pretest answer with high confidence, or a node the
+            // learner has already completed in an earlier subject, should not
+            // create another first-time task. The generator is asked to do
+            // this filtering too; applying it at the callback boundary keeps
+            // the invariant true when a model returns an over-inclusive plan.
+            let current_problems = pretest_problem::Entity::find()
+                .filter(pretest_problem::Column::StudySubjectId.eq(subject.id))
+                .all(&tx)
+                .await?;
+            let mut skipped_keys = HashSet::new();
+            for problem in current_problems.iter() {
+                if problem.chosen_answer == Some(problem.answer)
+                    && problem.confidence == Some(pretest_problem::PretestConfidence::VerySure)
+                {
+                    if let Some(node_id) = problem.curriculum_node_id {
+                        if let Some((key, _)) = node_ids_by_key.iter().find(|(_, id)| **id == node_id) {
+                            skipped_keys.insert(key.clone());
+                        }
+                    }
+                }
+            }
+            let finished_subject_ids = study_subject::Entity::find()
+                .filter(crate::entities::study_subject::Column::UserId.eq(subject.user_id))
+                .filter(crate::entities::study_subject::Column::Status.eq(StudySubjectStatus::Finished))
+                .all(&tx)
+                .await?
+                .into_iter()
+                .map(|item| item.id)
+                .collect::<Vec<_>>();
+            if !finished_subject_ids.is_empty() {
+                let finished_stage_ids = study_stage::Entity::find()
+                    .filter(study_stage::Column::StudySubjectId.is_in(finished_subject_ids))
+                    .all(&tx)
+                    .await?
+                    .into_iter()
+                    .map(|stage| stage.id)
+                    .collect::<Vec<_>>();
+                if !finished_stage_ids.is_empty() {
+                    let finished_tasks = study_task::Entity::find()
+                        .filter(study_task::Column::StudyStageId.is_in(finished_stage_ids))
+                        .filter(study_task::Column::Status.eq(StudyTaskStatus::Finished))
+                        .all(&tx)
+                        .await?;
+                    for task in finished_tasks {
+                        if let Some(node_id) = task.curriculum_node_id {
+                            if let Some((key, _)) = node_ids_by_key.iter().find(|(_, id)| **id == node_id) {
+                                skipped_keys.insert(key.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            for stage in &mut stages {
+                stage.tasks.retain(|task| {
+                    task.knowledge_node_key
+                        .as_ref()
+                        .is_none_or(|key| !skipped_keys.contains(key))
+                });
+            }
+
+            let weak_key = current_problems
+                .iter()
+                .filter(|problem| {
+                    problem.chosen_answer != Some(problem.answer)
+                        || problem.confidence != Some(pretest_problem::PretestConfidence::VerySure)
+                })
+                .filter_map(|problem| problem.curriculum_node_id)
+                .find_map(|node_id| node_ids_by_key.iter().find(|(_, id)| **id == node_id).map(|(key, _)| key.clone()));
+            let recent_key = study_task::Entity::find()
+                .filter(study_task::Column::CurriculumNodeId.is_not_null())
+                .filter(study_task::Column::Status.eq(StudyTaskStatus::Finished));
+            let user_subject_ids = study_subject::Entity::find()
+                .filter(study_subject::Column::UserId.eq(subject.user_id))
+                .all(&tx)
+                .await?
+                .into_iter()
+                .map(|item| item.id)
+                .collect::<Vec<_>>();
+            let user_stage_ids = if user_subject_ids.is_empty() {
+                Vec::new()
+            } else {
+                study_stage::Entity::find()
+                    .filter(study_stage::Column::StudySubjectId.is_in(user_subject_ids))
+                    .all(&tx)
+                    .await?
+                    .into_iter()
+                    .map(|stage| stage.id)
+                    .collect::<Vec<_>>()
+            };
+            let recent_key = if user_stage_ids.is_empty() {
+                None
+            } else {
+                recent_key
+                    .filter(study_task::Column::StudyStageId.is_in(user_stage_ids))
+                    .order_by_desc(study_task::Column::UpdatedAt)
+                    .all(&tx)
+                    .await?
+                    .into_iter()
+                    .find_map(|task| task.curriculum_node_id.and_then(|node_id| node_ids_by_key.iter().find(|(_, id)| **id == node_id).map(|(key, _)| key.clone())))
+            };
+            let outline_first_key = curriculum_node::Entity::find()
+                .filter(curriculum_node::Column::CurriculumTemplateId.eq(template_id))
+                .order_by_asc(curriculum_node::Column::SortOrder)
+                .order_by_asc(curriculum_node::Column::Id)
+                .one(&tx)
+                .await?
+                .map(|node| node.node_key);
+            let fallback_key = weak_key
+                .or(recent_key)
+                .or(outline_first_key)
+                .ok_or_else(|| AppError::internal("plan curriculum template has no fallback node"))?;
+            for (index, stage) in stages.iter_mut().enumerate() {
+                if stage.tasks.is_empty() {
+                    stage.tasks.push(CallbackTask {
+                        title: None,
+                        description: "针对当前掌握情况的复习".to_owned(),
+                        knowledge_node_key: Some(fallback_key.clone()),
+                        day_index: Some((index + 1) as i32),
+                    });
+                }
+            }
+
+            let _ = template_id;
+        } else if stages.iter().any(|stage| stage.tasks.is_empty()) {
+            return Err(AppError::internal("plan stage cannot be empty without a curriculum template"));
+        }
 
         for (si, s) in stages.into_iter().enumerate() {
             let is_first_stage = si == 0;
@@ -1077,27 +1245,32 @@ async fn callback_study_subject(
                     StudyTaskStatus::Locked
                 };
 
-                let prompt = format!("{}\n\n{}", t.title, t.description);
-                let knowledge_node_ids = t
-                    .knowledge_node_keys
-                    .iter()
-                    .map(|key| {
-                        node_ids_by_key.get(key).copied().ok_or_else(|| {
-                            AppError::internal("plan referenced an unknown curriculum node")
-                        })
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                if subject.curriculum_template_id.is_some() && knowledge_node_ids.is_empty() {
-                    return Err(AppError::internal(
-                        "plan task is missing curriculum node mapping",
-                    ));
-                }
+                let (curriculum_node_id, node_title) = if subject.curriculum_template_id.is_some() {
+                    let key = t.knowledge_node_key.as_deref().ok_or_else(|| {
+                        AppError::internal("plan task is missing curriculum node mapping")
+                    })?;
+                    let curriculum_node_id = node_ids_by_key.get(key).copied().ok_or_else(|| {
+                        AppError::internal("plan referenced an unknown curriculum node")
+                    })?;
+                    let node_title = curriculum_node::Entity::find_by_id(curriculum_node_id)
+                        .one(&tx).await?
+                        .ok_or_else(|| AppError::internal("plan curriculum node was removed"))?
+                        .title;
+                    (Some(curriculum_node_id), node_title)
+                } else {
+                    // Legacy plans created before curriculum-backed planning do
+                    // not carry a node key. Preserve their callback title while
+                    // keeping new outline-backed plans strict above.
+                    (None, t.title.clone().unwrap_or_else(|| t.description.clone()))
+                };
+                let prompt = format!("{}\n\n{}", node_title, t.description);
                 let ke_record = knowledge_explanation::ActiveModel {
                     user_id: Set(subject.user_id),
                     status: Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing),
                     prompt: Set(prompt.clone()),
                     content: Set(None),
                     public: Set(false),
+                    bookmarked: Set(false),
                     cost: Set(0),
                     created_at: Set(now),
                     updated_at: Set(now),
@@ -1109,7 +1282,9 @@ async fn callback_study_subject(
 
                 let task_record = study_task::ActiveModel {
                     study_stage_id: Set(stage_record.id),
-                    title: Set(t.title),
+                    curriculum_node_id: Set(curriculum_node_id),
+                    day_index: Set(t.day_index.or(Some((ti + 1) as i32))),
+                    title: Set(node_title),
                     description: Set(t.description),
                     sort_order: Set(ti as i32),
                     status: Set(task_status),
@@ -1122,7 +1297,7 @@ async fn callback_study_subject(
                 }
                 .insert(&tx)
                 .await?;
-                for curriculum_node_id in knowledge_node_ids {
+                if let Some(curriculum_node_id) = curriculum_node_id {
                     study_task_curriculum_node::ActiveModel {
                         study_task_id: Set(task_record.id),
                         curriculum_node_id: Set(curriculum_node_id),

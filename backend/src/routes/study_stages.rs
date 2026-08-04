@@ -30,6 +30,8 @@ pub struct StudyStageDetailView {
 #[derive(Debug, Serialize)]
 pub struct StudyTaskBriefView {
     pub id: i32,
+    pub curriculum_node_id: Option<i32>,
+    pub day_index: Option<i32>,
     pub title: String,
     pub description: String,
     pub sort_order: i32,
@@ -65,6 +67,8 @@ pub async fn get_by_id(
         .into_iter()
         .map(|t| StudyTaskBriefView {
             id: t.id,
+            curriculum_node_id: t.curriculum_node_id,
+            day_index: t.day_index,
             title: t.title,
             description: t.description,
             sort_order: t.sort_order,

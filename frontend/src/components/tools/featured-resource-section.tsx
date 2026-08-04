@@ -12,7 +12,7 @@ const META = {
   "interactive-html": { icon: Box },
 } as const;
 
-export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: RecommendationResourceKind; onOpen: (id: number) => void; previewData?: FeaturedResource }) {
+export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: RecommendationResourceKind; onOpen: (resource: FeaturedResource) => void; previewData?: FeaturedResource[] }) {
   const { data: queriedData = [] } = useFeaturedResources(kind, previewData == null);
   const data = previewData ?? queriedData;
   const meta = META[kind];
@@ -21,7 +21,7 @@ export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: R
     <section className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-extrabold text-brand-dark">
-          推荐内容
+          精品推荐
           <span className="ml-2 rounded-full bg-palette-orange-lighter px-2.5 py-0.5 text-xs font-bold text-palette-orange">
             {data.length}
           </span>
@@ -40,12 +40,12 @@ export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: R
       <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-8">
         {data.map((item, index) => (
           <ToolCard
-            key={item.id}
+            key={item.catalog_id}
             title={item.title}
             status="FINISHED"
             colorIndex={index}
             thumbnailIcon={<Icon strokeWidth={1.75} />}
-            onClick={() => onOpen(item.id)}
+            onClick={() => onOpen(item)}
             onDelete={() => undefined}
             showDelete={false}
             showStatus={false}

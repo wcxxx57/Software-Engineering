@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Film, RotateCw, Users } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type {
@@ -89,6 +89,12 @@ function TaskResourceCard({
 }) {
   const [index, setIndex] = useState(0);
   const recommendation = candidates[index] ?? null;
+  const openedCatalogIds = useRef(new Set<number>());
+  const recordOpen = useCallback((catalogId: number) => {
+    if (previewOnly || openedCatalogIds.current.has(catalogId)) return;
+    openedCatalogIds.current.add(catalogId);
+    void fetch(`/api/recommendation-resources/${catalogId}/open`, { method: "POST" });
+  }, [previewOnly]);
   const hasTaskResource =
     kind === "knowledge_video"
       ? task.knowledge_video_id != null
@@ -108,6 +114,7 @@ function TaskResourceCard({
           taskId={task.id}
           taskStatus={task.status}
           kind={kind === "knowledge_video" ? "knowledge-video" : "interactive-html"}
+          previewOnly={previewOnly}
         />
       </div>
     );
@@ -146,6 +153,8 @@ function TaskResourceCard({
                 : { kind: "tool", resourceKind: "knowledge-videos", id: recommendation!.id }
             }
             showCard={false}
+            allowBookmark={hasTaskResource}
+            onPlay={recommendation && !hasTaskResource ? () => recordOpen(recommendation.catalog_id) : undefined}
           />
         ) : (
           <InteractiveHtmlViewer
@@ -156,6 +165,7 @@ function TaskResourceCard({
             }
             showCard={false}
             taskStatus={hasTaskResource ? task.status : undefined}
+            onLoad={recommendation && !hasTaskResource ? () => recordOpen(recommendation.catalog_id) : undefined}
           />
         )}
         {recommendation && !hasTaskResource ? (
@@ -170,6 +180,7 @@ function TaskResourceCard({
                   : "interactive-html"
               }
               compact
+              previewOnly={previewOnly}
             />
           </div>
         ) : null}

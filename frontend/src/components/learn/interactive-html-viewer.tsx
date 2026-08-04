@@ -26,12 +26,14 @@ export function InteractiveHtmlViewer({
   subtitle = "全沉浸可交互环境",
   showCard = true,
   taskStatus,
+  onLoad,
 }: {
   source: InteractiveHtmlViewerSource;
   title?: string;
   subtitle?: string;
   showCard?: boolean;
   taskStatus?: StudyTaskStatus;
+  onLoad?: () => void;
 }) {
   const { storage } = useConfig();
   const innerSource: ResourceSource =
@@ -96,6 +98,7 @@ export function InteractiveHtmlViewer({
           sandbox="allow-scripts allow-same-origin allow-forms"
           allow="clipboard-write"
           className="h-[min(82vh,860px)] min-h-[640px] w-full rounded-2xl border border-[color-mix(in_oklch,var(--palette-green-light)_50%,transparent)] bg-white"
+          onLoad={onLoad}
         />
       )}
     </>

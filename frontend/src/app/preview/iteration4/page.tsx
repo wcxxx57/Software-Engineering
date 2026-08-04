@@ -1,17 +1,13 @@
-import { BookOpen, Clapperboard, SearchCode, Sparkles, FlaskConical } from "lucide-react";
+import { BookOpen, Sparkles } from "lucide-react";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
 
 import { PlanRecommendationCard } from "@/components/dashboard/plan-recommendation-card";
 import { ContentCard } from "@/components/learn/content-card";
 import { KnowledgePointRecommendations } from "@/components/learn/knowledge-point-recommendations";
 import { TaskSidebar } from "@/components/learn/task-sidebar";
-import { FeaturedResourceSection } from "@/components/tools/featured-resource-section";
-import { ToolPageShell } from "@/components/tools/tool-page-shell";
+import { Iteration4ToolPreview } from "@/components/preview/iteration4-tool-preview";
 import type {
-  FeaturedResource,
   RecommendedPlan,
-  RecommendationResourceKind,
   StudyStageDetail,
   StudyTask,
   TaskChatContext,
@@ -20,6 +16,7 @@ import type {
 
 const task: StudyTask = {
   id: 9001, study_stage_id: 900, title: "二叉搜索树",
+  curriculum_node_id: 901, day_index: 2,
   description: "通过概念、代码与交互操作理解二叉搜索树的查找、插入和删除规则。",
   sort_order: 1, status: "STUDYING", knowledge_video_id: null,
   interactive_html_id: null, knowledge_explanation_id: null, created_at: 0, updated_at: 0,
@@ -28,16 +25,16 @@ const stage: StudyStageDetail = {
   id: 900, study_subject_id: 90, title: "树结构", description: "掌握树与二叉树的基本结构",
   sort_order: 1, status: "STUDYING", total_tasks: 3, finished_tasks: 1, created_at: 0,
   tasks: [
-    { id: 9000, title: "树的基本概念", description: "", sort_order: 0, status: "FINISHED", created_at: 0 },
-    { id: 9001, title: "二叉搜索树", description: "", sort_order: 1, status: "STUDYING", created_at: 0 },
-    { id: 9002, title: "树的遍历", description: "", sort_order: 2, status: "LOCKED", created_at: 0 },
+    { id: 9000, curriculum_node_id: 900, day_index: 1, title: "树的基本概念", description: "", sort_order: 0, status: "FINISHED", created_at: 0 },
+    { id: 9001, curriculum_node_id: 901, day_index: 2, title: "二叉搜索树", description: "", sort_order: 1, status: "STUDYING", created_at: 0 },
+    { id: 9002, curriculum_node_id: 902, day_index: 3, title: "树的遍历", description: "", sort_order: 2, status: "LOCKED", created_at: 0 },
   ],
 };
 const recommendations: TaskRecommendations = {
   eligible: true, knowledge_point_title: "二叉搜索树",
   resources: {
-    knowledge_video: [{ id: 1, title: "二叉搜索树的查找与插入动画", summary: "用动画理解查找路径、插入位置与树高变化。", reasons: ["与你当前学习进度相近的学习者通常先通过动画建立概念理解"], learner_count: 128 }],
-    interactive_html: [{ id: 3, title: "二叉搜索树节点删除操作台", summary: "拖动、删除节点，实时观察树结构变化。", reasons: ["适合在理解概念后动手验证删除规则"], learner_count: null }],
+    knowledge_video: [{ catalog_id: 1, id: 1, title: "二叉搜索树的查找与插入动画", summary: "用动画理解查找路径、插入位置与树高变化。", reasons: ["与你当前学习进度相近的学习者通常先通过动画建立概念理解"], learner_count: 128 }],
+    interactive_html: [{ catalog_id: 3, id: 3, title: "二叉搜索树节点删除操作台", summary: "拖动、删除节点，实时观察树结构变化。", reasons: ["适合在理解概念后动手验证删除规则"], learner_count: null }],
   },
 };
 const chat: TaskChatContext = {
@@ -50,8 +47,6 @@ const nextPlan: RecommendedPlan = {
   stage_count: 4, task_count: 16, estimated_weeks: 3,
   stages: [{ title: "线性表与栈队列", task_count: 4 }, { title: "树与图", task_count: 4 }, { title: "排序与查找", task_count: 4 }, { title: "综合练习", task_count: 4 }],
 };
-const featured: FeaturedResource = [{ id: 1, title: "二叉搜索树的查找与插入动画", summary: "用动画理解查找路径、插入位置与树高变化。" }];
-
 export default async function Iteration4PreviewPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   if (process.env.UI_PREVIEW !== "true") notFound();
   const { view = "task" } = await searchParams;
@@ -82,11 +77,5 @@ function PlanPreview() {
 }
 
 function ToolPreview({ kind }: { kind: "k2v" | "c2v" | "interactive" }) {
-  const metas: Record<typeof kind, { title: string; subtitle: string; label: string; icon: ReactNode; resourceKind: RecommendationResourceKind }> = {
-    k2v: { title: "Knowledge 2 Video", subtitle: "你的专属 AIGC 视频知识库", label: "知识点视频", icon: <Clapperboard className="size-4" />, resourceKind: "knowledge-video" },
-    c2v: { title: "Code 2 Video", subtitle: "你的专属算法题解视听库", label: "代码题解视频", icon: <SearchCode className="size-4" />, resourceKind: "code-video" },
-    interactive: { title: "Interactive Lab", subtitle: "把抽象概念变成可玩的沙盒，AI 即刻为你搭建演示页面", label: "交互式实验室", icon: <FlaskConical className="size-4" />, resourceKind: "interactive-html" },
-  };
-  const meta = metas[kind];
-  return <ToolPageShell title={meta.title} subtitle={meta.subtitle} badge={{ icon: meta.icon, label: meta.label }}><FeaturedResourceSection kind={meta.resourceKind} previewData={featured} onOpen={() => undefined} /></ToolPageShell>;
+  return <Iteration4ToolPreview kind={kind} />;
 }

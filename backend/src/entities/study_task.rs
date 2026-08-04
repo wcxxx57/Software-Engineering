@@ -23,6 +23,8 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
     pub study_stage_id: i32,
+    pub curriculum_node_id: Option<i32>,
+    pub day_index: Option<i32>,
     pub title: String,
     #[sea_orm(column_type = "Text")]
     pub description: String,
@@ -43,6 +45,12 @@ pub enum Relation {
         to = "super::study_stage::Column::Id"
     )]
     StudyStage,
+    #[sea_orm(
+        belongs_to = "super::curriculum_node::Entity",
+        from = "Column::CurriculumNodeId",
+        to = "super::curriculum_node::Column::Id"
+    )]
+    CurriculumNode,
     #[sea_orm(
         belongs_to = "super::knowledge_video::Entity",
         from = "Column::KnowledgeVideoId",

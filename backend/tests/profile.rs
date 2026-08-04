@@ -22,6 +22,7 @@ async fn user_patch_set_public_works() {
         prompt: Set("explain polymorphism".to_owned()),
         content: Set(Some("多态是...".to_owned())),
         public: Set(false),
+        bookmarked: Set(false),
         cost: Set(10),
         created_at: Set(Utc::now()),
         updated_at: Set(Utc::now()),

@@ -34,6 +34,8 @@ use crate::{
 pub struct StudyTaskView {
     pub id: i32,
     pub study_stage_id: i32,
+    pub curriculum_node_id: Option<i32>,
+    pub day_index: Option<i32>,
     pub title: String,
     pub description: String,
     pub sort_order: i32,
@@ -50,6 +52,8 @@ impl From<study_task::Model> for StudyTaskView {
         Self {
             id: m.id,
             study_stage_id: m.study_stage_id,
+            curriculum_node_id: m.curriculum_node_id,
+            day_index: m.day_index,
             title: m.title,
             description: m.description,
             sort_order: m.sort_order,
@@ -467,7 +471,7 @@ pub async fn create_knowledge_video(
         status: Set(knowledge_video::KnowledgeVideoStatus::Queuing),
         prompt: Set(prompt.clone()),
         object_key: Set(None),
-        public: Set(false),
+        public: Set(true),
         bookmarked: Set(false),
         created_at: Set(now),
         updated_at: Set(now),
@@ -582,7 +586,7 @@ pub async fn create_interactive_html(
         status: Set(interactive_html::InteractiveHtmlStatus::Queuing),
         prompt: Set(prompt.clone()),
         object_key: Set(None),
-        public: Set(false),
+        public: Set(true),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()

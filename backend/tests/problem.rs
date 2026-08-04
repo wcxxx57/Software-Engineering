@@ -130,7 +130,7 @@ async fn me_bookmarks_returns_only_bookmarked() {
         .await;
     let arr = body["data"].as_array().expect("array");
     assert_eq!(arr.len(), 1);
-    assert_eq!(arr[0]["content"], "Q1");
+    assert_eq!(arr[0]["description"], "Q1");
 }
 
 #[tokio::test]

@@ -26,11 +26,15 @@ export function VideoViewer({
   title = "沉浸视界",
   subtitle = "知识点视频化解析",
   showCard = true,
+  allowBookmark = true,
+  onPlay,
 }: {
   source: VideoViewerSource;
   title?: string;
   subtitle?: string;
   showCard?: boolean;
+  allowBookmark?: boolean;
+  onPlay?: () => void;
 }) {
   const { storage } = useConfig();
   const innerSource: ResourceSource =
@@ -60,6 +64,7 @@ export function VideoViewer({
   });
   const bookmarked = toggleBookmark.data?.bookmarked ?? data?.bookmarked ?? false;
   const canBookmark =
+    allowBookmark &&
     data &&
     (source.kind === "task" || source.resourceKind === "knowledge-videos");
 
@@ -103,6 +108,7 @@ export function VideoViewer({
           controls
           className="aspect-video w-full rounded-2xl border border-[color-mix(in_oklch,var(--palette-blue-light)_30%,transparent)] bg-gradient-to-br from-palette-blue-lighter to-palette-blue-mist shadow-[inset_0_2px_8px_rgba(0,0,0,0.05)]"
           src={assetUrl(data.object_key, storage)}
+          onPlay={onPlay}
         />
       )}
     </>

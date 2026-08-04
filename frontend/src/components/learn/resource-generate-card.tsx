@@ -74,11 +74,13 @@ export function ResourceGenerateCard({
   taskStatus,
   kind,
   compact = false,
+  previewOnly = false,
 }: {
   taskId: number;
   taskStatus: StudyTaskStatus;
   kind: Kind;
   compact?: boolean;
+  previewOnly?: boolean;
 }) {
   const meta = META[kind];
   const config = useConfig();
@@ -95,7 +97,7 @@ export function ResourceGenerateCard({
       : config.resource.interactive_html_diamond_cost;
   const balance = me?.diamond ?? 0;
   const locked = taskStatus === "LOCKED";
-  const submitDisabled = locked || isPending;
+  const submitDisabled = previewOnly || locked || isPending;
 
   const onConfirm = () => {
     startTransition(async () => {
@@ -144,7 +146,9 @@ export function ResourceGenerateCard({
           type="button"
           variant="outline"
           disabled={submitDisabled}
-          onClick={() => setConfirmOpen(true)}
+          onClick={() => {
+            if (!previewOnly) setConfirmOpen(true);
+          }}
           className="rounded-full border-white/80 bg-white/60 text-brand-dark hover:bg-white/90"
         >
           {locked ? "请先完成前置任务" : "为当前知识点重新生成"}
@@ -177,7 +181,9 @@ export function ResourceGenerateCard({
           <Button
             type="button"
             disabled={submitDisabled}
-            onClick={() => setConfirmOpen(true)}
+            onClick={() => {
+              if (!previewOnly) setConfirmOpen(true);
+            }}
             className="inline-flex items-center gap-2 bg-gradient-to-br from-palette-yellow to-palette-orange px-7 py-2 text-base font-bold text-brand-dark shadow-[0_4px_16px_color-mix(in_oklch,var(--palette-orange)_35%,transparent)] hover:opacity-90"
           >
             {locked ? (

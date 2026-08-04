@@ -429,6 +429,7 @@ impl TestApp {
             prompt: Set("test prompt".to_owned()),
             object_key: Set(None),
             public: Set(false),
+            bookmarked: Set(false),
             created_at: Set(now),
             updated_at: Set(now),
             ..Default::default()
@@ -521,6 +522,7 @@ impl TestApp {
             prompt: Set("test prompt".to_owned()),
             content: Set(None),
             public: Set(false),
+            bookmarked: Set(false),
             cost: Set(cost),
             created_at: Set(now),
             updated_at: Set(now),

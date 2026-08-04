@@ -14,12 +14,16 @@ export interface ToolResultPlayerProps {
   detailKind: ToolFocusKind;
   focusId: number | null;
   prompt: string | null;
+  catalogId?: number | null;
+  onCatalogOpen?: () => void;
 }
 
 export function ToolResultPlayer({
   detailKind,
   focusId,
   prompt,
+  catalogId = null,
+  onCatalogOpen,
 }: ToolResultPlayerProps) {
   if (focusId == null) {
     return (
@@ -45,18 +49,22 @@ export function ToolResultPlayer({
         <VideoViewer
           source={{ kind: "tool", resourceKind: "knowledge-videos", id: focusId }}
           showCard={false}
+          allowBookmark={catalogId == null}
+          onPlay={catalogId != null ? onCatalogOpen : undefined}
         />
       )}
       {detailKind === "code-video" && (
         <VideoViewer
           source={{ kind: "tool", resourceKind: "code-videos", id: focusId }}
           showCard={false}
+          onPlay={catalogId != null ? onCatalogOpen : undefined}
         />
       )}
       {detailKind === "interactive-html" && (
         <InteractiveHtmlViewer
           source={{ kind: "tool", id: focusId }}
           showCard={false}
+          onLoad={catalogId != null ? onCatalogOpen : undefined}
         />
       )}
 

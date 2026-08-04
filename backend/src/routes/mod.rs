@@ -8,6 +8,7 @@ mod me;
 mod placeholders;
 mod public_config;
 mod quiz_problems;
+mod recommendations;
 mod study_quizzes;
 mod study_stages;
 mod study_subjects;
@@ -125,6 +126,9 @@ fn api_router() -> Router<AppState> {
             "/study-subjects/{id}/plan",
             axum::routing::post(study_subjects::create_plan),
         )
+        .route("/study-subjects/{id}/plan-recommendation", get(recommendations::plan_recommendation))
+        .route("/study-subjects/{id}/next-plan-recommendation", get(recommendations::next_plan_recommendation))
+        .route("/study-subjects/{id}/plan-recommendations/{template_id}/adopt", axum::routing::post(recommendations::adopt_plan_recommendation))
         .route(
             "/study-subjects/{id}/stages",
             get(study_subjects::list_stages),
@@ -133,6 +137,11 @@ fn api_router() -> Router<AppState> {
             "/study-subjects/{id}/knowledge-tree",
             get(study_subjects::get_knowledge_tree).post(study_subjects::generate_knowledge_tree),
         )
+        .route("/study-tasks/{id}/recommendations", get(recommendations::task_recommendations))
+        .route("/study-tasks/{id}/chat-context", get(recommendations::chat_context))
+        .route("/study-tasks/{id}/chat-questions", axum::routing::post(recommendations::record_chat_question))
+        .route("/recommendations/featured", get(recommendations::featured))
+        .route("/recommendation-resources/{id}/open", axum::routing::post(recommendations::record_open))
         // Study stages
         .route("/study-stages/{id}", get(study_stages::get_by_id))
         // Study tasks

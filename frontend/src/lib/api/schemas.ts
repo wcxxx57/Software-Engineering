@@ -243,6 +243,8 @@ export type SubmitStudyQuizResponse = z.infer<
 
 export const studyTaskBriefSchema = z.object({
   id: z.number().int(),
+  curriculum_node_id: z.number().int().nullable(),
+  day_index: z.number().int().nullable(),
   title: z.string(),
   description: z.string(),
   sort_order: z.number().int(),
@@ -297,6 +299,8 @@ export type KnowledgeTreeNode = z.infer<typeof knowledgeTreeNodeSchema>;
 export const studyTaskSchema = z.object({
   id: z.number().int(),
   study_stage_id: z.number().int(),
+  curriculum_node_id: z.number().int().nullable(),
+  day_index: z.number().int().nullable(),
   title: z.string(),
   description: z.string(),
   sort_order: z.number().int(),
@@ -390,6 +394,7 @@ export type RecommendationResourceKind = z.infer<
 >;
 
 export const recommendedResourceSchema = z.object({
+  catalog_id: z.number().int(),
   id: z.number().int(),
   title: z.string(),
   summary: z.string(),
@@ -410,12 +415,13 @@ export type TaskRecommendations = z.infer<typeof taskRecommendationsSchema>;
 
 export const featuredResourcesSchema = z.array(
   z.object({
+    catalog_id: z.number().int(),
     id: z.number().int(),
     title: z.string(),
     summary: z.string(),
   }),
 );
-export type FeaturedResource = z.infer<typeof featuredResourcesSchema>;
+export type FeaturedResource = z.infer<typeof featuredResourcesSchema>[number];
 
 export const chatQuestionSchema = z.object({ question: z.string() });
 export const popularChatQuestionSchema = chatQuestionSchema.extend({
