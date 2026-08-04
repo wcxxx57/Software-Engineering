@@ -1287,6 +1287,7 @@ async fn callback_study_quiz(
                 explanation: Set(p.explanation),
                 chosen_answer: Set(None),
                 bookmarked: Set(false),
+                bookmarked_at: Set(None),
                 mistake_hidden: Set(false),
                 created_at: Set(now),
                 ..Default::default()

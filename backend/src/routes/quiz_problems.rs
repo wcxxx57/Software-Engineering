@@ -1,4 +1,5 @@
 use axum::extract::{Path, State};
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
@@ -54,6 +55,7 @@ pub async fn toggle_bookmark(
     let new_value = !qp.bookmarked;
     let mut active: study_quiz_problem::ActiveModel = qp.into();
     active.bookmarked = Set(new_value);
+    active.bookmarked_at = Set(new_value.then(Utc::now));
     active.update(&state.db).await?;
 
     Ok(ok(serde_json::json!({"bookmarked": new_value})))

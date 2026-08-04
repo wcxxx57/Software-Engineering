@@ -103,6 +103,7 @@ pub async fn create(
         content: Set(None),
         public: Set(payload.public),
         bookmarked: Set(false),
+        bookmarked_at: Set(None),
         cost: Set(cost),
         created_at: Set(now),
         updated_at: Set(now),
@@ -311,6 +312,7 @@ pub async fn toggle_bookmark(
     let bookmarked = !record.bookmarked;
     let mut active: knowledge_explanation::ActiveModel = record.into();
     active.bookmarked = Set(bookmarked);
+    active.bookmarked_at = Set(bookmarked.then(Utc::now));
     active.updated_at = Set(Utc::now());
     active.update(&state.db).await?;
     Ok(ok(serde_json::json!({"bookmarked": bookmarked})))

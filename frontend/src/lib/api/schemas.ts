@@ -449,6 +449,7 @@ export const quizProblemSourceSchema = z.object({
   quiz_id: z.number().int(),
   task_id: z.number().int(),
   task_title: z.string(),
+  knowledge_point_title: z.string(),
   stage_id: z.number().int(),
   stage_title: z.string(),
   subject_id: z.number().int(),
@@ -480,6 +481,9 @@ export const bookmarkItemSchema = z.object({
   kind: z.enum(["quiz_problem", "knowledge_video", "knowledge_explanation"]),
   title: z.string(),
   description: z.string(),
+  knowledge_point_title: z.string().nullable(),
+  source: quizProblemSourceSchema.nullable(),
+  open_url: z.string().nullable(),
   created_at: z.number().int(),
 });
 export const bookmarkItemListSchema = z.array(bookmarkItemSchema);

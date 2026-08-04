@@ -19,3 +19,17 @@ export async function GET(
     }),
   );
 }
+
+export async function POST(
+  _req: Request,
+  ctx: RouteContext<"/api/study-subjects/[id]/knowledge-tree">,
+) {
+  const { id } = await ctx.params;
+  const subjectId = Number(id);
+  if (!Number.isInteger(subjectId) || subjectId <= 0) {
+    return NextResponse.json({ message: "Invalid id" }, { status: 400 });
+  }
+  return proxyJson(() =>
+    serverFetch(`/study-subjects/${subjectId}/knowledge-tree`, { method: "POST" }),
+  );
+}

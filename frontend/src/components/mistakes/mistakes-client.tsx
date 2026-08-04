@@ -38,9 +38,10 @@ import {
 import {
   useBookmarks,
   useMistakes,
+  useQuizProblem,
 } from "@/lib/query/mistakes";
 import { requestJson } from "@/lib/query/utils";
-import type { BookmarkItem, QuizProblemReview } from "@/lib/api/schemas";
+import type { BookmarkItem, QuizProblemReview, QuizProblemSource } from "@/lib/api/schemas";
 import { cn } from "@/lib/utils";
 
 type Mode = "mistakes" | "bookmarks";
@@ -49,6 +50,7 @@ export function MistakesClient() {
   const [mode, setMode] = useState<Mode>("mistakes");
   const [includeHidden, setIncludeHidden] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [activeBookmarkId, setActiveBookmarkId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
 
@@ -63,6 +65,15 @@ export function MistakesClient() {
     [mistakeItems, activeId],
   );
   const activeItem = activeIndex >= 0 ? mistakeItems[activeIndex] : null;
+  const bookmarkedProblemIds = useMemo(
+    () => bookmarkItems.filter((item) => item.kind === "quiz_problem").map((item) => item.id),
+    [bookmarkItems],
+  );
+  const activeBookmarkIndex = useMemo(
+    () => bookmarkedProblemIds.findIndex((id) => id === activeBookmarkId),
+    [bookmarkedProblemIds, activeBookmarkId],
+  );
+  const activeBookmarkProblem = useQuizProblem(activeBookmarkId);
 
   return (
     <div className="min-h-dvh w-full bg-canvas">
@@ -92,6 +103,7 @@ export function MistakesClient() {
           onValueChange={(value) => {
             setMode(value as Mode);
             setActiveId(null);
+            setActiveBookmarkId(null);
           }}
         >
           <TabsList className="grid h-auto w-full max-w-[360px] grid-cols-2 gap-1 rounded-full bg-canvas p-1 shadow-[inset_2px_2px_5px_color-mix(in_oklch,var(--border-muted)_25%,transparent),inset_-2px_-2px_5px_rgba(255,255,255,0.8)]">
@@ -141,6 +153,7 @@ export function MistakesClient() {
             <BookmarkGrid
               items={bookmarkItems}
               isLoading={bookmarksQuery.isLoading}
+              onOpenProblem={setActiveBookmarkId}
               emptyHint={
                 deferredSearch
                   ? "没有找到匹配的收藏题目，换个关键词试试"
@@ -163,6 +176,20 @@ export function MistakesClient() {
           activeIndex >= 0 &&
           activeIndex < mistakeItems.length - 1 &&
           setActiveId(mistakeItems[activeIndex + 1].id)
+        }
+      />
+      <DetailDialog
+        item={activeBookmarkProblem.data ?? null}
+        index={activeBookmarkIndex}
+        total={bookmarkedProblemIds.length}
+        onClose={() => setActiveBookmarkId(null)}
+        onPrev={() =>
+          activeBookmarkIndex > 0 && setActiveBookmarkId(bookmarkedProblemIds[activeBookmarkIndex - 1])
+        }
+        onNext={() =>
+          activeBookmarkIndex >= 0 &&
+          activeBookmarkIndex < bookmarkedProblemIds.length - 1 &&
+          setActiveBookmarkId(bookmarkedProblemIds[activeBookmarkIndex + 1])
         }
       />
     </div>
@@ -245,10 +272,12 @@ function CountBar({
 function BookmarkGrid({
   items,
   isLoading,
+  onOpenProblem,
   emptyHint,
 }: {
   items: BookmarkItem[];
   isLoading: boolean;
+  onOpenProblem: (id: number) => void;
   emptyHint: string;
 }) {
   const queryClient = useQueryClient();
@@ -291,6 +320,18 @@ function BookmarkGrid({
   return (
     <div className="grid gap-6" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))" }}>
       {items.map((item) => {
+        if (item.kind === "quiz_problem" && item.source && item.open_url) {
+          return (
+            <QuizBookmarkCard
+              key={`${item.kind}-${item.id}`}
+              item={item}
+              source={item.source}
+              onOpen={() => onOpenProblem(item.id)}
+              onRemove={() => toggleBookmark.mutate(item)}
+              removing={toggleBookmark.isPending}
+            />
+          );
+        }
         const Icon =
           item.kind === "knowledge_video"
             ? Film
@@ -319,11 +360,101 @@ function BookmarkGrid({
             </div>
             <p className="text-sm font-bold text-palette-orange">{item.title}</p>
             <p className="line-clamp-3 text-base font-bold leading-relaxed text-brand-dark">{item.description}</p>
-            <span className="mt-auto text-xs font-semibold text-brand-light">{formatTime(item.created_at)}</span>
+            <div className="mt-auto flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-brand-light">收藏于 {formatTime(item.created_at)}</span>
+              {item.open_url ? (
+                <Link
+                  href={item.open_url}
+                  className="inline-flex items-center gap-1 rounded-full bg-palette-orange-lighter px-3 py-1.5 text-xs font-extrabold text-brand-dark transition hover:bg-palette-yellow-light"
+                >
+                  {item.kind === "quiz_problem" ? "查看题目" : "打开知识点"}
+                  <ChevronRight className="size-3.5" />
+                </Link>
+              ) : null}
+            </div>
           </article>
         );
       })}
     </div>
+  );
+}
+
+function QuizBookmarkCard({
+  item,
+  source,
+  onOpen,
+  onRemove,
+  removing,
+}: {
+  item: BookmarkItem;
+  source: QuizProblemSource;
+  onOpen: () => void;
+  onRemove: () => void;
+  removing: boolean;
+}) {
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className="group relative flex flex-col gap-3.5 overflow-hidden rounded-[20px] border-[1.5px] border-white/70 bg-gradient-to-b from-white/85 to-palette-yellow-mist/50 p-6 shadow-[0_4px_12px_color-mix(in_oklch,var(--border-muted)_25%,transparent)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-palette-orange/40 hover:shadow-[0_12px_28px_color-mix(in_oklch,var(--border-muted)_35%,transparent)]"
+    >
+      <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-palette-yellow to-palette-yellow-light" />
+
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-palette-yellow-lighter to-palette-yellow-light text-palette-orange shadow-[0_2px_8px_color-mix(in_oklch,var(--border-muted)_25%,transparent)]">
+          <Star className="size-5 fill-palette-orange stroke-palette-orange" strokeWidth={1.8} />
+        </span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          disabled={removing}
+          aria-label="取消收藏题目"
+          title="取消收藏"
+          className="flex size-8 items-center justify-center rounded-[10px] bg-canvas text-palette-orange transition hover:scale-110 hover:bg-palette-yellow-light disabled:opacity-60"
+        >
+          <Star className="size-3.5 fill-current" />
+        </button>
+      </div>
+
+      <p className="line-clamp-2 text-base font-bold leading-relaxed text-brand-dark">{item.description}</p>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-[13px] font-bold tracking-[0.02em]">
+        <span className="rounded-lg bg-palette-purple-mist px-3 py-[5px] text-palette-purple">{source.subject_name}</span>
+        <span className="rounded-lg bg-palette-blue-mist px-3 py-[5px] text-palette-blue">{source.stage_title}</span>
+        <span className="inline-flex items-center gap-1 rounded-lg bg-palette-yellow-light/70 px-3 py-[5px] text-brand-medium">
+          <BookOpen className="size-3.5" />
+          {source.knowledge_point_title}
+        </span>
+      </div>
+
+      <div className="mt-auto flex items-center justify-between border-t border-dashed border-border/25 pt-3 text-xs font-semibold text-brand-light">
+        <span className="inline-flex items-center gap-1">
+          <Clock className="size-3.5" strokeWidth={2} />
+          收藏于 {formatTime(item.created_at)}
+        </span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen();
+          }}
+          className="inline-flex items-center gap-1 rounded-full bg-palette-orange-lighter px-3 py-1.5 text-xs font-extrabold text-brand-dark transition hover:bg-palette-yellow-light"
+        >
+          查看题目
+          <ChevronRight className="size-3.5" />
+        </button>
+      </div>
+    </article>
   );
 }
 

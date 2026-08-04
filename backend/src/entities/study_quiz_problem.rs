@@ -21,6 +21,7 @@ pub struct Model {
     pub explanation: String,
     pub chosen_answer: Option<ProblemAnswer>,
     pub bookmarked: bool,
+    pub bookmarked_at: Option<DateTimeUtc>,
     pub mistake_hidden: bool,
     pub created_at: DateTimeUtc,
 }

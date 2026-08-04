@@ -23,14 +23,18 @@ import {
 
 export default async function TaskPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ quiz?: string }>;
 }) {
   const { id } = await params;
+  const { quiz } = await searchParams;
   const taskId = Number(id);
   if (!Number.isInteger(taskId) || taskId <= 0) {
     redirect("/dashboard");
   }
+  const initialQuizId = Number(quiz);
 
   let task: StudyTask;
   try {
@@ -137,6 +141,7 @@ export default async function TaskPage({
             taskStatus={task.status}
             freeLimit={config.resource.study_quiz_free_limit_per_task}
             extraGoldCost={config.resource.study_quiz_extra_gold_cost}
+            initialQuizId={Number.isInteger(initialQuizId) && initialQuizId > 0 ? initialQuizId : undefined}
           />
         </div>
 

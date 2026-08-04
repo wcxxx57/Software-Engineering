@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   bookmarkItemListSchema,
+  quizProblemReviewSchema,
   quizProblemReviewListSchema,
   type BookmarkItem,
   type QuizProblemReview,
@@ -38,6 +39,18 @@ export function useBookmarks(q: string) {
       bookmarkItemListSchema.parse(
         await getJson(`/api/me/bookmarks${q ? `?q=${encodeURIComponent(q)}` : ""}`),
       ),
+    staleTime: 0,
+  });
+}
+
+export function useQuizProblem(problemId: number | null) {
+  return useQuery<QuizProblemReview, Error>({
+    queryKey: ["quiz-problem", problemId] as const,
+    queryFn: async () =>
+      quizProblemReviewSchema.parse(
+        await getJson(`/api/quiz-problems/${problemId}`),
+      ),
+    enabled: problemId != null && problemId > 0,
     staleTime: 0,
   });
 }

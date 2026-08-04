@@ -3,6 +3,7 @@ mod m0002_asset_transaction;
 mod m0003_asset_opening_balances;
 mod m0004_curriculum_knowledge;
 mod m0005_resource_bookmarks;
+mod m0006_bookmark_timestamps;
 
 use sea_orm_migration::prelude::*;
 
@@ -17,6 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m0003_asset_opening_balances::Migration),
             Box::new(m0004_curriculum_knowledge::Migration),
             Box::new(m0005_resource_bookmarks::Migration),
+            Box::new(m0006_bookmark_timestamps::Migration),
         ]
     }
 }

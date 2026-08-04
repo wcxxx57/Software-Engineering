@@ -131,7 +131,7 @@ fn api_router() -> Router<AppState> {
         )
         .route(
             "/study-subjects/{id}/knowledge-tree",
-            get(study_subjects::get_knowledge_tree),
+            get(study_subjects::get_knowledge_tree).post(study_subjects::generate_knowledge_tree),
         )
         // Study stages
         .route("/study-stages/{id}", get(study_stages::get_by_id))
@@ -159,6 +159,10 @@ fn api_router() -> Router<AppState> {
             "/study-tasks/{id}/quizzes",
             axum::routing::post(study_tasks::create_quiz).get(study_tasks::list_quizzes),
         )
+        .route(
+            "/study-tasks/{id}/recommendations",
+            get(study_tasks::get_recommendations),
+        )
         // Study quizzes
         .route("/study-quizzes/{id}", get(study_quizzes::get_by_id))
         .route(
@@ -170,6 +174,7 @@ fn api_router() -> Router<AppState> {
             axum::routing::post(study_quizzes::submit),
         )
         // Quiz problems (mistake/bookmark toggles)
+        .route("/quiz-problems/{id}", get(me::get_quiz_problem))
         .route(
             "/quiz-problems/{id}/bookmark",
             axum::routing::patch(quiz_problems::toggle_bookmark),

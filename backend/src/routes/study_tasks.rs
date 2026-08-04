@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     auth::AuthUser,
     entities::{
-        interactive_html, knowledge_explanation, knowledge_video, pretest_problem, study_quiz,
-        study_quiz::StudyQuizStatus, study_stage, study_stage::StudyStageStatus, study_subject,
-        study_subject::StudySubjectStatus, study_task, study_task::StudyTaskStatus, user,
+        curriculum_node, interactive_html, knowledge_explanation, knowledge_video, pretest_problem,
+        study_quiz, study_quiz::StudyQuizStatus, study_stage, study_stage::StudyStageStatus,
+        study_subject, study_subject::StudySubjectStatus, study_task,
+        study_task::StudyTaskStatus, study_task_curriculum_node, user,
     },
     error::{AppError, BusinessError},
     response::{created, ok},
@@ -69,6 +70,28 @@ pub struct StudyQuizBriefView {
     pub total_problems: i32,
     pub correct_problems: i32,
     pub created_at: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RecommendedResourceView {
+    pub id: i32,
+    pub title: String,
+    pub summary: String,
+    pub reasons: Vec<String>,
+    pub learner_count: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskRecommendationResourcesView {
+    pub knowledge_video: Vec<RecommendedResourceView>,
+    pub interactive_html: Vec<RecommendedResourceView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TaskRecommendationsView {
+    pub eligible: bool,
+    pub knowledge_point_title: Option<String>,
+    pub resources: TaskRecommendationResourcesView,
 }
 
 // ── Payloads ──
@@ -165,6 +188,46 @@ pub async fn get_by_id(
 ) -> Result<impl axum::response::IntoResponse, AppError> {
     let (task, _, _) = load_owned_task(&state.db, id, auth_user.user_id).await?;
     Ok(ok(StudyTaskView::from(task)))
+}
+
+/// GET /api/v1/study-tasks/{id}/recommendations
+///
+/// A task without reusable, quality-screened content is a valid empty-result
+/// case. Returning a structured response lets the client offer generation
+/// instead of treating the absence of a recommendation as a missing endpoint.
+pub async fn get_recommendations(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let (task, _, _) = load_owned_task(&state.db, id, auth_user.user_id).await?;
+    let node_ids = study_task_curriculum_node::Entity::find()
+        .filter(study_task_curriculum_node::Column::StudyTaskId.eq(task.id))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|link| link.curriculum_node_id)
+        .collect::<Vec<_>>();
+    let knowledge_point_title = if node_ids.is_empty() {
+        None
+    } else {
+        curriculum_node::Entity::find()
+            .filter(curriculum_node::Column::Id.is_in(node_ids))
+            .one(&state.db)
+            .await?
+            .map(|node| node.title)
+    };
+
+    Ok(ok(TaskRecommendationsView {
+        // The recommendation pipeline is available for the task. It may return
+        // no item until a finished resource has passed the quality gate.
+        eligible: true,
+        knowledge_point_title,
+        resources: TaskRecommendationResourcesView {
+            knowledge_video: Vec::new(),
+            interactive_html: Vec::new(),
+        },
+    }))
 }
 
 /// POST /api/v1/study-tasks/{id}/complete

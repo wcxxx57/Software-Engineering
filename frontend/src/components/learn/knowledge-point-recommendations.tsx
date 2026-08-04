@@ -155,6 +155,7 @@ function TaskResourceCard({
                 : { kind: "tool", id: recommendation!.id }
             }
             showCard={false}
+            taskStatus={hasTaskResource ? task.status : undefined}
           />
         )}
         {recommendation && !hasTaskResource ? (

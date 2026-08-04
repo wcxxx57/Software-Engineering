@@ -44,6 +44,13 @@ const STATUS_FALLBACK: Record<number, string> = {
 
 const CJK = /[一-鿿]/;
 
+function isNetworkFailure(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  if (!(err instanceof TypeError)) return false;
+
+  return /failed to fetch|network(?:\s+error)?|load failed|fetch failed/i.test(err.message);
+}
+
 export function humanizeApiError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.message && CJK.test(err.message)) return err.message;
@@ -55,5 +62,11 @@ export function humanizeApiError(err: unknown): string {
   if (err instanceof Error && err.message && CJK.test(err.message)) {
     return err.message;
   }
-  return "网络异常，请检查连接后重试";
+  if (isNetworkFailure(err)) {
+    return "网络连接失败，请检查网络或确认本地服务正在运行后重试";
+  }
+  if (err instanceof Error && /malformed (?:api )?response|missing data envelope/i.test(err.message)) {
+    return "服务返回的数据格式异常，请稍后再试";
+  }
+  return "操作失败，请稍后重试";
 }

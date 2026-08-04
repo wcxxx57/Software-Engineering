@@ -49,7 +49,7 @@ export interface ToolPageClientProps<T extends ToolResource> {
   emptyHint: string;
   primaryCtaLabel: string;
   featuredKind?: RecommendationResourceKind;
-  featuredPreviewData?: FeaturedResource[];
+  featuredPreviewData?: FeaturedResource;
   previewOnly?: boolean;
 }
 

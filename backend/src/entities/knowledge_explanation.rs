@@ -32,6 +32,7 @@ pub struct Model {
     pub content: Option<String>,
     pub public: bool,
     pub bookmarked: bool,
+    pub bookmarked_at: Option<DateTimeUtc>,
     pub cost: i32,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,

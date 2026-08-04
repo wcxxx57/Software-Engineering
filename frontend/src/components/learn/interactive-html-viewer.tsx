@@ -3,7 +3,8 @@
 import { Box, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { interactiveHtmlSchema } from "@/lib/api/schemas";
+import { Button } from "@/components/ui/button";
+import { interactiveHtmlSchema, type StudyTaskStatus } from "@/lib/api/schemas";
 import { useConfig } from "@/lib/query/config";
 import { useResource, type ResourceSource } from "@/lib/query/resource";
 import { assetUrl } from "@/lib/storage";
@@ -13,6 +14,7 @@ import {
   ResourceRefreshPending,
   ResourceViewerPlaceholder,
 } from "./resource-viewer-placeholder";
+import { ResourceGenerateCard } from "./resource-generate-card";
 
 export type InteractiveHtmlViewerSource =
   | { kind: "task"; taskId: number }
@@ -23,11 +25,13 @@ export function InteractiveHtmlViewer({
   title = "具身交互沙盒",
   subtitle = "全沉浸可交互环境",
   showCard = true,
+  taskStatus,
 }: {
   source: InteractiveHtmlViewerSource;
   title?: string;
   subtitle?: string;
   showCard?: boolean;
+  taskStatus?: StudyTaskStatus;
 }) {
   const { storage } = useConfig();
   const innerSource: ResourceSource =
@@ -35,7 +39,7 @@ export function InteractiveHtmlViewer({
       ? { kind: "task", taskId: source.taskId, resourceKind: "interactive-html" }
       : { kind: "tool", resourceKind: "interactive-htmls", id: source.id };
 
-  const { data, isPending, isError } = useResource({
+  const { data, isPending, isError, error, refetch } = useResource({
     source: innerSource,
     schema: interactiveHtmlSchema,
   });
@@ -46,12 +50,32 @@ export function InteractiveHtmlViewer({
 
       {isError && !data && (
         <Placeholder>
-          <ResourceRefreshPending label="可视化" />
+          <div className="flex flex-col items-center gap-3">
+            <ResourceRefreshPending label="互动 HTML" />
+            <p className="max-w-md text-xs font-medium text-destructive">
+              {error instanceof Error ? error.message : "网络连接异常"}
+            </p>
+            <Button type="button" size="sm" variant="outline" onClick={() => refetch()}>
+              重新加载
+            </Button>
+          </div>
         </Placeholder>
       )}
 
       {data?.status === "FAILED" && (
-        <Placeholder tone="error">互动 HTML 生成失败，请稍后重试</Placeholder>
+        <Placeholder tone="error">
+          <div className="flex flex-col items-center gap-3">
+            <p>互动 HTML 生成失败，请重新生成。</p>
+            {source.kind === "task" && taskStatus ? (
+              <ResourceGenerateCard
+                taskId={source.taskId}
+                taskStatus={taskStatus}
+                kind="interactive-html"
+                compact
+              />
+            ) : null}
+          </div>
+        </Placeholder>
       )}
 
       {data &&

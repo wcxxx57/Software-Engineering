@@ -12,7 +12,7 @@ const META = {
   "interactive-html": { icon: Box },
 } as const;
 
-export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: RecommendationResourceKind; onOpen: (id: number) => void; previewData?: FeaturedResource[] }) {
+export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: RecommendationResourceKind; onOpen: (id: number) => void; previewData?: FeaturedResource }) {
   const { data: queriedData = [] } = useFeaturedResources(kind, previewData == null);
   const data = previewData ?? queriedData;
   const meta = META[kind];

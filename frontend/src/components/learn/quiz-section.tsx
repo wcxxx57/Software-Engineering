@@ -40,11 +40,13 @@ export function QuizSection({
   taskStatus,
   freeLimit,
   extraGoldCost,
+  initialQuizId,
 }: {
   taskId: number;
   taskStatus: StudyTaskStatus;
   freeLimit: number;
   extraGoldCost: number;
+  initialQuizId?: number;
 }) {
   const { data: list = [], isLoading } = useStudyTaskQuizzes(taskId);
   const me = useMe();
@@ -55,7 +57,7 @@ export function QuizSection({
     [list],
   );
 
-  const [selectedQuizId, setSelectedQuizId] = useState<number | null>(null);
+  const [selectedQuizId, setSelectedQuizId] = useState<number | null>(initialQuizId ?? null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const activeQuizId =
     selectedQuizId != null && sorted.some((quiz) => quiz.id === selectedQuizId)

@@ -1,9 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { knowledgeTreeSchema, type KnowledgeTree } from "@/lib/api/schemas";
-import { getJson } from "./utils";
+import { getJson, requestJson } from "./utils";
 
 export function knowledgeTreeQueryKey(subjectId: number) {
   return ["study-subject", subjectId, "knowledge-tree"] as const;
@@ -17,5 +17,17 @@ export function useKnowledgeTree(subjectId: number, enabled = true) {
         await getJson(`/api/study-subjects/${subjectId}/knowledge-tree`),
       ),
     enabled,
+  });
+}
+
+export function useGenerateKnowledgeTree(subjectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      requestJson(`/api/study-subjects/${subjectId}/knowledge-tree`, {
+        method: "POST",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: knowledgeTreeQueryKey(subjectId) }),
   });
 }

@@ -30,6 +30,7 @@ pub struct Model {
     pub object_key: Option<String>,
     pub public: bool,
     pub bookmarked: bool,
+    pub bookmarked_at: Option<DateTimeUtc>,
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
 }

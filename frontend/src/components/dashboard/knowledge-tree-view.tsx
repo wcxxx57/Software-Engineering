@@ -10,12 +10,13 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { Check, ChevronDown, Lock, Play } from "lucide-react";
+import { Check, ChevronDown, Lock, Play, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { KnowledgeTreeNode } from "@/lib/api/schemas";
-import { useKnowledgeTree } from "@/lib/query/knowledge-tree";
+import { useGenerateKnowledgeTree, useKnowledgeTree } from "@/lib/query/knowledge-tree";
 import { cn } from "@/lib/utils";
 
 type CurriculumFlowNode = Node<KnowledgeTreeNode, "curriculum">;
@@ -24,6 +25,7 @@ const nodeTypes = { curriculum: CurriculumNodeCard };
 
 export function KnowledgeTreeView({ subjectId }: { subjectId: number }) {
   const query = useKnowledgeTree(subjectId);
+  const generateMutation = useGenerateKnowledgeTree(subjectId);
   const flow = useMemo(() => buildFlow(query.data?.nodes ?? []), [query.data?.nodes]);
 
   if (query.isPending) {
@@ -35,8 +37,22 @@ export function KnowledgeTreeView({ subjectId }: { subjectId: number }) {
   if (query.data.legacy) {
     return (
       <div className="flex h-[420px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/30 bg-palette-yellow-mist text-center">
-        <p className="font-bold text-brand-dark">该计划尚未绑定权威课程大纲</p>
-        <p className="text-xs text-brand-medium">旧计划仍可使用上方计划视图继续学习。</p>
+        <p className="font-bold text-brand-dark">该计划尚未生成对应的知识树</p>
+        <p className="max-w-md text-xs leading-relaxed text-brand-medium">系统会匹配已发布的课程大纲，并将当前计划中的任务映射到相应知识点。</p>
+        <Button
+          type="button"
+          size="sm"
+          disabled={generateMutation.isPending}
+          onClick={() => generateMutation.mutate()}
+        >
+          <Sparkles className="size-4" />
+          {generateMutation.isPending ? "正在生成知识树…" : "生成当前计划知识树"}
+        </Button>
+        {generateMutation.isError && (
+          <p role="alert" className="max-w-md text-xs text-destructive">
+            {generateMutation.error.message}
+          </p>
+        )}
       </div>
     );
   }

@@ -60,7 +60,7 @@ const CONFIG: Record<
   },
 };
 
-const FEATURED: Record<PreviewKind, FeaturedResource[]> = {
+const FEATURED: Record<PreviewKind, FeaturedResource> = {
   k2v: [{ id: 101, title: "递归调用过程动画", summary: "通过栈帧变化理解递归的进入、返回与终止条件。" }],
   c2v: [{ id: 102, title: "二分查找边界处理", summary: "跟随代码执行理解左右边界更新与循环结束条件。" }],
   interactive: [{ id: 103, title: "二叉搜索树操作台", summary: "拖动节点并观察插入、查找与删除后的结构变化。" }],

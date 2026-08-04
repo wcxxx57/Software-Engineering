@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Box, Film, Gem, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -83,6 +84,7 @@ export function ResourceGenerateCard({
   const config = useConfig();
   const me = useMe();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -105,6 +107,14 @@ export function ResourceGenerateCard({
       if (result.ok) {
         toast.success("已加入生成队列，请稍候");
         queryClient.invalidateQueries({ queryKey: meQueryKey });
+        queryClient.invalidateQueries({
+          queryKey: [
+            "task-resource",
+            taskId,
+            kind === "knowledge-video" ? "knowledge-video" : "interactive-html",
+          ],
+        });
+        router.refresh();
         setConfirmOpen(false);
       } else {
         toast.error(result.message);

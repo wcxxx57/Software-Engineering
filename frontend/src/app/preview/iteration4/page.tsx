@@ -50,7 +50,7 @@ const nextPlan: RecommendedPlan = {
   stage_count: 4, task_count: 16, estimated_weeks: 3,
   stages: [{ title: "线性表与栈队列", task_count: 4 }, { title: "树与图", task_count: 4 }, { title: "排序与查找", task_count: 4 }, { title: "综合练习", task_count: 4 }],
 };
-const featured: FeaturedResource[] = [{ id: 1, title: "二叉搜索树的查找与插入动画", summary: "用动画理解查找路径、插入位置与树高变化。" }];
+const featured: FeaturedResource = [{ id: 1, title: "二叉搜索树的查找与插入动画", summary: "用动画理解查找路径、插入位置与树高变化。" }];
 
 export default async function Iteration4PreviewPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   if (process.env.UI_PREVIEW !== "true") notFound();
@@ -82,10 +82,11 @@ function PlanPreview() {
 }
 
 function ToolPreview({ kind }: { kind: "k2v" | "c2v" | "interactive" }) {
-  const meta: Record<typeof kind, { title: string; subtitle: string; label: string; icon: ReactNode; resourceKind: RecommendationResourceKind }> = {
+  const metas: Record<typeof kind, { title: string; subtitle: string; label: string; icon: ReactNode; resourceKind: RecommendationResourceKind }> = {
     k2v: { title: "Knowledge 2 Video", subtitle: "你的专属 AIGC 视频知识库", label: "知识点视频", icon: <Clapperboard className="size-4" />, resourceKind: "knowledge-video" },
     c2v: { title: "Code 2 Video", subtitle: "你的专属算法题解视听库", label: "代码题解视频", icon: <SearchCode className="size-4" />, resourceKind: "code-video" },
     interactive: { title: "Interactive Lab", subtitle: "把抽象概念变成可玩的沙盒，AI 即刻为你搭建演示页面", label: "交互式实验室", icon: <FlaskConical className="size-4" />, resourceKind: "interactive-html" },
-  }[kind];
+  };
+  const meta = metas[kind];
   return <ToolPageShell title={meta.title} subtitle={meta.subtitle} badge={{ icon: meta.icon, label: meta.label }}><FeaturedResourceSection kind={meta.resourceKind} previewData={featured} onOpen={() => undefined} /></ToolPageShell>;
 }

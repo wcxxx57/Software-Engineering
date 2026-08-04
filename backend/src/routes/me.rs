@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{Path, Query, State},
 };
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, JoinType, QueryFilter,
@@ -14,8 +14,9 @@ use crate::{
     entities::{
         asset_transaction,
         common::{Gender, ProblemAnswer},
-        knowledge_explanation, knowledge_video, study_quiz, study_quiz_problem, study_stage,
-        study_subject, study_task, user, user_knowledge_video_link,
+        curriculum_node, knowledge_explanation, knowledge_video, study_quiz, study_quiz_problem,
+        study_stage, study_subject, study_task, study_task_curriculum_node, user,
+        user_knowledge_video_link,
     },
     error::{AppError, BusinessError},
     response::ok,
@@ -214,6 +215,7 @@ pub struct QuizProblemReviewView {
     pub explanation: String,
     pub chosen_answer: Option<ProblemAnswer>,
     pub bookmarked: bool,
+    pub bookmarked_at: Option<i64>,
     pub mistake_hidden: bool,
     pub created_at: i64,
     pub source: QuizProblemSource,
@@ -224,6 +226,7 @@ pub struct QuizProblemSource {
     pub quiz_id: i32,
     pub task_id: i32,
     pub task_title: String,
+    pub knowledge_point_title: String,
     pub stage_id: i32,
     pub stage_title: String,
     pub subject_id: i32,
@@ -236,6 +239,9 @@ pub struct BookmarkItemView {
     pub kind: &'static str,
     pub title: String,
     pub description: String,
+    pub knowledge_point_title: Option<String>,
+    pub source: Option<QuizProblemSource>,
+    pub open_url: Option<String>,
     pub created_at: i64,
 }
 
@@ -245,6 +251,43 @@ pub struct ProblemSearchQuery {
     pub include_hidden: Option<bool>,
     #[serde(default)]
     pub q: Option<String>,
+}
+
+/// GET /api/v1/quiz-problems/{id}. The result is scoped to the current user's
+/// study subject, so a bookmarked-problem URL can never reveal another user's quiz.
+pub async fn get_quiz_problem(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let rows: Vec<(
+        study_quiz_problem::Model,
+        Option<study_quiz::Model>,
+        Option<study_task::Model>,
+        Option<study_stage::Model>,
+        Option<study_subject::Model>,
+    )> = study_quiz_problem::Entity::find_by_id(id)
+        .find_also_related(study_quiz::Entity)
+        .join(JoinType::InnerJoin, study_quiz::Relation::StudyTask.def())
+        .join(JoinType::InnerJoin, study_task::Relation::StudyStage.def())
+        .join(
+            JoinType::InnerJoin,
+            study_stage::Relation::StudySubject.def(),
+        )
+        .filter(study_subject::Column::UserId.eq(auth_user.user_id))
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|(qp, quiz)| (qp, quiz, None, None, None))
+        .collect();
+
+    let problem = build_review_views(&state, rows, |_| true)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::business(BusinessError::StudyQuizProblemNotFound))?;
+
+    Ok(ok(problem))
 }
 
 /// GET /api/v1/me/mistakes
@@ -347,7 +390,12 @@ pub async fn list_bookmarks(
             kind: "quiz_problem",
             title: "小测题目".to_owned(),
             description: problem.content,
-            created_at: problem.created_at,
+            knowledge_point_title: Some(problem.source.knowledge_point_title.clone()),
+            source: Some(problem.source),
+            open_url: Some(format!("/quiz-problems/{}", problem.id)),
+            // Records created before bookmark timestamps were introduced fall back
+            // to their creation time, while all new favourites use the actual action time.
+            created_at: problem.bookmarked_at.unwrap_or(problem.created_at),
         })
         .collect();
 
@@ -369,7 +417,13 @@ pub async fn list_bookmarks(
                 kind: "knowledge_video",
                 title: "知识视频".to_owned(),
                 description: video.prompt,
-                created_at: video.created_at.timestamp_millis(),
+                knowledge_point_title: None,
+                source: None,
+                open_url: None,
+                created_at: video
+                    .bookmarked_at
+                    .unwrap_or(video.created_at)
+                    .timestamp_millis(),
             }),
     );
 
@@ -379,19 +433,34 @@ pub async fn list_bookmarks(
     if let Some(ref q) = q {
         explanations = explanations.filter(knowledge_explanation::Column::Prompt.contains(q));
     }
-    items.extend(
-        explanations
+    let explanations = explanations.all(&state.db).await?;
+    let explanation_ids = explanations.iter().map(|item| item.id).collect::<Vec<_>>();
+    let task_id_by_explanation_id = if explanation_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        study_task::Entity::find()
+            .filter(study_task::Column::KnowledgeExplanationId.is_in(explanation_ids))
             .all(&state.db)
             .await?
             .into_iter()
-            .map(|explanation| BookmarkItemView {
-                id: explanation.id,
-                kind: "knowledge_explanation",
-                title: "知识点解析".to_owned(),
-                description: explanation.prompt,
-                created_at: explanation.created_at.timestamp_millis(),
-            }),
-    );
+            .filter_map(|task| task.knowledge_explanation_id.map(|id| (id, task.id)))
+            .collect::<std::collections::HashMap<_, _>>()
+    };
+    items.extend(explanations.into_iter().map(|explanation| BookmarkItemView {
+        id: explanation.id,
+        kind: "knowledge_explanation",
+        title: "知识点解析".to_owned(),
+        description: explanation.prompt,
+        knowledge_point_title: None,
+        source: None,
+        open_url: task_id_by_explanation_id
+            .get(&explanation.id)
+            .map(|task_id| format!("/tasks/{task_id}#explanation")),
+        created_at: explanation
+            .bookmarked_at
+            .unwrap_or(explanation.created_at)
+            .timestamp_millis(),
+    }));
 
     items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     Ok(ok(items))
@@ -427,6 +496,43 @@ async fn build_review_views(
     let task_map: std::collections::HashMap<i32, study_task::Model> =
         tasks.into_iter().map(|t| (t.id, t)).collect();
 
+    // A task can be associated with more than one curriculum node. Preserve
+    // all mapped point titles for review/bookmark context; older plans without
+    // a tree fall back to their task title below.
+    let task_node_links = study_task_curriculum_node::Entity::find()
+        .filter(study_task_curriculum_node::Column::StudyTaskId.is_in(task_ids))
+        .all(&state.db)
+        .await?;
+    let node_ids = task_node_links
+        .iter()
+        .map(|link| link.curriculum_node_id)
+        .collect::<Vec<_>>();
+    let node_titles_by_id = if node_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        curriculum_node::Entity::find()
+            .filter(curriculum_node::Column::Id.is_in(node_ids))
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .map(|node| (node.id, node.title))
+            .collect::<std::collections::HashMap<_, _>>()
+    };
+    let mut knowledge_points_by_task: std::collections::HashMap<i32, Vec<String>> =
+        std::collections::HashMap::new();
+    for link in task_node_links {
+        if let Some(title) = node_titles_by_id.get(&link.curriculum_node_id) {
+            knowledge_points_by_task
+                .entry(link.study_task_id)
+                .or_default()
+                .push(title.clone());
+        }
+    }
+    for titles in knowledge_points_by_task.values_mut() {
+        titles.sort();
+        titles.dedup();
+    }
+
     let stage_ids: Vec<i32> = task_map.values().map(|t| t.study_stage_id).collect();
     let stages = study_stage::Entity::find()
         .filter(study_stage::Column::Id.is_in(stage_ids))
@@ -449,6 +555,11 @@ async fn build_review_views(
             let task = task_map.get(&q.study_task_id)?;
             let stage = stage_map.get(&task.study_stage_id)?;
             let subject = subject_map.get(&stage.study_subject_id)?;
+            let knowledge_point_title = knowledge_points_by_task
+                .get(&task.id)
+                .filter(|titles| !titles.is_empty())
+                .map(|titles| titles.join("、"))
+                .unwrap_or_else(|| task.title.clone());
             Some(QuizProblemReviewView {
                 id: qp.id,
                 sort_order: qp.sort_order,
@@ -461,12 +572,14 @@ async fn build_review_views(
                 explanation: qp.explanation,
                 chosen_answer: qp.chosen_answer,
                 bookmarked: qp.bookmarked,
+                bookmarked_at: qp.bookmarked_at.map(|time| time.timestamp_millis()),
                 mistake_hidden: qp.mistake_hidden,
                 created_at: qp.created_at.timestamp_millis(),
                 source: QuizProblemSource {
                     quiz_id: q.id,
                     task_id: task.id,
                     task_title: task.title.clone(),
+                    knowledge_point_title,
                     stage_id: stage.id,
                     stage_title: stage.title.clone(),
                     subject_id: subject.id,

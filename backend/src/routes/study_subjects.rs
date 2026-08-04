@@ -126,6 +126,13 @@ pub struct KnowledgeTreeTaskView {
     pub status: study_task::StudyTaskStatus,
 }
 
+#[derive(Debug, Serialize)]
+pub struct GenerateKnowledgeTreeView {
+    pub generated: bool,
+    pub curriculum_template_id: i32,
+    pub mapped_tasks: usize,
+}
+
 // ── Payloads ──
 
 #[derive(Debug, Deserialize, Validate)]
@@ -600,6 +607,229 @@ pub async fn get_knowledge_tree(
             .collect(),
         nodes: node_views,
     }))
+}
+
+/// POST /api/v1/study-subjects/{id}/knowledge-tree
+///
+/// Backfills the curriculum binding for plans created before curriculum trees
+/// were introduced. Existing plan tasks are mapped to the matched outline so
+/// the tree represents the user's current plan instead of a blank tree.
+pub async fn generate_knowledge_tree(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<i32>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    use crate::entities::curriculum_node;
+    use std::collections::{HashMap, HashSet};
+
+    let tx = state.db.begin().await?;
+    let subject = study_subject::Entity::find_by_id(id)
+        .filter(study_subject::Column::UserId.eq(auth_user.user_id))
+        .one(&tx)
+        .await?
+        .ok_or_else(|| AppError::business(BusinessError::StudySubjectNotFound))?;
+
+    let stages = study_stage::Entity::find()
+        .filter(study_stage::Column::StudySubjectId.eq(subject.id))
+        .order_by_asc(study_stage::Column::SortOrder)
+        .all(&tx)
+        .await?;
+
+    let template_id = match subject.curriculum_template_id {
+        Some(template_id) => template_id,
+        None => match curriculum::match_legacy_template(&tx, &subject.subject, &subject.language)
+            .await?
+        {
+            Some(template) => template.id,
+            None => create_plan_knowledge_tree_template(&tx, &subject, &stages).await?,
+        },
+    };
+    let nodes = curriculum_node::Entity::find()
+        .filter(curriculum_node::Column::CurriculumTemplateId.eq(template_id))
+        .order_by_asc(curriculum_node::Column::Depth)
+        .order_by_asc(curriculum_node::Column::SortOrder)
+        .all(&tx)
+        .await?;
+    let target_nodes = nodes
+        .iter()
+        .filter(|node| node.depth > 0)
+        .collect::<Vec<_>>();
+    if target_nodes.is_empty() {
+        return Err(AppError::internal("curriculum template has no learnable nodes"));
+    }
+
+    let stage_order = stages
+        .iter()
+        .enumerate()
+        .map(|(index, stage)| (stage.id, index))
+        .collect::<HashMap<_, _>>();
+    let stage_ids = stages.iter().map(|stage| stage.id).collect::<Vec<_>>();
+    let mut tasks = if stage_ids.is_empty() {
+        Vec::new()
+    } else {
+        study_task::Entity::find()
+            .filter(study_task::Column::StudyStageId.is_in(stage_ids))
+            .all(&tx)
+            .await?
+    };
+    tasks.sort_by_key(|task| {
+        (
+            stage_order.get(&task.study_stage_id).copied().unwrap_or(usize::MAX),
+            task.sort_order,
+            task.id,
+        )
+    });
+
+    let task_ids = tasks.iter().map(|task| task.id).collect::<Vec<_>>();
+    let already_mapped_task_ids = if task_ids.is_empty() {
+        HashSet::new()
+    } else {
+        study_task_curriculum_node::Entity::find()
+            .filter(study_task_curriculum_node::Column::StudyTaskId.is_in(task_ids))
+            .all(&tx)
+            .await?
+            .into_iter()
+            .map(|link| link.study_task_id)
+            .collect()
+    };
+
+    // Prefer a direct title/description match. Older plans do not contain the
+    // node keys emitted by the current plan worker, so tasks without a clear
+    // textual match fall back to their learning order across the outline.
+    let mut mapped_tasks = 0;
+    for (task_index, task) in tasks.iter().enumerate() {
+        if already_mapped_task_ids.contains(&task.id) {
+            continue;
+        }
+        let task_text = normalize_knowledge_tree_text(&format!("{} {}", task.title, task.description));
+        let best_node = target_nodes
+            .iter()
+            .enumerate()
+            .map(|(node_index, node)| {
+                let node_title = normalize_knowledge_tree_text(&node.title);
+                let node_description = normalize_knowledge_tree_text(&node.description);
+                let score = if !node_title.is_empty()
+                    && (task_text.contains(&node_title) || node_title.contains(&task_text))
+                {
+                    node_title.len() * 10
+                } else if !node_description.is_empty() && task_text.contains(&node_description) {
+                    node_description.len()
+                } else {
+                    0
+                };
+                (score, node_index, *node)
+            })
+            .max_by_key(|(score, _, _)| *score);
+        let node = best_node
+            .filter(|(score, _, _)| *score > 0)
+            .map(|(_, _, node)| node)
+            .unwrap_or(target_nodes[task_index % target_nodes.len()]);
+        study_task_curriculum_node::ActiveModel {
+            study_task_id: Set(task.id),
+            curriculum_node_id: Set(node.id),
+            ..Default::default()
+        }
+        .insert(&tx)
+        .await?;
+        mapped_tasks += 1;
+    }
+
+    if subject.curriculum_template_id != Some(template_id) {
+        let mut active: study_subject::ActiveModel = subject.into();
+        active.curriculum_template_id = Set(Some(template_id));
+        active.updated_at = Set(Utc::now());
+        active.update(&tx).await?;
+    }
+    tx.commit().await?;
+
+    Ok(ok(GenerateKnowledgeTreeView {
+        generated: true,
+        curriculum_template_id: template_id,
+        mapped_tasks,
+    }))
+}
+
+fn normalize_knowledge_tree_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Builds a private, plan-derived outline only when no published curriculum
+/// can be matched. This preserves access to a knowledge tree for arbitrary
+/// legacy subjects while keeping the user's original stage order intact.
+async fn create_plan_knowledge_tree_template<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    subject: &study_subject::Model,
+    stages: &[study_stage::Model],
+) -> Result<i32, AppError> {
+    use crate::entities::{curriculum_node, curriculum_source, curriculum_template};
+
+    let now = Utc::now();
+    let slug = format!("legacy-plan-{}", subject.id);
+    let template = curriculum_template::ActiveModel {
+        canonical_name: Set(subject.subject.clone()),
+        slug: Set(slug.clone()),
+        version: Set(1),
+        language: Set(subject.language.clone()),
+        status: Set(curriculum_template::CurriculumTemplateStatus::Published),
+        aliases: Set(serde_json::json!([])),
+        created_at: Set(now),
+        published_at: Set(Some(now)),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    let raw_outline = stages
+        .iter()
+        .map(|stage| format!("{}\n{}", stage.title, stage.description))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    curriculum_source::ActiveModel {
+        curriculum_template_id: Set(template.id),
+        platform: Set("PLAN_BACKFILL".to_owned()),
+        institution: Set("当前学习计划".to_owned()),
+        instructor: Set(None),
+        source_url: Set(format!("plan://study-subject/{}", subject.id)),
+        content_hash: Set(format!("{}-v1", slug)),
+        raw_outline: Set(raw_outline),
+        validation_failures: Set(serde_json::json!([])),
+        match_score: Set(1.0),
+        status: Set(curriculum_source::CurriculumSourceStatus::Published),
+        captured_at: Set(now),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    curriculum_node::ActiveModel {
+        curriculum_template_id: Set(template.id),
+        node_key: Set("root".to_owned()),
+        parent_node_key: Set(None),
+        title: Set(subject.subject.clone()),
+        description: Set("由当前学习计划生成的知识结构".to_owned()),
+        depth: Set(0),
+        sort_order: Set(0),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    for (index, stage) in stages.iter().enumerate() {
+        curriculum_node::ActiveModel {
+            curriculum_template_id: Set(template.id),
+            node_key: Set(format!("stage-{}", stage.id)),
+            parent_node_key: Set(Some("root".to_owned())),
+            title: Set(stage.title.clone()),
+            description: Set(stage.description.clone()),
+            depth: Set(1),
+            sort_order: Set(index as i32 + 1),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+    }
+    Ok(template.id)
 }
 
 /// PATCH /api/v1/study-subjects/{id}/pretest/{pretest_problem_id}

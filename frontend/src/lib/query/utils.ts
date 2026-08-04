@@ -1,5 +1,7 @@
 "use client";
 
+import { ApiError } from "@/lib/api/errors";
+
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export async function requestJson(
@@ -24,10 +26,17 @@ export async function requestJson(
       typeof payload.message === "string"
         ? payload.message
         : null) ?? `HTTP ${res.status}`;
-    throw new Error(message);
+    const code =
+      payload &&
+      typeof payload === "object" &&
+      "code" in payload &&
+      typeof payload.code === "string"
+        ? payload.code
+        : undefined;
+    throw new ApiError(message, res.status, code, payload);
   }
   if (!payload || typeof payload !== "object" || !("data" in payload)) {
-    throw new Error("Malformed response: missing data envelope");
+    throw new ApiError("Malformed response: missing data envelope", res.status, undefined, payload);
   }
   return (payload as { data: unknown }).data;
 }
