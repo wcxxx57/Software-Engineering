@@ -1,0 +1,18 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: 新建计划 · 预览
+      - generic [ref=e8]:
+        - generic [ref=e14]:
+          - paragraph [ref=e15]: 下一阶段学习计划
+          - heading "Python 基础学习计划" [level=2] [ref=e16]
+        - paragraph [ref=e17]: 推荐给你：根据你的学习目标与课前小测结果，先系统建立 Python 基础。
+        - generic [ref=e18]:
+          - generic [ref=e19]: 3 个阶段 · 12 个任务
+          - generic [ref=e23]: 预计 2 周
+        - generic [ref=e26]:
+          - button "预览计划" [ref=e27]
+          - button "采用此计划" [ref=e28]
+          - button "继续自定义" [ref=e29]
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e35] [cursor=pointer]

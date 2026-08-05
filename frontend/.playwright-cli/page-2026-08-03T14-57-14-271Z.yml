@@ -1,0 +1,28 @@
+- generic [active] [ref=f5e1]:
+  - generic [ref=f5e2]:
+    - link "返回主页" [ref=f5e3] [cursor=pointer]:
+      - /url: /dashboard
+    - banner [ref=f5e6]:
+      - generic [ref=f5e7]: 知识点视频
+      - heading "Knowledge 2 Video" [level=1] [ref=f5e13]
+      - paragraph [ref=f5e14]: 你的专属 AIGC 视频知识库
+    - generic [ref=f5e15]:
+      - heading "推荐内容" [level=2] [ref=f5e19]
+      - button "递归调用过程动画 通过栈帧变化理解递归的进入、返回与终止条件。" [ref=f5e21]:
+        - generic [ref=f5e25]:
+          - generic [ref=f5e26]: 递归调用过程动画
+          - generic [ref=f5e27]: 通过栈帧变化理解递归的进入、返回与终止条件。
+    - generic [ref=f5e28]:
+      - heading "输入你需要讲解的知识点" [level=3] [ref=f5e29]
+      - textbox "例如：请用生动的比喻讲解什么是 Python 的闭包函数…" [ref=f5e30]
+      - generic [ref=f5e31]:
+        - button "清空" [ref=f5e32]
+        - generic [ref=f5e33]:
+          - generic [ref=f5e34]: 余额不足，还差 5
+          - button "在线生成" [disabled]
+    - paragraph [ref=f5e43]: 生成的视频将在此处播放
+    - generic [ref=f5e44]:
+      - heading "生成历史0" [level=3] [ref=f5e46]
+      - paragraph [ref=f5e53]: 还没有创建过任何 K2V 视频。给 AI 一个知识点，让它给你拍一支讲解短片。
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f5e59] [cursor=pointer]

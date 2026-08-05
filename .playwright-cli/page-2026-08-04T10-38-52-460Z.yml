@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e6]:
+      - heading "页面出了点问题" [level=1] [ref=e7]
+      - paragraph [ref=e8]: 刚刚的操作没有完成，可以重试或返回首页。
+      - paragraph [ref=e9]: 错误编号：4015725153
+    - generic [ref=e10]:
+      - button "重试" [ref=e11]
+      - link "回到首页" [ref=e12] [cursor=pointer]:
+        - /url: /dashboard
+  - region "Notifications alt+T"
+  - alert [ref=e13]

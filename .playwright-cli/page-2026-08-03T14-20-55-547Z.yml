@@ -1,0 +1,80 @@
+- generic [ref=e2]:
+  - main [ref=e3]:
+    - generic [ref=e4]: Python 基础 / 树结构 / 当前知识点
+    - heading "二叉搜索树" [level=1] [ref=e5]
+    - paragraph [ref=e6]: 知识点页 · Iteration 4 推荐布局静态预览
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]: ✦
+        - generic [ref=e10]:
+          - heading "推荐学习资源" [level=2] [ref=e11]
+          - paragraph [ref=e12]: 围绕当前知识点，为你匹配的学习内容
+      - generic [ref=e13]:
+        - article [ref=e14]:
+          - heading "K2V · 二叉搜索树的查找与插入动画" [level=3] [ref=e15]
+          - paragraph [ref=e16]: 用动画理解查找路径、插入位置与树高变化
+          - paragraph [ref=e17]: 推荐给你：与你当前学习进度相近的学习者通常先通过动画建立概念理解
+          - paragraph [ref=e18]: ◉ 已有 128 位学习者学习过
+          - generic [ref=e19]:
+            - button "直接学习" [ref=e20]
+            - button "↻ 换一个" [ref=e21]
+          - paragraph [ref=e22]: 没有合适视频？ 为当前知识点生成 K2V
+        - article [ref=e23]:
+          - heading "C2V · 删除节点的三种情况" [level=3] [ref=e24]
+          - paragraph [ref=e25]: 跟随代码执行过程，理解叶子、单子与双子节点的删除
+          - paragraph [ref=e26]: 推荐给你：你正在学习含代码执行过程的知识点，适合通过逐行演示理解
+          - paragraph [ref=e27]: ◉ 与你学习基础相近的学习者完成率较高
+          - generic [ref=e28]:
+            - button "直接学习" [ref=e29]
+            - button "↻ 换一个" [ref=e30]
+          - paragraph [ref=e31]: 没有合适代码讲解？ 为当前知识点生成 C2V
+        - article [ref=e32]:
+          - heading "可操控 2D · 二叉搜索树节点删除操作台" [level=3] [ref=e33]
+          - paragraph [ref=e34]: 拖动、删除节点，实时观察树结构变化
+          - paragraph [ref=e35]: 推荐给你：适合在理解概念后动手验证删除规则
+          - generic [ref=e36]:
+            - button "开始操作" [ref=e37]
+            - button "↻ 换一个" [ref=e38]
+          - paragraph [ref=e39]: 没有合适互动内容？ 为当前知识点生成可操控 2D
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]: ⌁
+        - generic [ref=e43]:
+          - heading "学习计划推荐" [level=2] [ref=e44]
+          - paragraph [ref=e45]: 计划页与完成页使用同一张卡片语言
+      - generic [ref=e46]:
+        - article [ref=e47]:
+          - generic [ref=e48]: 为你推荐的学习计划
+          - heading "数据结构与算法基础" [level=3] [ref=e49]
+          - paragraph [ref=e50]: 推荐给你：与你当前的学习目标和 Python 基础学习进度相衔接。
+          - generic [ref=e51]: 4 个阶段 · 16 个任务 · 预计 3 周
+          - generic [ref=e52]:
+            - button "预览计划" [ref=e53]
+            - button "采用此计划" [ref=e54]
+        - article [ref=e55]:
+          - generic [ref=e56]: 恭喜完成：Python 基础
+          - heading "下一步建议：数据结构与算法基础" [level=3] [ref=e57]
+          - paragraph [ref=e58]: 以前置的 Python 基础为起点，衔接你的学习目标。
+          - generic [ref=e59]: 4 个阶段 · 16 个任务 · 预计 3 周
+          - generic [ref=e60]:
+            - button "预览下一计划" [ref=e61]
+            - button "采用下一计划" [ref=e62]
+  - complementary [ref=e63]:
+    - generic [ref=e64]:
+      - generic [ref=e65]: ♧
+      - text: AI 伴学
+    - generic [ref=e66]:
+      - text: Python 基础 / 树结构
+      - generic [ref=e67]: 当前知识点：二叉搜索树
+    - generic [ref=e68]:
+      - heading "✦ 猜你想问" [level=4] [ref=e69]
+      - button "二叉搜索树和普通二叉树有什么区别？" [ref=e70]
+      - button "为什么查找效率与树的高度有关？" [ref=e71]
+    - generic [ref=e72]:
+      - heading "◉ 用户常问" [level=4] [ref=e73]
+      - button "删除有两个子节点的节点时怎么办？ 8 位学习者问过" [ref=e74]: 删除有两个子节点的节点时怎么办？8 位学习者问过
+      - button "为什么二叉搜索树会退化成链表？ 12 位学习者问过" [ref=e75]: 为什么二叉搜索树会退化成链表？12 位学习者问过
+    - generic [ref=e76]: 你可以围绕当前知识点向我提问。
+    - generic [ref=e77]:
+      - text: 输入你的问题…
+      - generic [ref=e78]: ➤

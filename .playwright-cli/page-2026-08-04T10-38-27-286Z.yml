@@ -1,0 +1,21 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - heading "学完打卡 完整学习计划已完成" [level=2] [ref=e10]:
+          - text: 学完打卡
+          - generic [ref=e11]: 完整学习计划已完成
+        - button "收起内容" [expanded] [ref=e13]
+      - generic [ref=e18]:
+        - generic [ref=e24]:
+          - paragraph [ref=e25]: 下一阶段学习计划
+          - heading "数据结构与算法基础" [level=2] [ref=e26]
+        - paragraph [ref=e27]: 推荐给你：与你的学习目标和已完成的 Python 基础相衔接。
+        - generic [ref=e28]:
+          - generic [ref=e29]: 4 个阶段 · 16 个任务
+          - generic [ref=e33]: 预计 3 周
+        - generic [ref=e36]:
+          - button "预览计划" [ref=e37]
+          - button "采用此计划" [ref=e38]
+          - button "继续自定义" [ref=e39]
+  - region "Notifications alt+T"

@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e10]:
+        - heading "智映通学" [level=1] [ref=e11]
+        - paragraph [ref=e12]: 欢迎回来，继续你的学习旅程
+      - generic [ref=e13]:
+        - link "登录" [ref=e15] [cursor=pointer]:
+          - /url: /login
+        - link "注册" [ref=e16] [cursor=pointer]:
+          - /url: /register
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - group [ref=e19]:
+            - group [ref=e20]:
+              - group [ref=e21]
+              - textbox "请输入用户名" [ref=e25]
+          - group [ref=e26]:
+            - group [ref=e27]:
+              - group [ref=e28]
+              - textbox "请输入密码" [ref=e33]
+              - group [ref=e34]:
+                - button "显示密码" [ref=e35]
+        - button "立即登录" [ref=e36]
+      - generic [ref=e40]: or
+      - paragraph [ref=e44]:
+        - text: 还没有账号？
+        - link "立即注册" [ref=e45] [cursor=pointer]:
+          - /url: /register
+  - region "Notifications alt+T"

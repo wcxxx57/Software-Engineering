@@ -1,0 +1,109 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - main [ref=f1e4]:
+      - generic [ref=f1e5]:
+        - generic [ref=f1e6]: 学习任务
+        - heading "?????" [level=1] [ref=f1e10]
+        - paragraph [ref=f1e11]: "???????"
+      - navigation "学习任务切换" [ref=f1e12]:
+        - generic [ref=f1e16]:
+          - generic [ref=f1e17]: 上一个学习任务
+          - generic [ref=f1e18]: 已经是第一个任务
+        - generic [ref=f1e20]:
+          - generic [ref=f1e21]: 下一个学习任务
+          - generic [ref=f1e22]: 已经是最后一个任务
+      - navigation "学习任务内容导航" [ref=f1e25]:
+        - link "回到顶部 回到学习任务顶部" [ref=f1e26] [cursor=pointer]:
+          - /url: "#task-top"
+          - generic [ref=f1e30]: 回到顶部
+          - generic [ref=f1e31]: 回到学习任务顶部
+        - link "深度解析 跳转到深度解析" [ref=f1e32] [cursor=pointer]:
+          - /url: "#explanation"
+          - generic [ref=f1e36]: 深度解析
+          - generic [ref=f1e37]: 跳转到深度解析
+        - link "知识视频 跳转到知识视频" [ref=f1e38] [cursor=pointer]:
+          - /url: "#knowledge-video"
+          - generic [ref=f1e42]: 知识视频
+          - generic [ref=f1e43]: 跳转到知识视频
+        - link "2D 交互 跳转到2D 交互" [ref=f1e44] [cursor=pointer]:
+          - /url: "#interactive-html"
+          - generic [ref=f1e49]: 2D 交互
+          - generic [ref=f1e50]: 跳转到2D 交互
+        - link "知识测验 跳转到知识测验" [ref=f1e51] [cursor=pointer]:
+          - /url: "#quiz"
+          - generic [ref=f1e57]: 知识测验
+          - generic [ref=f1e58]: 跳转到知识测验
+        - link "学完打卡 跳转到学完打卡" [ref=f1e59] [cursor=pointer]:
+          - /url: "#complete"
+          - generic [ref=f1e64]: 学完打卡
+          - generic [ref=f1e65]: 跳转到学完打卡
+      - generic [ref=f1e67]:
+        - generic [ref=f1e68]:
+          - heading "深度解析 文字化讲解与知识导图" [level=2] [ref=f1e73]:
+            - text: 深度解析
+            - generic [ref=f1e74]: 文字化讲解与知识导图
+          - button "收起内容" [expanded] [ref=f1e76]
+        - generic [ref=f1e83]:
+          - generic [ref=f1e87]:
+            - paragraph [ref=f1e88]: 深度解析尚未生成
+            - paragraph [ref=f1e89]: 将根据当前知识点生成结构化讲解、示例、常见误区、练习建议和知识导图。
+          - button "生成深度解析" [ref=f1e90]
+      - generic [ref=f1e92]:
+        - generic [ref=f1e93]:
+          - heading "沉浸视界 知识点视频化解析" [level=2] [ref=f1e98]:
+            - text: 沉浸视界
+            - generic [ref=f1e99]: 知识点视频化解析
+          - button "收起内容" [expanded] [ref=f1e101]
+        - generic [ref=f1e108]:
+          - paragraph [ref=f1e112]: AI 将基于本任务自动生成讲解视频
+          - button "生成 · -5" [ref=f1e113]
+      - generic [ref=f1e116]:
+        - generic [ref=f1e117]:
+          - heading "2D 可视化操作 可播放、可编辑的知识图形" [level=2] [ref=f1e123]:
+            - text: 2D 可视化操作
+            - generic [ref=f1e124]: 可播放、可编辑的知识图形
+          - button "收起内容" [expanded] [ref=f1e126]
+        - generic [ref=f1e133]:
+          - paragraph [ref=f1e137]: AI 将基于本任务生成可逐步播放、缩放与自然语言编辑的二维可视化
+          - button "生成 · -5" [ref=f1e138]
+      - generic [ref=f1e141]:
+        - generic [ref=f1e142]:
+          - heading "知识点测验 检验掌握度" [level=2] [ref=f1e149]:
+            - text: 知识点测验
+            - generic [ref=f1e150]: 检验掌握度
+          - button "收起内容" [expanded] [ref=f1e152]
+        - generic [ref=f1e156]: 正在加载…
+      - generic [ref=f1e162]:
+        - generic [ref=f1e163]:
+          - heading "学完打卡 完成本任务并解锁下一节" [level=2] [ref=f1e169]:
+            - text: 学完打卡
+            - generic [ref=f1e170]: 完成本任务并解锁下一节
+          - button "收起内容" [expanded] [ref=f1e172]
+        - generic [ref=f1e179]:
+          - paragraph [ref=f1e183]: 看完所有内容后，点击下方按钮完成本任务
+          - button "我已学完，完成本任务" [ref=f1e184]
+      - navigation "学习任务切换" [ref=f1e185]:
+        - generic [ref=f1e189]:
+          - generic [ref=f1e190]: 上一个学习任务
+          - generic [ref=f1e191]: 已经是第一个任务
+        - generic [ref=f1e193]:
+          - generic [ref=f1e194]: 下一个学习任务
+          - generic [ref=f1e195]: 已经是最后一个任务
+    - complementary [ref=f1e198]:
+      - generic [ref=f1e199]:
+        - link "返回主控台" [ref=f1e200] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f1e203]:
+          - heading "当前阶段进度" [level=3] [ref=f1e204]
+          - generic [ref=f1e205]:
+            - generic [ref=f1e206]: 0/1
+            - generic [ref=f1e211]:
+              - paragraph [ref=f1e212]: 下一节点
+              - paragraph [ref=f1e213]: 本阶段已全部完成
+      - generic [ref=f1e214]:
+        - heading "AI 伴学" [level=4] [ref=f1e220]
+        - generic [ref=f1e221]: 你可以围绕当前知识点向我提问。
+        - generic [ref=f1e224]:
+          - textbox "输入你的问题…" [disabled] [ref=f1e225]
+          - button "发送" [disabled] [ref=f1e226]
+  - region "Notifications alt+T"

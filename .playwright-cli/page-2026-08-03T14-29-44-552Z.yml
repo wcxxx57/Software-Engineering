@@ -1,0 +1,91 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - main [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - generic [ref=f4e5]: 学习任务 · 预览
+        - heading "二叉搜索树" [level=1] [ref=f4e8]
+        - paragraph [ref=f4e9]: 这是使用实际任务页组件渲染的本地预览，不请求后端或生成服务。
+      - generic [ref=f4e10]:
+        - heading "知识讲解" [level=2] [ref=f4e15]
+        - paragraph [ref=f4e16]: 二叉搜索树要求左子树的节点值小于根节点，右子树的节点值大于根节点。这一性质使查找能够沿单一路径进行。
+      - generic [ref=f4e17]:
+        - generic [ref=f4e18]:
+          - heading "推荐学习资源" [level=2] [ref=f4e19]
+          - paragraph [ref=f4e20]: 围绕“二叉搜索树”为你匹配的学习内容
+        - generic [ref=f4e21]:
+          - heading "K2V · 知识讲解视频" [level=3] [ref=f4e25]
+          - generic [ref=f4e26]:
+            - generic [ref=f4e27]:
+              - heading "二叉搜索树的查找与插入动画" [level=4] [ref=f4e28]
+              - paragraph [ref=f4e29]: 用动画理解查找路径、插入位置与树高变化。
+            - generic [ref=f4e30]:
+              - paragraph [ref=f4e31]: 推荐给你：与你当前学习进度相近的学习者通常先通过动画建立概念理解
+              - paragraph [ref=f4e32]: 已有 128 位学习者学习过
+            - generic [ref=f4e38]: 视频播放区域
+            - link "直接学习" [ref=f4e40] [cursor=pointer]:
+              - /url: "#recommendation-knowledge_video-1"
+          - paragraph [ref=f4e41]:
+            - text: 没有合适视频？
+            - link "为当前知识点生成 K2V" [ref=f4e42] [cursor=pointer]:
+              - /url: "#knowledge-video-generate"
+        - generic [ref=f4e43]:
+          - heading "C2V · 代码讲解视频" [level=3] [ref=f4e49]
+          - generic [ref=f4e50]:
+            - generic [ref=f4e51]:
+              - heading "删除节点的三种情况" [level=4] [ref=f4e52]
+              - paragraph [ref=f4e53]: 跟随代码执行过程，理解叶子、单子与双子节点的删除。
+            - paragraph [ref=f4e55]: 推荐给你：你正在学习含代码执行过程的知识点，适合通过逐行演示理解
+            - generic [ref=f4e56]: 视频播放区域
+            - link "直接学习" [ref=f4e58] [cursor=pointer]:
+              - /url: "#recommendation-code_video-2"
+          - paragraph [ref=f4e59]:
+            - text: 没有合适代码讲解？
+            - link "为当前知识点生成 C2V" [ref=f4e60] [cursor=pointer]:
+              - /url: /c2v?taskId=9001
+        - generic [ref=f4e61]:
+          - heading "可操控 2D" [level=3] [ref=f4e66]
+          - generic [ref=f4e67]:
+            - generic [ref=f4e68]:
+              - heading "二叉搜索树节点删除操作台" [level=4] [ref=f4e69]
+              - paragraph [ref=f4e70]: 拖动、删除节点，实时观察树结构变化。
+            - paragraph [ref=f4e72]: 推荐给你：适合在理解概念后动手验证删除规则
+            - generic [ref=f4e73]: 可操控 2D 预览区域
+            - link "开始操作" [ref=f4e75] [cursor=pointer]:
+              - /url: "#recommendation-interactive_html-3"
+          - paragraph [ref=f4e76]:
+            - text: 没有合适互动内容？
+            - link "为当前知识点生成可操控 2D" [ref=f4e77] [cursor=pointer]:
+              - /url: "#interactive-html-generate"
+    - complementary [ref=f4e78]:
+      - generic [ref=f4e79]:
+        - link "返回主控台" [ref=f4e80] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=f4e83]:
+          - heading "当前阶段进度" [level=3] [ref=f4e84]
+          - generic [ref=f4e85]:
+            - generic [ref=f4e86]: 1/3
+            - generic [ref=f4e91]:
+              - paragraph [ref=f4e92]: 下一节点
+              - paragraph [ref=f4e93]: 树的遍历
+      - generic [ref=f4e94]:
+        - heading "AI 伴学" [level=4] [ref=f4e100]
+        - generic [ref=f4e101]:
+          - paragraph [ref=f4e102]: Python 基础 / 树结构
+          - paragraph [ref=f4e103]: 当前知识点：二叉搜索树
+        - generic [ref=f4e104]:
+          - generic [ref=f4e105]:
+            - heading "猜你想问" [level=5] [ref=f4e106]
+            - generic [ref=f4e110]:
+              - button "二叉搜索树和普通二叉树有什么区别？" [ref=f4e111]
+              - button "为什么查找效率与树的高度有关？" [ref=f4e112]
+          - generic [ref=f4e113]:
+            - heading "用户常问" [level=5] [ref=f4e114]
+            - generic [ref=f4e120]:
+              - button "删除有两个子节点的节点时怎么办？ 8 位学习者问过" [ref=f4e121]
+              - button "为什么二叉搜索树会退化成链表？ 12 位学习者问过" [ref=f4e122]
+          - generic [ref=f4e123]: 你可以围绕当前知识点向我提问。
+        - generic [ref=f4e125]:
+          - textbox "输入你的问题…" [disabled] [ref=f4e126]
+          - button "发送" [disabled] [ref=f4e127]
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f4e136] [cursor=pointer]

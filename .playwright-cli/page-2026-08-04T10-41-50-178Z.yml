@@ -1,0 +1,17 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: 计划已完成 · 预览
+      - generic [ref=e8]:
+        - generic [ref=e14]:
+          - paragraph [ref=e15]: 下一阶段学习计划
+          - heading "数据结构与算法基础" [level=2] [ref=e16]
+        - paragraph [ref=e17]: 推荐给你：与你已完成的 Python 基础衔接，并以此作为后续学习的前置知识。
+        - generic [ref=e18]:
+          - generic [ref=e19]: 4 个阶段 · 16 个任务
+          - generic [ref=e23]: 预计 3 周
+        - generic [ref=e26]:
+          - button "预览计划" [ref=e27]
+          - button "采用此计划" [ref=e28]
+          - button "继续自定义" [ref=e29]
+  - region "Notifications alt+T"

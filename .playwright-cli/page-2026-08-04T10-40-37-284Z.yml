@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "返回主页" [ref=e3] [cursor=pointer]:
+      - /url: /dashboard
+    - banner [ref=e6]:
+      - generic [ref=e7]: 代码题解视频
+      - heading "Code 2 Video" [level=1] [ref=e13]
+      - paragraph [ref=e14]: 你的专属算法题解视听库
+    - generic [ref=e15]:
+      - heading "精品推荐1" [level=2] [ref=e17]
+      - heading "二分查找边界处理" [level=4] [ref=e26] [cursor=pointer]
+    - generic [ref=e27]:
+      - heading "输入题目和你的解法" [level=3] [ref=e28]
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]: 输入题目描述
+          - textbox "请粘贴题目背景、输入输出与约束条件…" [ref=e32]
+        - generic [ref=e33]:
+          - generic [ref=e34]: 输入答案 / 核心代码
+          - textbox "请粘贴可运行的核心代码…" [ref=e35]
+      - generic [ref=e36]:
+        - button "清空" [ref=e37]
+        - generic [ref=e38]:
+          - generic [ref=e39]: 余额不足，还差 5
+          - button "在线生成" [disabled]
+    - paragraph [ref=e48]: 生成的视频将在此处播放
+    - generic [ref=e49]:
+      - heading "生成历史0" [level=3] [ref=e51]
+      - paragraph [ref=e58]: 还没有生成过任何 C2V 视频。给 AI 一道题和你的解法，它会做成讲解短片。
+  - region "Notifications alt+T"

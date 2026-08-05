@@ -1,0 +1,31 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - link "返回主页" [ref=f2e3] [cursor=pointer]:
+      - /url: /dashboard
+    - banner [ref=f2e6]:
+      - generic [ref=f2e7]: 代码题解视频
+      - heading "Code 2 Video" [level=1] [ref=f2e13]
+      - paragraph [ref=f2e14]: 你的专属算法题解视听库
+    - generic [ref=f2e15]:
+      - heading "精品推荐1" [level=2] [ref=f2e17]
+      - heading "二分查找边界处理" [level=4] [ref=f2e26] [cursor=pointer]
+    - generic [ref=f2e27]:
+      - heading "输入题目和你的解法" [level=3] [ref=f2e28]
+      - generic [ref=f2e29]:
+        - generic [ref=f2e30]:
+          - generic [ref=f2e31]: 输入题目描述
+          - textbox "请粘贴题目背景、输入输出与约束条件…" [ref=f2e32]
+        - generic [ref=f2e33]:
+          - generic [ref=f2e34]: 输入答案 / 核心代码
+          - textbox "请粘贴可运行的核心代码…" [ref=f2e35]
+      - generic [ref=f2e36]:
+        - button "清空" [ref=f2e37]
+        - generic [ref=f2e38]:
+          - generic [ref=f2e39]: 余额不足，还差 5
+          - button "在线生成" [disabled]
+    - paragraph [ref=f2e48]: 生成的视频将在此处播放
+    - generic [ref=f2e49]:
+      - heading "生成历史0" [level=3] [ref=f2e51]
+      - paragraph [ref=f2e58]: 还没有生成过任何 C2V 视频。给 AI 一道题和你的解法，它会做成讲解短片。
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f2e64] [cursor=pointer]

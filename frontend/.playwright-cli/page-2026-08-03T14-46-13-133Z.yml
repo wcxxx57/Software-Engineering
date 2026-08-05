@@ -1,0 +1,69 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - main [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: 学习任务 · 预览
+        - heading "二叉搜索树" [level=1] [ref=e8]
+        - paragraph [ref=e9]: 这是使用实际任务页组件渲染的本地预览，不请求后端或生成服务。
+      - generic [ref=e10]:
+        - heading "知识讲解" [level=2] [ref=e15]
+        - paragraph [ref=e16]: 二叉搜索树要求左子树的节点值小于根节点，右子树的节点值大于根节点。这一性质使查找能够沿单一路径进行。
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - heading "沉浸视界 知识点视频化解析" [level=2] [ref=e24]:
+            - text: 沉浸视界
+            - generic [ref=e25]: 知识点视频化解析
+          - button "收起内容" [expanded] [ref=e27]
+        - generic [ref=e31]:
+          - generic [ref=e32]:
+            - generic [ref=e34]:
+              - heading "二叉搜索树的查找与插入动画" [level=3] [ref=e35]
+              - paragraph [ref=e36]: 用动画理解查找路径、插入位置与树高变化。
+            - paragraph [ref=e37]: 推荐给你：与你当前学习进度相近的学习者通常先通过动画建立概念理解
+            - paragraph [ref=e38]: 已有 128 位学习者学习过
+          - generic [ref=e44]: 视频播放区域
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - heading "2D 可视化操作 可播放、可编辑的知识图形" [level=2] [ref=e53]:
+            - text: 2D 可视化操作
+            - generic [ref=e54]: 可播放、可编辑的知识图形
+          - button "收起内容" [expanded] [ref=e56]
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - generic [ref=e63]:
+              - heading "二叉搜索树节点删除操作台" [level=3] [ref=e64]
+              - paragraph [ref=e65]: 拖动、删除节点，实时观察树结构变化。
+            - paragraph [ref=e66]: 推荐给你：适合在理解概念后动手验证删除规则
+          - generic [ref=e67]: 可操控 2D 区域
+    - complementary [ref=e68]:
+      - generic [ref=e69]:
+        - link "返回主控台" [ref=e70] [cursor=pointer]:
+          - /url: /dashboard
+        - generic [ref=e73]:
+          - heading "当前阶段进度" [level=3] [ref=e74]
+          - generic [ref=e75]:
+            - generic [ref=e76]: 1/3
+            - generic [ref=e81]:
+              - paragraph [ref=e82]: 下一节点
+              - paragraph [ref=e83]: 树的遍历
+      - generic [ref=e84]:
+        - heading "AI 伴学" [level=4] [ref=e90]
+        - generic [ref=e91]:
+          - paragraph [ref=e92]: Python 基础 / 树结构
+          - paragraph [ref=e93]: 当前知识点：二叉搜索树
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - heading "猜你想问" [level=5] [ref=e96]
+            - generic [ref=e100]:
+              - button "二叉搜索树和普通二叉树有什么区别？" [ref=e101]
+              - button "为什么查找效率与树的高度有关？" [ref=e102]
+          - generic [ref=e103]:
+            - heading "用户常问" [level=5] [ref=e104]
+            - generic [ref=e110]:
+              - button "删除有两个子节点的节点时怎么办？ 8 位学习者问过" [ref=e111]
+              - button "为什么二叉搜索树会退化成链表？ 12 位学习者问过" [ref=e112]
+          - generic [ref=e113]: 你可以围绕当前知识点向我提问。
+        - generic [ref=e115]:
+          - textbox "输入你的问题…" [disabled] [ref=e116]
+          - button "发送" [disabled] [ref=e117]
+  - region "Notifications alt+T"

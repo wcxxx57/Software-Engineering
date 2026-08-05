@@ -1,0 +1,28 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - link "返回主页" [ref=f2e3] [cursor=pointer]:
+      - /url: /dashboard
+    - banner [ref=f2e6]:
+      - generic [ref=f2e7]: 交互式实验室
+      - heading "Interactive Lab" [level=1] [ref=f2e10]
+      - paragraph [ref=f2e11]: 把抽象概念变成可玩的沙盒，AI 即刻为你搭建演示页面
+    - generic [ref=f2e12]:
+      - heading "推荐内容" [level=2] [ref=f2e17]
+      - button "二叉搜索树操作台 拖动节点并观察插入、查找与删除后的结构变化。" [ref=f2e19]:
+        - generic [ref=f2e23]:
+          - generic [ref=f2e24]: 二叉搜索树操作台
+          - generic [ref=f2e25]: 拖动节点并观察插入、查找与删除后的结构变化。
+    - generic [ref=f2e26]:
+      - heading "输入你想要交互的知识点" [level=3] [ref=f2e27]
+      - textbox "例如：可视化汉诺塔的递归调用过程，允许用户调节盘数与速度。" [ref=f2e28]
+      - generic [ref=f2e29]:
+        - button "清空" [ref=f2e30]
+        - generic [ref=f2e31]:
+          - generic [ref=f2e32]: 余额不足，还差 5
+          - button "在线生成" [disabled]
+    - paragraph [ref=f2e41]: 生成的演示将在此处播放
+    - generic [ref=f2e42]:
+      - heading "生成历史0" [level=3] [ref=f2e44]
+      - paragraph [ref=f2e51]: 还没有生成过任何交互式实验。让 AI 把抽象的概念变成可玩的沙盒。
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f2e57] [cursor=pointer]
