@@ -171,6 +171,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_MODEL: ${LLM_MODEL}
+      PLAN_MODEL: ${PLAN_MODEL:-${LLM_MODEL}}
       LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-120}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-3}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
@@ -434,6 +435,7 @@ services:
       CORE_FLOW_ONLY: ${CORE_FLOW_ONLY:-false}
       EDUCATION2D_INTERNAL_URL: http://education2d:3100
       STORAGE_INTERNAL_URL: http://minio:9000
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-zhiying-content}
 
 volumes:
   postgres-data:

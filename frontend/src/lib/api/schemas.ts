@@ -365,6 +365,7 @@ const resourceBase = {
 
 export const knowledgeVideoSchema = z.object({
   ...resourceBase,
+  title: z.string(),
   object_key: z.string().nullable(),
   bookmarked: z.boolean().optional().default(false),
 });
@@ -400,8 +401,33 @@ export const recommendedResourceSchema = z.object({
   summary: z.string(),
   reasons: z.array(z.string()).min(1).max(2),
   learner_count: z.number().int().nonnegative().nullable(),
+  rank_score: z.number().optional(),
+  rank_position: z.number().int().positive().optional(),
 });
 export type RecommendedResource = z.infer<typeof recommendedResourceSchema>;
+
+export const recommendationDebugResourceSchema = z.object({
+  catalog_id: z.number().int(),
+  id: z.number().int(),
+  title: z.string(),
+  rank: z.number().int().positive(),
+  selected: z.boolean(),
+  rank_score: z.number(),
+  similarity_score: z.number(),
+  popularity_score: z.number(),
+  learner_count: z.number().int().nonnegative(),
+});
+export type RecommendationDebugResource = z.infer<
+  typeof recommendationDebugResourceSchema
+>;
+
+export const recommendationDebugSchema = z.object({
+  limit: z.number().int().positive(),
+  scoring_formula: z.string(),
+  knowledge_video: z.array(recommendationDebugResourceSchema),
+  interactive_html: z.array(recommendationDebugResourceSchema),
+});
+export type RecommendationDebug = z.infer<typeof recommendationDebugSchema>;
 
 export const taskRecommendationsSchema = z.object({
   eligible: z.boolean(),
@@ -410,6 +436,7 @@ export const taskRecommendationsSchema = z.object({
     knowledge_video: z.array(recommendedResourceSchema),
     interactive_html: z.array(recommendedResourceSchema),
   }),
+  recommendation_debug: recommendationDebugSchema.optional(),
 });
 export type TaskRecommendations = z.infer<typeof taskRecommendationsSchema>;
 
@@ -419,6 +446,7 @@ export const featuredResourcesSchema = z.array(
     id: z.number().int(),
     title: z.string(),
     summary: z.string(),
+    object_key: z.string().min(1).nullable(),
   }),
 );
 export type FeaturedResource = z.infer<typeof featuredResourcesSchema>[number];

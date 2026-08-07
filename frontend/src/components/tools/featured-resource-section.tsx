@@ -4,7 +4,9 @@ import { Box, Code2, Film, Package } from "lucide-react";
 
 import { ToolCard } from "@/components/tools/tool-card";
 import type { FeaturedResource, RecommendationResourceKind } from "@/lib/api/schemas";
+import { useConfig } from "@/lib/query/config";
 import { useFeaturedResources } from "@/lib/query/recommendations";
+import { assetUrl } from "@/lib/storage";
 
 const META = {
   "knowledge-video": { icon: Film },
@@ -12,8 +14,9 @@ const META = {
   "interactive-html": { icon: Box },
 } as const;
 
-export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: RecommendationResourceKind; onOpen: (resource: FeaturedResource) => void; previewData?: FeaturedResource[] }) {
-  const { data: queriedData = [] } = useFeaturedResources(kind, previewData == null);
+export function FeaturedResourceSection({ kind, onOpen, previewData, userId }: { kind: RecommendationResourceKind; onOpen: (resource: FeaturedResource) => void; previewData?: FeaturedResource[]; userId?: number | null }) {
+  const { storage } = useConfig();
+  const { data: queriedData = [] } = useFeaturedResources(kind, userId, previewData == null);
   const data = previewData ?? queriedData;
   const meta = META[kind];
   const Icon = meta.icon;
@@ -45,6 +48,7 @@ export function FeaturedResourceSection({ kind, onOpen, previewData }: { kind: R
             status="FINISHED"
             colorIndex={index}
             thumbnailIcon={<Icon strokeWidth={1.75} />}
+            thumbnailUrl={kind !== "interactive-html" && item.object_key ? assetUrl(item.object_key, storage) : undefined}
             onClick={() => onOpen(item)}
             onDelete={() => undefined}
             showDelete={false}

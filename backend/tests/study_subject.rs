@@ -364,6 +364,8 @@ async fn study_subject_plan_callback_creates_stages_and_tasks() {
     assert_eq!(tasks.len(), 2);
     assert_eq!(tasks[0]["status"], "STUDYING"); // first task unlocked
     assert_eq!(tasks[1]["status"], "LOCKED"); // second task locked
+    assert!(tasks[0]["knowledge_explanation_id"].is_number());
+    assert!(tasks[1]["knowledge_explanation_id"].is_null());
 
     // Stage 2 should be LOCKED
     let (status, body) = app
@@ -371,6 +373,8 @@ async fn study_subject_plan_callback_creates_stages_and_tasks() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["status"], "LOCKED");
+    let stage_two_tasks = body["data"]["tasks"].as_array().expect("tasks");
+    assert!(stage_two_tasks[0]["knowledge_explanation_id"].is_null());
 }
 
 #[tokio::test]

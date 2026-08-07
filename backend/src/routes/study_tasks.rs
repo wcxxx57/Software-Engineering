@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, TransactionTrait,
@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     auth::AuthUser,
     entities::{
-        curriculum_node, interactive_html, knowledge_explanation, knowledge_video, pretest_problem,
+        interactive_html, knowledge_explanation, knowledge_video, pretest_problem,
         study_quiz, study_quiz::StudyQuizStatus, study_stage, study_stage::StudyStageStatus,
         study_subject, study_subject::StudySubjectStatus, study_task,
-        study_task::StudyTaskStatus, study_task_curriculum_node, user,
+        study_task::StudyTaskStatus, user, user_knowledge_video_link,
     },
     error::{AppError, BusinessError},
     response::{created, ok},
@@ -74,28 +74,6 @@ pub struct StudyQuizBriefView {
     pub total_problems: i32,
     pub correct_problems: i32,
     pub created_at: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct RecommendedResourceView {
-    pub id: i32,
-    pub title: String,
-    pub summary: String,
-    pub reasons: Vec<String>,
-    pub learner_count: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TaskRecommendationResourcesView {
-    pub knowledge_video: Vec<RecommendedResourceView>,
-    pub interactive_html: Vec<RecommendedResourceView>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TaskRecommendationsView {
-    pub eligible: bool,
-    pub knowledge_point_title: Option<String>,
-    pub resources: TaskRecommendationResourcesView,
 }
 
 // ── Payloads ──
@@ -190,7 +168,124 @@ pub async fn get_by_id(
     auth_user: AuthUser,
     Path(id): Path<i32>,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
-    let (task, _, _) = load_owned_task(&state.db, id, auth_user.user_id).await?;
+    let (mut task, _, _) = load_owned_task(&state.db, id, auth_user.user_id).await?;
+
+    // A plan only queues the first unlocked task.  When the learner reaches a
+    // later task, create its explanation on demand so locked or skipped tasks
+    // never occupy the shared generation queue ahead of the active task.
+    //
+    // Older plans eagerly created explanations for every task.  If the active
+    // task is still stuck in QUEUING/GENERATING for a while, replace that stale
+    // record once when the learner opens the task.  This lets existing users
+    // recover without repeatedly creating a new record on every page load.
+    if matches!(task.status, StudyTaskStatus::Studying | StudyTaskStatus::Finished) {
+        let now = Utc::now();
+        let tx = state.db.begin().await?;
+        let current = study_task::Entity::find_by_id(task.id)
+            .one(&tx)
+            .await?
+            .ok_or_else(|| AppError::business(BusinessError::TaskNotFound))?;
+
+        let stale_explanation_id = if let Some(explanation_id) = current.knowledge_explanation_id {
+            match knowledge_explanation::Entity::find_by_id(explanation_id)
+                .one(&tx)
+                .await?
+            {
+                Some(record)
+                    if matches!(
+                        record.status,
+                        knowledge_explanation::KnowledgeExplanationStatus::Queuing
+                            | knowledge_explanation::KnowledgeExplanationStatus::Generating
+                    ) && now.signed_duration_since(record.updated_at) > Duration::minutes(2) =>
+                {
+                    Some(explanation_id)
+                }
+                Some(_) => None,
+                None => Some(explanation_id),
+            }
+        } else {
+            None
+        };
+
+        if let Some(stale_id) = stale_explanation_id {
+            if let Some(record) = knowledge_explanation::Entity::find_by_id(stale_id)
+                .one(&tx)
+                .await?
+            {
+                let mut active: knowledge_explanation::ActiveModel = record.into();
+                active.status = Set(knowledge_explanation::KnowledgeExplanationStatus::Failed);
+                active.updated_at = Set(now);
+                active.update(&tx).await?;
+            }
+        }
+
+        if task.status == StudyTaskStatus::Finished {
+            if stale_explanation_id.is_some() {
+                let mut active_task: study_task::ActiveModel = current.clone().into();
+                active_task.knowledge_explanation_id = Set(None);
+                active_task.updated_at = Set(now);
+                task = active_task.update(&tx).await?;
+            } else {
+                task = current;
+            }
+            tx.commit().await?;
+        } else if current.knowledge_explanation_id.is_some() && stale_explanation_id.is_none() {
+            task = current;
+            tx.commit().await?;
+        } else {
+            let prompt = task_default_prompt(&current);
+            let explanation = knowledge_explanation::ActiveModel {
+                user_id: Set(auth_user.user_id),
+                status: Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing),
+                prompt: Set(prompt.clone()),
+                content: Set(None),
+                public: Set(false),
+                bookmarked: Set(false),
+                cost: Set(0),
+                created_at: Set(now),
+                updated_at: Set(now),
+                ..Default::default()
+            }
+            .insert(&tx)
+            .await?;
+
+            let mut active_task: study_task::ActiveModel = current.clone().into();
+            active_task.knowledge_explanation_id = Set(Some(explanation.id));
+            active_task.updated_at = Set(now);
+            task = active_task.update(&tx).await?;
+            tx.commit().await?;
+
+            if let Err(err) = dispatch_to_service(
+                state.publisher.as_ref(),
+                &state.config.knowledge_explanation_exchange,
+                &GenerateRequest {
+                    task_id: explanation.id,
+                    prompt,
+                },
+            )
+            .await
+            {
+                tracing::error!(
+                    error = %err,
+                    task_id = task.id,
+                    explanation_id = explanation.id,
+                    "failed to dispatch lazy knowledge explanation"
+                );
+                let tx = state.db.begin().await?;
+                if let Some(record) = knowledge_explanation::Entity::find_by_id(explanation.id)
+                    .one(&tx)
+                    .await?
+                {
+                    let mut active: knowledge_explanation::ActiveModel = record.into();
+                    active.status = Set(knowledge_explanation::KnowledgeExplanationStatus::Failed);
+                    active.updated_at = Set(Utc::now());
+                    active.update(&tx).await?;
+                }
+                tx.commit().await?;
+            }
+        }
+    }
+
     Ok(ok(StudyTaskView::from(task)))
 }
 
@@ -199,41 +294,6 @@ pub async fn get_by_id(
 /// A task without reusable, quality-screened content is a valid empty-result
 /// case. Returning a structured response lets the client offer generation
 /// instead of treating the absence of a recommendation as a missing endpoint.
-pub async fn get_recommendations(
-    State(state): State<AppState>,
-    auth_user: AuthUser,
-    Path(id): Path<i32>,
-) -> Result<impl axum::response::IntoResponse, AppError> {
-    let (task, _, _) = load_owned_task(&state.db, id, auth_user.user_id).await?;
-    let node_ids = study_task_curriculum_node::Entity::find()
-        .filter(study_task_curriculum_node::Column::StudyTaskId.eq(task.id))
-        .all(&state.db)
-        .await?
-        .into_iter()
-        .map(|link| link.curriculum_node_id)
-        .collect::<Vec<_>>();
-    let knowledge_point_title = if node_ids.is_empty() {
-        None
-    } else {
-        curriculum_node::Entity::find()
-            .filter(curriculum_node::Column::Id.is_in(node_ids))
-            .one(&state.db)
-            .await?
-            .map(|node| node.title)
-    };
-
-    Ok(ok(TaskRecommendationsView {
-        // The recommendation pipeline is available for the task. It may return
-        // no item until a finished resource has passed the quality gate.
-        eligible: true,
-        knowledge_point_title,
-        resources: TaskRecommendationResourcesView {
-            knowledge_video: Vec::new(),
-            interactive_html: Vec::new(),
-        },
-    }))
-}
-
 /// POST /api/v1/study-tasks/{id}/complete
 pub async fn complete(
     State(state): State<AppState>,
@@ -421,7 +481,6 @@ pub async fn create_knowledge_video(
         .one(&tx)
         .await?
         .ok_or_else(|| AppError::business(BusinessError::UserNotFound))?;
-
     if existing_user.diamond < cost {
         return Err(AppError::business(BusinessError::InsufficientDiamonds));
     }
@@ -476,6 +535,17 @@ pub async fn create_knowledge_video(
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
+    }
+    .insert(&tx)
+    .await?;
+
+    // Task-generated videos are also owned by the learner.  Besides making
+    // the asset appear consistently in the learner's video list, this link
+    // is required by the bookmark endpoint to authorize task-page favorites.
+    user_knowledge_video_link::ActiveModel {
+        knowledge_video_id: Set(kv_record.id),
+        user_id: Set(auth_user.user_id),
+        created_at: Set(now),
     }
     .insert(&tx)
     .await?;

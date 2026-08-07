@@ -80,6 +80,11 @@ export function VideoViewer({
 
   const body = (
     <>
+      {source.kind === "task" && data?.title ? (
+        <div className="mb-4 text-lg font-extrabold text-brand-deep">
+          {data.title}
+        </div>
+      ) : null}
       {isPending && <Placeholder />}
 
       {isError && !data && (

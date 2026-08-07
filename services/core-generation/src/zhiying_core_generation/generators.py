@@ -112,6 +112,7 @@ async def generate_plan(client: LlmClient, settings: Settings, request: PlanRequ
             system="你是个性化学习路径设计专家。只返回合法 JSON，不要返回 Markdown。",
             user=user + retry_feedback,
             schema=PlanPayload,
+            model=settings.plan_model or settings.llm_model,
         )
         assert isinstance(generated, PlanPayload)
         try:

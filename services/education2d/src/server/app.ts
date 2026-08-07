@@ -3,7 +3,6 @@ import express, { type NextFunction, type Request, type Response } from "express
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { FIXTURES } from "../shared/fixtures.js";
 import { runtimeStateSchema, userProfileSchema } from "../shared/schema.js";
 import { AgentConfigurationError, NotFoundError, VersionConflictError } from "./errors.js";
 import { SseWriter } from "./sse.js";
@@ -55,13 +54,6 @@ export function createApp({ store, agents }: AppDependencies) {
   app.use(express.json({ limit: "3mb" }));
 
   app.get("/health", (_request, response) => response.json({ status: "ok", service: "education2d", timestamp: new Date().toISOString() }));
-
-  app.post("/api/visualizations/demo", asyncRoute(async (_request, response) => {
-    const fixtureName = typeof _request.query.fixture === "string" ? _request.query.fixture : "array";
-    const fixture = FIXTURES[fixtureName as keyof typeof FIXTURES] ?? FIXTURES.array;
-    const stored = await store.create(fixture, crypto.randomUUID(), `载入内置演示：${fixture.title}`);
-    response.status(201).json(stored);
-  }));
 
   app.post("/api/visualizations/generate", asyncRoute(async (request, response) => {
     const input = generateRequestSchema.parse(request.body);

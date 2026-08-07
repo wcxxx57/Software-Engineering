@@ -82,6 +82,19 @@ def normalize_known_scene_tokens(code: str) -> tuple[str, list[str]]:
         code = "from manim import *\n" + code
         fixes.append("added_manim_import")
 
+    # Manim has no Mobject.fit_to_bounding_box method. Models occasionally
+    # emit `chart.fit_to_bounding_box(chart)` when they mean the platform's
+    # right-column layout helper; normalize that call before dry-run/render.
+    fit_call = re.compile(
+        r"(?P<object>[A-Za-z_]\w*)\.fit_to_bounding_box\(\s*(?P=object)\s*\)"
+    )
+    normalized_code, replacements = fit_call.subn(
+        lambda match: f"self.fit_in_right_region({match.group('object')})", code
+    )
+    if replacements:
+        code = normalized_code
+        fixes.append(f"normalized_fit_to_bounding_box:{replacements}")
+
     referenced = set(re.findall(r"\bself\.([A-Z][A-Z0-9_]+)\b", code))
     resolved = {
         name: color

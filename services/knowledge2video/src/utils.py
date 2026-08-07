@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import hashlib
 from typing import List
 from manim import *
 import multiprocessing
@@ -256,6 +257,13 @@ def topic_to_safe_name(knowledge_point):
     safe_name = re.sub(SAFE_PATTERN, "", knowledge_point)
     # 将连续空格替换为单个下划线
     safe_name = re.sub(r"\s+", "_", safe_name.strip())
+    # Prompts are user-authored and can be much longer than a filesystem
+    # component. Keep a readable prefix while making collisions unlikely.
+    if len(safe_name) > 96:
+        digest = hashlib.sha256(str(knowledge_point).encode("utf-8")).hexdigest()[:12]
+        safe_name = f"{safe_name[:80].rstrip('_')}-{digest}"
+    if not safe_name:
+        safe_name = "untitled"
     return safe_name
 
 

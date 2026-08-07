@@ -7,7 +7,9 @@ import { ToolPageClient } from "@/components/tools/tool-page-client";
 import { serverFetch } from "@/lib/api/client";
 import { getPublicConfig } from "@/lib/api/public-config";
 import {
+  featuredResourcesSchema,
   interactiveHtmlSchema,
+  type FeaturedResource,
   type InteractiveHtml,
 } from "@/lib/api/schemas";
 import { getSession } from "@/lib/auth/session";
@@ -20,11 +22,15 @@ export default async function InteractivePage() {
   const user = await getSession();
   if (!user) redirect("/login");
 
-  const [list, config] = await Promise.all([
+  const [list, config, featured] = await Promise.all([
     serverFetch<InteractiveHtml[]>("/interactive-htmls", {
       schema: listSchema,
     }),
     getPublicConfig(),
+    serverFetch<FeaturedResource[]>("/recommendations/featured", {
+      query: { kind: "interactive-html" },
+      schema: featuredResourcesSchema,
+    }),
   ]);
 
   return (
@@ -51,6 +57,7 @@ export default async function InteractivePage() {
         emptyHint="还没有生成过任何交互式实验。让 AI 把抽象的概念变成可玩的沙盒。"
         primaryCtaLabel="在线生成"
         featuredKind="interactive-html"
+        featuredPreviewData={featured}
       />
     </ToolPageShell>
   );

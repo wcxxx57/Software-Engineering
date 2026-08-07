@@ -13,9 +13,11 @@ import {
 } from "@/components/tools/tool-result-player";
 import { FeaturedResourceSection } from "@/components/tools/featured-resource-section";
 import type { FeaturedResource, RecommendationResourceKind } from "@/lib/api/schemas";
+import { useConfig } from "@/lib/query/config";
 import { meQueryKey } from "@/lib/query/keys";
 import { useMe } from "@/lib/query/me";
 import { getJson } from "@/lib/query/utils";
+import { assetUrl } from "@/lib/storage";
 
 import type { ReactNode } from "react";
 
@@ -24,6 +26,7 @@ type ResourceStatus = "QUEUING" | "GENERATING" | "FINISHED" | "FAILED";
 export interface ToolResource {
   id: number;
   status: ResourceStatus;
+  title: string;
   prompt: string;
   object_key: string | null;
   created_at: number;
@@ -49,7 +52,7 @@ export interface ToolPageClientProps<T extends ToolResource> {
   emptyHint: string;
   primaryCtaLabel: string;
   featuredKind?: RecommendationResourceKind;
-  featuredPreviewData?: FeaturedResource;
+  featuredPreviewData?: FeaturedResource[];
   previewOnly?: boolean;
 }
 
@@ -70,6 +73,7 @@ export function ToolPageClient<T extends ToolResource>({
   featuredPreviewData,
   previewOnly = false,
 }: ToolPageClientProps<T>) {
+  const { storage } = useConfig();
   const me = useMe(!previewOnly);
   const balance = me ? (currency === "diamond" ? me.diamond : me.gold) : 0;
   const qc = useQueryClient();
@@ -82,7 +86,7 @@ export function ToolPageClient<T extends ToolResource>({
   const playerRef = useRef<HTMLDivElement | null>(null);
 
   const { data: list = initialList } = useQuery<T[]>({
-    queryKey: ["tool-list", listEndpoint] as const,
+    queryKey: ["tool-list", listEndpoint, me?.id ?? "anonymous"] as const,
     queryFn: async () => (await getJson(listEndpoint)) as T[],
     initialData: initialList,
     refetchInterval: (query) => {
@@ -141,6 +145,7 @@ export function ToolPageClient<T extends ToolResource>({
       {featuredKind ? (
         <FeaturedResourceSection
           kind={featuredKind}
+          userId={me?.id}
           previewData={featuredPreviewData}
           onOpen={(resource) => {
             setFeaturedFocus(resource);
@@ -201,10 +206,15 @@ export function ToolPageClient<T extends ToolResource>({
             {list.map((item, index) => (
               <ToolCard
                 key={item.id}
-                title={titleFromPrompt(item.prompt)}
+                title={item.title || titleFromPrompt(item.prompt)}
                 status={item.status}
                 colorIndex={index}
                 thumbnailIcon={cardThumbnailIcon}
+                thumbnailUrl={
+                  detailKind !== "interactive-html" && item.object_key
+                    ? assetUrl(item.object_key, storage)
+                    : undefined
+                }
                 active={item.id === historyFocusId}
                 onClick={() => {
                   setSelectedFocusId(item.id);

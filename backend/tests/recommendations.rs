@@ -4,9 +4,10 @@ use axum::http::StatusCode;
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use zhiying_backend::entities::{
-    chat_question, code_video, curriculum_node, curriculum_template, knowledge_video,
+    chat_question, code_video, curriculum_node, curriculum_template, interactive_html,
+    knowledge_video,
     recommendation_resource, recommendation_resource_learning, study_stage, study_subject,
-    study_task, user, user_code_video_link, user_knowledge_video_link,
+    study_task, user, user_code_video_link, user_interactive_html_link, user_knowledge_video_link,
 };
 
 use common::TestApp;
@@ -174,6 +175,114 @@ async fn task_recommendations_filter_and_count_unique_learners() {
 }
 
 #[tokio::test]
+async fn owned_video_history_exposes_catalog_titles_and_object_keys() {
+    let app = TestApp::new().await;
+    let token = app
+        .create_user_and_login("history_owner", "password123")
+        .await;
+    let db = app.db().await;
+    let owner_id = user::Entity::find()
+        .filter(user::Column::Username.eq("history_owner"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let now = Utc::now();
+
+    let knowledge = knowledge_video::ActiveModel {
+        status: Set(knowledge_video::KnowledgeVideoStatus::Finished),
+        prompt: Set("K2V fallback prompt".to_owned()),
+        object_key: Set(Some("knowledge-videos/history-k2v.mp4".to_owned())),
+        public: Set(true),
+        bookmarked: Set(false),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    user_knowledge_video_link::ActiveModel {
+        knowledge_video_id: Set(knowledge.id),
+        user_id: Set(owner_id),
+        created_at: Set(now),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    recommendation_resource::ActiveModel {
+        resource_kind: Set(recommendation_resource::RecommendationResourceKind::KnowledgeVideo),
+        resource_id: Set(knowledge.id),
+        curriculum_node_id: Set(None),
+        creator_user_id: Set(Some(owner_id)),
+        title: Set("K2V catalog title".to_owned()),
+        summary: Set("K2V summary".to_owned()),
+        quality_status: Set(recommendation_resource::RecommendationQualityStatus::Pending),
+        featured: Set(false),
+        display_priority: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let code = code_video::ActiveModel {
+        status: Set(code_video::CodeVideoStatus::Finished),
+        prompt: Set("C2V fallback prompt".to_owned()),
+        object_key: Set(Some("code-videos/history-c2v.mp4".to_owned())),
+        public: Set(true),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    user_code_video_link::ActiveModel {
+        code_video_id: Set(code.id),
+        user_id: Set(owner_id),
+        created_at: Set(now),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+    recommendation_resource::ActiveModel {
+        resource_kind: Set(recommendation_resource::RecommendationResourceKind::CodeVideo),
+        resource_id: Set(code.id),
+        curriculum_node_id: Set(None),
+        creator_user_id: Set(Some(owner_id)),
+        title: Set("C2V catalog title".to_owned()),
+        summary: Set("C2V summary".to_owned()),
+        quality_status: Set(recommendation_resource::RecommendationQualityStatus::Pending),
+        featured: Set(false),
+        display_priority: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    let (status, body) = app
+        .request("GET", "/api/v1/knowledge-videos", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"][0]["title"], "K2V catalog title");
+    assert_eq!(body["data"][0]["object_key"], "knowledge-videos/history-k2v.mp4");
+
+    let (status, body) = app
+        .request("GET", "/api/v1/code-videos", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"][0]["title"], "C2V catalog title");
+    assert_eq!(body["data"][0]["object_key"], "code-videos/history-c2v.mp4");
+}
+
+#[tokio::test]
 async fn featured_code_video_is_playable_by_non_owner_and_open_is_idempotent() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("featured_viewer", "password123").await;
@@ -230,6 +339,18 @@ async fn featured_code_video_is_playable_by_non_owner_and_open_is_idempotent() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"][0]["catalog_id"], catalog.id);
+    assert_eq!(body["data"][0]["object_key"], "code-videos/featured.mp4");
+
+    let (status, body) = app
+        .request(
+            "GET",
+            "/api/v1/recommendations/featured?kind=code-video",
+            Some(&owner_token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["data"].as_array().unwrap().is_empty());
 
     let (status, _) = app
         .request("GET", &format!("/api/v1/code-videos/{}", video.id), Some(&token), None)
@@ -252,6 +373,83 @@ async fn featured_code_video_is_playable_by_non_owner_and_open_is_idempotent() {
         .unwrap();
     assert_eq!(opens.len(), 1);
     let _ = owner_token;
+}
+
+#[tokio::test]
+async fn featured_interactive_includes_passed_node_resources_and_limits_to_three() {
+    let app = TestApp::new().await;
+    let viewer_token = app
+        .create_user_and_login("interactive_featured_viewer", "password123")
+        .await;
+    let _owner_token = app
+        .create_user_and_login("interactive_featured_owner", "password123")
+        .await;
+    let db = app.db().await;
+    let owner_id = user::Entity::find()
+        .filter(user::Column::Username.eq("interactive_featured_owner"))
+        .one(&db)
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
+    let (_template_id, node_id) = published_node(&app).await;
+    let now = Utc::now();
+
+    for index in 0..4 {
+        let resource = interactive_html::ActiveModel {
+            status: Set(interactive_html::InteractiveHtmlStatus::Finished),
+            prompt: Set(format!("interactive-featured-{index}")),
+            object_key: Set(Some(format!("education2d:interactive-featured-{index}"))),
+            public: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        user_interactive_html_link::ActiveModel {
+            interactive_html_id: Set(resource.id),
+            user_id: Set(owner_id),
+            created_at: Set(now),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+        recommendation_resource::ActiveModel {
+            resource_kind: Set(
+                recommendation_resource::RecommendationResourceKind::InteractiveHtml,
+            ),
+            resource_id: Set(resource.id),
+            curriculum_node_id: Set(Some(node_id)),
+            creator_user_id: Set(Some(owner_id)),
+            title: Set(format!("Interactive featured {index}")),
+            summary: Set("Passed interactive resource".to_owned()),
+            quality_status: Set(recommendation_resource::RecommendationQualityStatus::Passed),
+            featured: Set(false),
+            display_priority: Set(index),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(&db)
+        .await
+        .unwrap();
+    }
+
+    let (status, body) = app
+        .request(
+            "GET",
+            "/api/v1/recommendations/featured?kind=interactive-html",
+            Some(&viewer_token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let items = body["data"].as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[0]["title"], "Interactive featured 0");
+    assert_eq!(items[2]["title"], "Interactive featured 2");
 }
 
 #[tokio::test]

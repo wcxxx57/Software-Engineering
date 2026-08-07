@@ -142,6 +142,55 @@ def wrap_storyboard_lecture_lines(data: Any, max_chars: int = LECTURE_LINE_MAX_C
     return wrapped
 
 
+def repair_storyboard_structure(
+    data: Any,
+    *,
+    max_new_terms: int = 2,
+) -> Any:
+    """Repair structural storyboard fields while preserving generated teaching text.
+
+    LLM storyboard output can contain valid explanations but invalid page groups
+    (for example, a five-line group in a code layout). The renderer only needs
+    contiguous, page-sized groups; rebuilding those indexes is deterministic and
+    avoids spending another full planning request on an otherwise usable result.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("sections"), list):
+        return data
+    repaired = copy.deepcopy(data)
+    for section in repaired["sections"]:
+        if not isinstance(section, dict):
+            continue
+        lines = section.get("lecture_lines")
+        if not isinstance(lines, list) or not lines:
+            continue
+        layout_mode = section.get("layout_mode")
+        if layout_mode not in {"no_code", "with_code", "full_code"}:
+            section["layout_mode"] = "no_code"
+            layout_mode = "no_code"
+        page_limit = 4 if layout_mode in {"with_code", "full_code"} else 8
+        section["highlight_groups"] = [
+            list(range(start, min(start + page_limit, len(lines))))
+            for start in range(0, len(lines), page_limit)
+        ]
+        valid_indices = list(range(len(lines)))
+        section["evidence_lines_indices"] = [
+            index for index in section.get("evidence_lines_indices", [])
+            if isinstance(index, int) and not isinstance(index, bool) and index in valid_indices
+        ] or [0]
+        section["zpd_check_line_index"] = 0
+        section["bridge_line_index"] = max(0, len(lines) - 1)
+        terms = section.get("new_terms_introduced")
+        if not isinstance(terms, list):
+            section["new_terms_introduced"] = []
+        else:
+            section["new_terms_introduced"] = [str(term).strip() for term in terms if str(term).strip()][:max_new_terms]
+        if not isinstance(section.get("animations"), list) or not section["animations"]:
+            section["animations"] = ["Show the key state transition for this section"]
+        if not isinstance(section.get("estimated_duration"), (int, float)) or section["estimated_duration"] <= 0:
+            section["estimated_duration"] = 60
+    return repaired
+
+
 def extract_response_text(response: Any) -> str:
     if response is None:
         return ""

@@ -201,7 +201,7 @@ def generate_video_task(
         request_id = str(self.request.id or channel_name).replace("/", "_")
         folder_path = task_workspace(settings.output_dir, request_id)
         folder_path.mkdir(parents=True, exist_ok=True)
-        
+
         # 创建 Agent
         agent = TeachingVideoAgent(
             idx=0,

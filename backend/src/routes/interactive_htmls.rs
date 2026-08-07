@@ -32,6 +32,7 @@ pub struct CreateRequest {
 pub struct InteractiveHtmlView {
     pub id: i32,
     pub status: interactive_html::InteractiveHtmlStatus,
+    pub title: String,
     pub prompt: String,
     pub object_key: Option<String>,
     pub public: bool,
@@ -44,6 +45,7 @@ impl From<interactive_html::Model> for InteractiveHtmlView {
         Self {
             id: m.id,
             status: m.status,
+            title: display_title_from_prompt(&m.prompt),
             prompt: m.prompt,
             object_key: m.object_key,
             public: m.public,
@@ -51,6 +53,25 @@ impl From<interactive_html::Model> for InteractiveHtmlView {
             updated_at: m.updated_at.timestamp_millis(),
         }
     }
+}
+
+fn display_title_from_prompt(prompt: &str) -> String {
+    for raw in prompt.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let cleaned = line.trim_start_matches('#').trim();
+        if cleaned.is_empty() || cleaned.starts_with("```") {
+            continue;
+        }
+        return if cleaned.chars().count() > 30 {
+            cleaned.chars().take(30).collect::<String>() + "…"
+        } else {
+            cleaned.to_owned()
+        };
+    }
+    "未命名".to_owned()
 }
 
 pub async fn create(

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str
     llm_model: str = "gpt-4.1-mini"
+    plan_model: str | None = None
     llm_timeout_s: float = 120.0
     llm_max_retries: int = 3
     llm_temperature: float = 0.3

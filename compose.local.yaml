@@ -2,6 +2,10 @@ services:
   backend:
     ports:
       - "127.0.0.1:9000:9000"
+    environment:
+      # Local browsers must use the local Next.js storage proxy. The root
+      # .env keeps the production HTTPS base for compose.prod.yaml.
+      STORAGE_PUBLIC_BASE: http://127.0.0.1:3080/storage
 
   frontend:
     ports:

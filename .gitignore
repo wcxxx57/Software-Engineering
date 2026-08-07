@@ -8,6 +8,7 @@
 /.pnpm-store/
 /.test-venv/
 /backups/
+/artifacts/
 
 # 操作系统与编辑器文件
 .DS_Store

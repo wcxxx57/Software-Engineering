@@ -18,18 +18,22 @@ export function useTaskRecommendations(taskId: number, enabled = true) {
     queryFn: async () =>
       taskRecommendationsSchema.parse(
         await getJson(`/api/study-tasks/${taskId}/recommendations`),
-      ),
+    ),
     retry: false,
     enabled,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
 export function useFeaturedResources(
   kind: RecommendationResourceKind,
+  userId: number | null | undefined = null,
   enabled = true,
 ) {
   return useQuery({
-    queryKey: ["resources", "featured", kind] as const,
+    queryKey: ["resources", "featured", kind, userId ?? "anonymous"] as const,
     queryFn: async () =>
       featuredResourcesSchema.parse(
         await getJson(`/api/recommendations/featured?kind=${kind}`),

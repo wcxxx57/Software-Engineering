@@ -59,6 +59,7 @@ from src.pedagogy import (
     validate_requested_duration,
     validate_storyboard,
     normalize_grouped_lecture_lines,
+    repair_storyboard_structure,
     wrap_storyboard_lecture_lines,
 )
 from src.rendering import (
@@ -672,8 +673,18 @@ class TeachingVideoAgent:
                     if storyboard_errors:
                         print(f"⚠️ 第 {attempt} 次分镜结构校验失败：" + "; ".join(storyboard_errors))
                         if attempt == self.max_regenerate_tries:
-                            raise ValueError("分镜结构多次无效：" + "; ".join(storyboard_errors))
-                        continue
+                            repaired = repair_storyboard_structure(
+                                candidate,
+                                max_new_terms=max_new_terms_from_profile(self.user_profile),
+                            )
+                            repaired, repaired_errors = self._validate_storyboard_payload(repaired)
+                            if not repaired_errors:
+                                print("🛟 分镜结构多次无效，已保留模型讲解内容并重建合法页面分组")
+                                storyboard_data = repaired
+                            else:
+                                raise ValueError("分镜结构多次无效：" + "; ".join(repaired_errors))
+                        else:
+                            continue
 
                     # Save original storyboard
                     with open(storyboard_file, "w", encoding="utf-8") as f:

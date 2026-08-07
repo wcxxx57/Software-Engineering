@@ -22,10 +22,17 @@ class LlmClient:
     async def close(self) -> None:
         await self.client.aclose()
 
-    async def generate(self, *, system: str, user: str, schema: type[BaseModel]) -> BaseModel:
+    async def generate(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema: type[BaseModel],
+        model: str | None = None,
+    ) -> BaseModel:
         endpoint = f"{self.settings.llm_base_url.rstrip('/')}/chat/completions"
         request = {
-            "model": self.settings.llm_model,
+            "model": model or self.settings.llm_model,
             "temperature": self.settings.llm_temperature,
             "response_format": {"type": "json_object"},
             "messages": [

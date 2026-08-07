@@ -1,7 +1,7 @@
 use axum::{extract::{Path, Query, State}, response::{IntoResponse, Response}, Json};
 use chrono::Utc;
 use sea_orm::{
-    sea_query::OnConflict,
+    sea_query::{Condition, OnConflict},
     ActiveModelTrait,
     ActiveValue::Set,
     ColumnTrait,
@@ -13,9 +13,9 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{auth::AuthUser, entities::{chat_question, code_video, curriculum_node, curriculum_template, interactive_html, knowledge_video, learning_plan_template, learning_plan_template_stage, learning_plan_template_task, plan_recommendation_draft, pretest_problem, recommendation_resource, recommendation_resource_learning, study_stage, study_subject, study_task, user}, error::{AppError, BusinessError}, response::{created, ok}, services::{asset_transaction, personalization::LearnerProfileSnapshot, study_subject::{PretestRequest, dispatch_pretest}}, state::AppState};
+use crate::{auth::AuthUser, entities::{chat_question, code_video, curriculum_node, curriculum_template, interactive_html, knowledge_video, learning_plan_template, learning_plan_template_stage, learning_plan_template_task, plan_recommendation_draft, pretest_problem, recommendation_resource, recommendation_resource_learning, study_stage, study_subject, study_task, user, user_code_video_link, user_interactive_html_link, user_knowledge_video_link}, error::{AppError, BusinessError}, response::{created, ok}, services::{asset_transaction, personalization::LearnerProfileSnapshot, study_subject::{PretestRequest, dispatch_pretest}}, state::AppState};
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ResourceView {
     catalog_id: i32,
     id: i32,
@@ -23,27 +23,117 @@ struct ResourceView {
     summary: String,
     reasons: Vec<String>,
     learner_count: Option<i64>,
-    #[serde(skip)]
     rank_score: f64,
+    rank_position: usize,
+    #[serde(skip)]
+    similarity_score: f64,
+    #[serde(skip)]
+    popularity_score: f64,
     #[serde(skip)]
     updated_at: chrono::DateTime<Utc>,
 }
 #[derive(Serialize)]
-struct TaskRecommendationView { eligible: bool, knowledge_point_title: Option<String>, resources: Resources }
-#[derive(Serialize)] struct Resources { knowledge_video: Vec<ResourceView>, interactive_html: Vec<ResourceView> }
+struct RecommendationDebugResource {
+    catalog_id: i32,
+    id: i32,
+    title: String,
+    rank: usize,
+    selected: bool,
+    rank_score: f64,
+    similarity_score: f64,
+    popularity_score: f64,
+    learner_count: i64,
+}
+#[derive(Serialize)]
+struct RecommendationDebug {
+    limit: usize,
+    scoring_formula: &'static str,
+    knowledge_video: Vec<RecommendationDebugResource>,
+    interactive_html: Vec<RecommendationDebugResource>,
+}
+#[derive(Serialize)]
+struct TaskRecommendationView {
+    eligible: bool,
+    knowledge_point_title: Option<String>,
+    resources: Resources,
+    recommendation_debug: RecommendationDebug,
+}
+#[derive(Serialize)]
+struct Resources {
+    knowledge_video: Vec<ResourceView>,
+    interactive_html: Vec<ResourceView>,
+}
+
+fn empty_recommendation_debug() -> RecommendationDebug {
+    RecommendationDebug {
+        limit: 3,
+        scoring_formula: "rank_score = similarity_score * 0.7 + min(popularity_score, 1.0) * 0.3",
+        knowledge_video: vec![],
+        interactive_html: vec![],
+    }
+}
 #[derive(Deserialize)] pub struct FeaturedQuery { kind: String }
-#[derive(Serialize)] struct FeaturedView { catalog_id: i32, id: i32, title: String, summary: String }
+#[derive(Serialize)]
+struct FeaturedView {
+    catalog_id: i32,
+    id: i32,
+    title: String,
+    summary: String,
+    object_key: String,
+}
 
 fn kind_from_query(value: &str) -> Option<recommendation_resource::RecommendationResourceKind> {
     match value { "knowledge-video" => Some(recommendation_resource::RecommendationResourceKind::KnowledgeVideo), "code-video" => Some(recommendation_resource::RecommendationResourceKind::CodeVideo), "interactive-html" => Some(recommendation_resource::RecommendationResourceKind::InteractiveHtml), _ => None }
 }
 
+async fn usable_object_key(
+    state: &AppState,
+    row: &recommendation_resource::Model,
+) -> Result<Option<String>, AppError> {
+    let object_key = match row.resource_kind {
+        recommendation_resource::RecommendationResourceKind::KnowledgeVideo => {
+            knowledge_video::Entity::find_by_id(row.resource_id)
+                .one(&state.db)
+                .await?
+                .and_then(|resource| {
+                    (resource.public
+                        && resource.status == knowledge_video::KnowledgeVideoStatus::Finished)
+                        .then_some(resource.object_key)
+                        .flatten()
+                })
+        }
+        recommendation_resource::RecommendationResourceKind::InteractiveHtml => {
+            interactive_html::Entity::find_by_id(row.resource_id)
+                .one(&state.db)
+                .await?
+                .and_then(|resource| {
+                    (resource.public
+                        && resource.status == interactive_html::InteractiveHtmlStatus::Finished)
+                        .then_some(resource.object_key)
+                        .flatten()
+                })
+        }
+        recommendation_resource::RecommendationResourceKind::CodeVideo => {
+            code_video::Entity::find_by_id(row.resource_id)
+                .one(&state.db)
+                .await?
+                .and_then(|resource| {
+                    (resource.public
+                        && resource.status == code_video::CodeVideoStatus::Finished)
+                        .then_some(resource.object_key)
+                        .flatten()
+                })
+        }
+    };
+
+    Ok(object_key.and_then(|key| {
+        let key = key.trim();
+        (!key.is_empty()).then(|| key.to_owned())
+    }))
+}
+
 async fn usable(state: &AppState, row: &recommendation_resource::Model) -> Result<bool, AppError> {
-    match row.resource_kind {
-        recommendation_resource::RecommendationResourceKind::KnowledgeVideo => Ok(knowledge_video::Entity::find_by_id(row.resource_id).one(&state.db).await?.is_some_and(|x| x.public && x.object_key.as_deref().is_some_and(|key| !key.trim().is_empty()) && x.status == knowledge_video::KnowledgeVideoStatus::Finished)),
-        recommendation_resource::RecommendationResourceKind::InteractiveHtml => Ok(interactive_html::Entity::find_by_id(row.resource_id).one(&state.db).await?.is_some_and(|x| x.public && x.object_key.as_deref().is_some_and(|key| !key.trim().is_empty()) && x.status == interactive_html::InteractiveHtmlStatus::Finished)),
-        recommendation_resource::RecommendationResourceKind::CodeVideo => Ok(code_video::Entity::find_by_id(row.resource_id).one(&state.db).await?.is_some_and(|x| x.public && x.object_key.as_deref().is_some_and(|key| !key.trim().is_empty()) && x.status == code_video::CodeVideoStatus::Finished)),
-    }
+    Ok(usable_object_key(state, row).await?.is_some())
 }
 
 fn exposed_catalog_row(row: &recommendation_resource::Model) -> bool {
@@ -100,10 +190,21 @@ async fn similar_users_score(state: &AppState, current: &study_subject::Model, u
     Ok(best)
 }
 
-async fn rows_for(state: &AppState, current: &study_subject::Model, node_id: i32, kind: recommendation_resource::RecommendationResourceKind) -> Result<Vec<ResourceView>, AppError> {
+struct RankedResources {
+    selected: Vec<ResourceView>,
+    debug: Vec<RecommendationDebugResource>,
+}
+
+async fn rows_for(state: &AppState, current: &study_subject::Model, node_id: i32, kind: recommendation_resource::RecommendationResourceKind) -> Result<RankedResources, AppError> {
     let rows = recommendation_resource::Entity::find().filter(recommendation_resource::Column::CurriculumNodeId.eq(node_id)).filter(recommendation_resource::Column::ResourceKind.eq(kind)).order_by_desc(recommendation_resource::Column::UpdatedAt).all(&state.db).await?;
     let mut answer = Vec::new();
     for row in rows {
+        // Keep a learner's own assets in the task's "我生成的" view rather
+        // than presenting them as peer recommendations.
+        if row.creator_user_id == Some(current.user_id) { continue; }
+        if row.quality_status != recommendation_resource::RecommendationQualityStatus::Passed {
+            continue;
+        }
         if !usable(state, &row).await? { continue; }
         let learning = recommendation_resource_learning::Entity::find().filter(recommendation_resource_learning::Column::RecommendationResourceId.eq(row.id)).all(&state.db).await?;
         let learner_ids = learning.iter().map(|item| item.user_id).collect::<std::collections::HashSet<_>>();
@@ -113,7 +214,8 @@ async fn rows_for(state: &AppState, current: &study_subject::Model, node_id: i32
         users.sort_unstable(); users.dedup();
         let (similarity, goal_match, mastery_match, progress_match, language_match) = similar_users_score(state, current, &users).await?;
         let popularity = (count as f64).ln_1p() / 8.0_f64.ln_1p();
-        let rank_score = similarity * 0.7 + popularity.min(1.0) * 0.3;
+        let popularity_score = popularity.min(1.0);
+        let rank_score = similarity * 0.7 + popularity_score * 0.3;
         let mut reasons = vec!["与当前固定知识点匹配".to_owned()];
         if goal_match { reasons.push("学习目标相近的学习者常学习此内容".to_owned()); }
         else if mastery_match { reasons.push("与你当前掌握情况接近的学习者常学习此内容".to_owned()); }
@@ -121,37 +223,146 @@ async fn rows_for(state: &AppState, current: &study_subject::Model, node_id: i32
         else if language_match { reasons.push("使用相同学习语言的学习者常学习此内容".to_owned()); }
         if count > 0 { reasons.push(format!("已有 {count} 位学习者学习过")); }
         reasons.truncate(2);
-        answer.push(ResourceView { catalog_id: row.id, id: row.resource_id, title: row.title, summary: row.summary, reasons, learner_count: if count > 0 { Some(count) } else { None }, rank_score, updated_at: row.updated_at });
+        answer.push(ResourceView { catalog_id: row.id, id: row.resource_id, title: row.title, summary: row.summary, reasons, learner_count: if count > 0 { Some(count) } else { None }, rank_score, rank_position: 0, similarity_score: similarity, popularity_score, updated_at: row.updated_at });
     }
     answer.sort_by(|a, b| b.rank_score.total_cmp(&a.rank_score).then_with(|| b.learner_count.unwrap_or(0).cmp(&a.learner_count.unwrap_or(0))).then_with(|| b.updated_at.cmp(&a.updated_at)).then_with(|| b.catalog_id.cmp(&a.catalog_id)));
+    for (index, resource) in answer.iter_mut().enumerate() {
+        resource.rank_position = index + 1;
+    }
+    let debug = answer
+        .iter()
+        .enumerate()
+        .map(|(index, resource)| RecommendationDebugResource {
+            catalog_id: resource.catalog_id,
+            id: resource.id,
+            title: resource.title.clone(),
+            rank: index + 1,
+            selected: index < 3,
+            rank_score: resource.rank_score,
+            similarity_score: resource.similarity_score,
+            popularity_score: resource.popularity_score,
+            learner_count: resource.learner_count.unwrap_or(0),
+        })
+        .collect::<Vec<_>>();
     answer.truncate(3);
-    Ok(answer)
+    Ok(RankedResources { selected: answer, debug })
 }
 
 pub async fn task_recommendations(State(state): State<AppState>, auth: AuthUser, Path(id): Path<i32>) -> Result<impl axum::response::IntoResponse, AppError> {
     let task = study_task::Entity::find_by_id(id).one(&state.db).await?.ok_or_else(|| AppError::business(BusinessError::TaskNotFound))?;
     let stage = study_stage::Entity::find_by_id(task.study_stage_id).one(&state.db).await?.ok_or_else(|| AppError::business(BusinessError::TaskNotFound))?;
     let subject = study_subject::Entity::find_by_id(stage.study_subject_id).filter(study_subject::Column::UserId.eq(auth.user_id)).one(&state.db).await?.ok_or_else(|| AppError::business(BusinessError::TaskNotFound))?;
-    let Some(template_id) = subject.curriculum_template_id else { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] } })); };
-    let Some(template) = curriculum_template::Entity::find_by_id(template_id).one(&state.db).await? else { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] } })); };
-    if template.status != curriculum_template::CurriculumTemplateStatus::Published { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] } })); }
-    let Some(node_id) = task.curriculum_node_id else { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] } })); };
+    let Some(template_id) = subject.curriculum_template_id else { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] }, recommendation_debug: empty_recommendation_debug() })); };
+    let Some(template) = curriculum_template::Entity::find_by_id(template_id).one(&state.db).await? else { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] }, recommendation_debug: empty_recommendation_debug() })); };
+    if template.status != curriculum_template::CurriculumTemplateStatus::Published { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] }, recommendation_debug: empty_recommendation_debug() })); }
+    let Some(node_id) = task.curriculum_node_id else { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] }, recommendation_debug: empty_recommendation_debug() })); };
     let node = crate::entities::curriculum_node::Entity::find_by_id(node_id).one(&state.db).await?.ok_or_else(|| AppError::internal("task references missing curriculum node"))?;
-    if node.curriculum_template_id != template_id { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] } })); }
-    Ok(ok(TaskRecommendationView { eligible: true, knowledge_point_title: Some(node.title), resources: Resources { knowledge_video: rows_for(&state, &subject, node_id, recommendation_resource::RecommendationResourceKind::KnowledgeVideo).await?, interactive_html: rows_for(&state, &subject, node_id, recommendation_resource::RecommendationResourceKind::InteractiveHtml).await? } }))
+    if node.curriculum_template_id != template_id { return Ok(ok(TaskRecommendationView { eligible: false, knowledge_point_title: None, resources: Resources { knowledge_video: vec![], interactive_html: vec![] }, recommendation_debug: empty_recommendation_debug() })); }
+    let knowledge_video = rows_for(
+        &state,
+        &subject,
+        node_id,
+        recommendation_resource::RecommendationResourceKind::KnowledgeVideo,
+    )
+    .await?;
+    let interactive_html = rows_for(
+        &state,
+        &subject,
+        node_id,
+        recommendation_resource::RecommendationResourceKind::InteractiveHtml,
+    )
+    .await?;
+    Ok(ok(TaskRecommendationView {
+        eligible: true,
+        knowledge_point_title: Some(node.title),
+        resources: Resources {
+            knowledge_video: knowledge_video.selected,
+            interactive_html: interactive_html.selected,
+        },
+        recommendation_debug: RecommendationDebug {
+            limit: 3,
+            scoring_formula: "rank_score = similarity_score * 0.7 + min(popularity_score, 1.0) * 0.3",
+            knowledge_video: knowledge_video.debug,
+            interactive_html: interactive_html.debug,
+        },
+    }))
 }
 
-pub async fn featured(State(state): State<AppState>, _auth: AuthUser, Query(query): Query<FeaturedQuery>) -> Result<impl axum::response::IntoResponse, AppError> {
+async fn owned_resource_ids(
+    state: &AppState,
+    kind: recommendation_resource::RecommendationResourceKind,
+    user_id: i32,
+) -> Result<Vec<i32>, AppError> {
+    Ok(match kind {
+        recommendation_resource::RecommendationResourceKind::KnowledgeVideo =>
+            user_knowledge_video_link::Entity::find()
+                .filter(user_knowledge_video_link::Column::UserId.eq(user_id))
+                .all(&state.db)
+                .await?
+                .into_iter()
+                .map(|link| link.knowledge_video_id)
+                .collect(),
+        recommendation_resource::RecommendationResourceKind::CodeVideo =>
+            user_code_video_link::Entity::find()
+                .filter(user_code_video_link::Column::UserId.eq(user_id))
+                .all(&state.db)
+                .await?
+                .into_iter()
+                .map(|link| link.code_video_id)
+                .collect(),
+        recommendation_resource::RecommendationResourceKind::InteractiveHtml =>
+            user_interactive_html_link::Entity::find()
+                .filter(user_interactive_html_link::Column::UserId.eq(user_id))
+                .all(&state.db)
+                .await?
+                .into_iter()
+                .map(|link| link.interactive_html_id)
+                .collect(),
+    })
+}
+
+pub async fn featured(State(state): State<AppState>, auth: AuthUser, Query(query): Query<FeaturedQuery>) -> Result<impl axum::response::IntoResponse, AppError> {
     let kind = kind_from_query(&query.kind).ok_or_else(|| AppError::business(BusinessError::ContentNotFound))?;
-    let rows = recommendation_resource::Entity::find()
+    let owned_ids = owned_resource_ids(&state, kind, auth.user_id).await?;
+    let mut rows_query = recommendation_resource::Entity::find()
         .filter(recommendation_resource::Column::ResourceKind.eq(kind))
-        .filter(recommendation_resource::Column::Featured.eq(true))
-        .filter(recommendation_resource::Column::QualityStatus.eq(recommendation_resource::RecommendationQualityStatus::Passed))
+        .filter(recommendation_resource::Column::QualityStatus.eq(recommendation_resource::RecommendationQualityStatus::Passed));
+    let visibility = if kind == recommendation_resource::RecommendationResourceKind::InteractiveHtml {
+        // Interactive resources created for a published curriculum node are
+        // already curated by the task recommendation pipeline. They are not
+        // necessarily promoted to the global `featured` shelf, but should
+        // still be available to the standalone Interactive Lab page.
+        Condition::any()
+            .add(recommendation_resource::Column::Featured.eq(true))
+            .add(recommendation_resource::Column::CurriculumNodeId.is_not_null())
+    } else {
+        Condition::all().add(recommendation_resource::Column::Featured.eq(true))
+    };
+    rows_query = rows_query
+        .filter(visibility)
         .order_by_asc(recommendation_resource::Column::DisplayPriority)
-        .order_by_asc(recommendation_resource::Column::Id)
-        .all(&state.db)
-        .await?;
-    let mut answer = Vec::new(); for row in rows { if usable(&state, &row).await? { answer.push(FeaturedView { catalog_id: row.id, id: row.resource_id, title: row.title, summary: row.summary }); } }
+        .order_by_asc(recommendation_resource::Column::Id);
+    if !owned_ids.is_empty() {
+        rows_query = rows_query.filter(recommendation_resource::Column::ResourceId.is_not_in(owned_ids));
+    }
+    let rows = rows_query.all(&state.db).await?;
+    let mut answer = Vec::new();
+    for row in rows {
+        if row.creator_user_id == Some(auth.user_id) {
+            continue;
+        }
+        let Some(object_key) = usable_object_key(&state, &row).await? else { continue; };
+        answer.push(FeaturedView {
+            catalog_id: row.id,
+            id: row.resource_id,
+            title: row.title,
+            summary: row.summary,
+            object_key,
+        });
+    }
+    if kind == recommendation_resource::RecommendationResourceKind::InteractiveHtml {
+        answer.truncate(3);
+    }
     Ok(ok(answer))
 }
 

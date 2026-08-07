@@ -383,11 +383,15 @@ async fn update_knowledge_video(
     active.updated_at = Set(Utc::now());
 
     if new_status == knowledge_video::KnowledgeVideoStatus::Finished {
-        active.object_key = Set(payload.object_key);
+        if payload.object_key.is_some() {
+            active.object_key = Set(payload.object_key);
+        }
         sync_task_resource_catalog(&tx, recommendation_resource::RecommendationResourceKind::KnowledgeVideo, id, record.prompt.clone(), "当前知识点的知识讲解视频".to_owned()).await?;
     }
 
-    if new_status == knowledge_video::KnowledgeVideoStatus::Failed {
+    if new_status == knowledge_video::KnowledgeVideoStatus::Failed
+        && record.status != knowledge_video::KnowledgeVideoStatus::Failed
+    {
         if let Some(owner_id) = resolve_knowledge_video_owner(&tx, id).await? {
             let cost = state.config.knowledge_video_diamond_cost;
             let existing_user = user::Entity::find_by_id(owner_id)
@@ -441,7 +445,14 @@ fn validate_knowledge_video_transition(
     use knowledge_video::KnowledgeVideoStatus::*;
     let valid = matches!(
         (from, to),
-        (Queuing, Generating) | (Generating, Finished) | (Generating, Failed)
+        (Queuing, Generating)
+            | (Queuing, Failed)
+            | (Generating, Finished)
+            | (Generating, Failed)
+            | (Queuing, Queuing)
+            | (Generating, Generating)
+            | (Finished, Finished)
+            | (Failed, Failed)
     );
     if !valid {
         return Err(AppError::business(BusinessError::InvalidContentStatus));
@@ -475,10 +486,14 @@ async fn update_code_video(
     active.updated_at = Set(Utc::now());
 
     if new_status == code_video::CodeVideoStatus::Finished {
-        active.object_key = Set(payload.object_key);
+        if payload.object_key.is_some() {
+            active.object_key = Set(payload.object_key);
+        }
     }
 
-    if new_status == code_video::CodeVideoStatus::Failed {
+    if new_status == code_video::CodeVideoStatus::Failed
+        && record.status != code_video::CodeVideoStatus::Failed
+    {
         if let Some(owner_id) = resolve_code_video_owner(&tx, id).await? {
             let cost = state.config.code_video_diamond_cost;
             let existing_user = user::Entity::find_by_id(owner_id)
@@ -530,7 +545,14 @@ fn validate_code_video_transition(
     use code_video::CodeVideoStatus::*;
     let valid = matches!(
         (from, to),
-        (Queuing, Generating) | (Generating, Finished) | (Generating, Failed)
+        (Queuing, Generating)
+            | (Queuing, Failed)
+            | (Generating, Finished)
+            | (Generating, Failed)
+            | (Queuing, Queuing)
+            | (Generating, Generating)
+            | (Finished, Finished)
+            | (Failed, Failed)
     );
     if !valid {
         return Err(AppError::business(BusinessError::InvalidContentStatus));
@@ -564,11 +586,15 @@ async fn update_interactive_html(
     active.updated_at = Set(Utc::now());
 
     if new_status == interactive_html::InteractiveHtmlStatus::Finished {
-        active.object_key = Set(payload.object_key);
+        if payload.object_key.is_some() {
+            active.object_key = Set(payload.object_key);
+        }
         sync_task_resource_catalog(&tx, recommendation_resource::RecommendationResourceKind::InteractiveHtml, id, record.prompt.clone(), "当前知识点的可操控 2D 内容".to_owned()).await?;
     }
 
-    if new_status == interactive_html::InteractiveHtmlStatus::Failed {
+    if new_status == interactive_html::InteractiveHtmlStatus::Failed
+        && record.status != interactive_html::InteractiveHtmlStatus::Failed
+    {
         if let Some(owner_id) = resolve_interactive_html_owner(&tx, id).await? {
             let cost = state.config.interactive_html_diamond_cost;
             let existing_user = user::Entity::find_by_id(owner_id)
@@ -622,7 +648,14 @@ fn validate_interactive_html_transition(
     use interactive_html::InteractiveHtmlStatus::*;
     let valid = matches!(
         (from, to),
-        (Queuing, Generating) | (Generating, Finished) | (Generating, Failed)
+        (Queuing, Generating)
+            | (Queuing, Failed)
+            | (Generating, Finished)
+            | (Generating, Failed)
+            | (Queuing, Queuing)
+            | (Generating, Generating)
+            | (Finished, Finished)
+            | (Failed, Failed)
     );
     if !valid {
         return Err(AppError::business(BusinessError::InvalidContentStatus));
@@ -659,7 +692,9 @@ async fn update_knowledge_explanation(
         active.content = Set(payload.content);
     }
 
-    if new_status == knowledge_explanation::KnowledgeExplanationStatus::Failed {
+    if new_status == knowledge_explanation::KnowledgeExplanationStatus::Failed
+        && record.status != knowledge_explanation::KnowledgeExplanationStatus::Failed
+    {
         let existing_user = user::Entity::find_by_id(record.user_id)
             .one(&tx)
             .await?
@@ -1263,22 +1298,34 @@ async fn callback_study_subject(
                     // keeping new outline-backed plans strict above.
                     (None, t.title.clone().unwrap_or_else(|| t.description.clone()))
                 };
-                let prompt = format!("{}\n\n{}", node_title, t.description);
-                let ke_record = knowledge_explanation::ActiveModel {
-                    user_id: Set(subject.user_id),
-                    status: Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing),
-                    prompt: Set(prompt.clone()),
-                    content: Set(None),
-                    public: Set(false),
-                    bookmarked: Set(false),
-                    cost: Set(0),
-                    created_at: Set(now),
-                    updated_at: Set(now),
-                    ..Default::default()
-                }
-                .insert(&tx)
-                .await?;
-                explanations_to_dispatch.push((ke_record.id, prompt));
+                // Explanations are generated lazily.  Creating and dispatching
+                // an explanation for every locked task makes the first task a
+                // victim of queue backlog, especially when the learner skips
+                // several tasks and later returns to them.  Only the task that
+                // is available immediately should enter the generation queue;
+                // a later task is materialized when it becomes available and is
+                // opened by the learner.
+                let explanation_id = if task_status == StudyTaskStatus::Studying {
+                    let prompt = format!("{}\n\n{}", node_title, t.description);
+                    let ke_record = knowledge_explanation::ActiveModel {
+                        user_id: Set(subject.user_id),
+                        status: Set(knowledge_explanation::KnowledgeExplanationStatus::Queuing),
+                        prompt: Set(prompt.clone()),
+                        content: Set(None),
+                        public: Set(false),
+                        bookmarked: Set(false),
+                        cost: Set(0),
+                        created_at: Set(now),
+                        updated_at: Set(now),
+                        ..Default::default()
+                    }
+                    .insert(&tx)
+                    .await?;
+                    explanations_to_dispatch.push((ke_record.id, prompt));
+                    Some(ke_record.id)
+                } else {
+                    None
+                };
 
                 let task_record = study_task::ActiveModel {
                     study_stage_id: Set(stage_record.id),
@@ -1290,7 +1337,7 @@ async fn callback_study_subject(
                     status: Set(task_status),
                     knowledge_video_id: Set(None),
                     interactive_html_id: Set(None),
-                    knowledge_explanation_id: Set(Some(ke_record.id)),
+                    knowledge_explanation_id: Set(explanation_id),
                     created_at: Set(now),
                     updated_at: Set(now),
                     ..Default::default()

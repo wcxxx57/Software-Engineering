@@ -38,8 +38,8 @@ type KindMeta = {
 const META: Record<Kind, KindMeta> = {
   "knowledge-video": {
     theme: "blue",
-    title: "沉浸视界",
-    subtitle: "知识点视频化解析",
+    title: "知识视频",
+    subtitle: "知识点视频讲解",
     icon: <Film />,
     tagline: "AI 将基于本任务自动生成讲解视频",
     innerBorder:
@@ -53,8 +53,8 @@ const META: Record<Kind, KindMeta> = {
   },
   "interactive-html": {
     theme: "green",
-    title: "2D 可视化操作",
-    subtitle: "可播放、可编辑的知识图形",
+    title: "2D 交互",
+    subtitle: "知识点可操作演示",
     icon: <Box />,
     tagline: "AI 将基于本任务生成可逐步播放、缩放与自然语言编辑的二维可视化",
     innerBorder:
@@ -74,12 +74,14 @@ export function ResourceGenerateCard({
   taskStatus,
   kind,
   compact = false,
+  emptyRecommendation = false,
   previewOnly = false,
 }: {
   taskId: number;
   taskStatus: StudyTaskStatus;
   kind: Kind;
   compact?: boolean;
+  emptyRecommendation?: boolean;
   previewOnly?: boolean;
 }) {
   const meta = META[kind];
@@ -177,6 +179,13 @@ export function ResourceGenerateCard({
             className={`size-14 stroke-brand-gold ${meta.iconShadow}`}
             strokeWidth={1.6}
           />
+          {emptyRecommendation ? (
+            <p className="text-sm font-bold text-brand-medium">
+              {kind === "knowledge-video"
+                ? "当前知识点暂无可推荐的视频"
+                : "当前知识点暂无可推荐的 2D 内容"}
+            </p>
+          ) : null}
           <p className="text-sm font-bold text-brand-medium">{meta.tagline}</p>
           <Button
             type="button"

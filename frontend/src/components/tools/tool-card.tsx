@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, PlayCircle, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ export interface ToolCardProps {
   status: ToolCardStatus;
   colorIndex: number;
   thumbnailIcon?: ReactNode;
+  thumbnailUrl?: string;
   active?: boolean;
   onClick: () => void;
   onDelete: () => void;
@@ -48,6 +49,7 @@ export function ToolCard({
   status,
   colorIndex,
   thumbnailIcon,
+  thumbnailUrl,
   active = false,
   onClick,
   onDelete,
@@ -56,6 +58,9 @@ export function ToolCard({
   showStatus = true,
 }: ToolCardProps) {
   const gradient = COVER_GRADIENTS[colorIndex % COVER_GRADIENTS.length];
+  const [loadedThumbnailUrl, setLoadedThumbnailUrl] = useState<string | null>(null);
+  const thumbnailReady = thumbnailUrl === loadedThumbnailUrl;
+
   return (
     <div
       className={cn(
@@ -79,6 +84,34 @@ export function ToolCard({
         <div className="relative text-brand-gold [&>svg]:size-12">
           {thumbnailIcon ?? <PlayCircle strokeWidth={1.75} />}
         </div>
+        {thumbnailUrl ? (
+          <>
+            <video
+              aria-hidden
+              muted
+              playsInline
+              preload="metadata"
+              src={`${thumbnailUrl}#t=0.1`}
+              tabIndex={-1}
+              className={cn(
+                "pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-300",
+                thumbnailReady ? "opacity-100" : "opacity-0",
+              )}
+              onLoadedData={() => setLoadedThumbnailUrl(thumbnailUrl)}
+              onError={() => setLoadedThumbnailUrl(null)}
+            />
+            {thumbnailReady ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/25 via-transparent to-black/5"
+              >
+                <span className="flex size-11 items-center justify-center rounded-full border border-white/70 bg-black/35 text-white shadow-lg backdrop-blur-sm transition-transform group-hover:scale-110">
+                  <PlayCircle className="size-7" strokeWidth={1.8} />
+                </span>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         {showStatus ? <span
           className={cn(
             "absolute right-2 top-2 rounded-full px-2 py-0.5 text-[11px] font-bold backdrop-blur",

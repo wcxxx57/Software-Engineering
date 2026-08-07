@@ -132,10 +132,15 @@ class AdaptiveSizingTests(unittest.IsolatedAsyncioTestCase):
             authoritative_outline=outline(),
         )
 
-        result = await generate_plan(client, settings(), request)  # type: ignore[arg-type]
+        result = await generate_plan(
+            client,
+            settings(plan_model="gpt-5.5"),
+            request,
+        )  # type: ignore[arg-type]
 
         self.assertEqual(result["stages"][0]["tasks"][0]["knowledge_node_key"], "root")
         self.assertIn("权威课程大纲", client.calls[0]["user"])
+        self.assertEqual(client.calls[0]["model"], "gpt-5.5")
 
     async def test_curriculum_ai_selects_from_current_database_without_web_search(self) -> None:
         client = FakeClient(

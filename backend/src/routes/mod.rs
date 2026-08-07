@@ -168,10 +168,6 @@ fn api_router() -> Router<AppState> {
             "/study-tasks/{id}/quizzes",
             axum::routing::post(study_tasks::create_quiz).get(study_tasks::list_quizzes),
         )
-        .route(
-            "/study-tasks/{id}/recommendations",
-            get(study_tasks::get_recommendations),
-        )
         // Study quizzes
         .route("/study-quizzes/{id}", get(study_quizzes::get_by_id))
         .route(

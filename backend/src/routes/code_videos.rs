@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use chrono::Utc;
+use std::collections::HashMap;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
     TransactionTrait,
@@ -32,6 +33,7 @@ pub struct CreateRequest {
 pub struct CodeVideoView {
     pub id: i32,
     pub status: code_video::CodeVideoStatus,
+    pub title: String,
     pub prompt: String,
     pub object_key: Option<String>,
     pub public: bool,
@@ -44,6 +46,7 @@ impl From<code_video::Model> for CodeVideoView {
         Self {
             id: m.id,
             status: m.status,
+            title: display_title_from_prompt(&m.prompt),
             prompt: m.prompt,
             object_key: m.object_key,
             public: m.public,
@@ -51,6 +54,28 @@ impl From<code_video::Model> for CodeVideoView {
             updated_at: m.updated_at.timestamp_millis(),
         }
     }
+}
+
+fn display_title_from_prompt(prompt: &str) -> String {
+    for raw in prompt.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let cleaned = line.trim_start_matches('#').trim();
+        if cleaned.is_empty() || cleaned.starts_with("```") {
+            continue;
+        }
+        if matches!(cleaned, "题目" | "核心代码") {
+            continue;
+        }
+        return if cleaned.chars().count() > 30 {
+            cleaned.chars().take(30).collect::<String>() + "…"
+        } else {
+            cleaned.to_owned()
+        };
+    }
+    "未命名".to_owned()
 }
 
 pub async fn create(
@@ -176,9 +201,37 @@ pub async fn list(
 
     let pairs = select.all(&state.db).await?;
 
+    let resource_ids = pairs
+        .iter()
+        .filter_map(|(_, resource)| resource.as_ref().map(|resource| resource.id))
+        .collect::<Vec<_>>();
+    let catalog_titles = if resource_ids.is_empty() {
+        HashMap::new()
+    } else {
+        recommendation_resource::Entity::find()
+            .filter(recommendation_resource::Column::ResourceKind.eq(recommendation_resource::RecommendationResourceKind::CodeVideo))
+            .filter(recommendation_resource::Column::ResourceId.is_in(resource_ids))
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .filter_map(|catalog| {
+                let title = catalog.title.trim().to_owned();
+                (!title.is_empty()).then_some((catalog.resource_id, title))
+            })
+            .collect::<HashMap<_, _>>()
+    };
+
     let views: Vec<CodeVideoView> = pairs
         .into_iter()
-        .filter_map(|(_link, cv)| cv.map(CodeVideoView::from))
+        .filter_map(|(_link, cv)| {
+            cv.map(|cv| {
+                let mut view = CodeVideoView::from(cv.clone());
+                if let Some(title) = catalog_titles.get(&cv.id) {
+                    view.title = title.clone();
+                }
+                view
+            })
+        })
         .collect();
     Ok(ok(views))
 }
