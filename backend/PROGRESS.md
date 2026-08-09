@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-最后更新：2026-05-11
+最后更新：2026-08-08
 
 ## 当前状态
 
@@ -51,6 +51,11 @@
 - 抽象 `MessagePublisher` trait：生产用 `LapinPublisher`（`deadpool_lapin` 池），测试用 `InMemoryPublisher`（支持 `fail_next`）。
 - callback：内容类用 `PATCH /internal/{resource}/{id}`，学习主题类用 `POST /internal/{resource}/{id}`。
 
+### Part 6：AI 伴学上下文
+- 新增鉴权接口 `GET /api/v1/me/learning-profile`，返回课程进度、测验正确率和错题聚合出的前 5 个薄弱知识点。
+- 扩充 `GET /api/v1/study-tasks/{id}/chat-context`，增加 `knowledge_point_prompt`，供服务端 AI 网关注入当前知识点。
+- 画像接口不返回密码、资产余额、原始出生年份或性别；无聊天数据库迁移。
+
 ### 测试
 - 集成测试覆盖：认证、签到、学习主题完整链路、四类资源 dispatch + 回调 + 退款、quiz dispatch payload、管理员充值、wiremock + InMemoryPublisher 双轨。
 
@@ -64,6 +69,7 @@
 - **mistake 详情聚合接口**：当前仅列表，详情走 quiz_problem 路径。
 - **占位路由 `placeholders::router()`**：见 `src/routes/placeholders.rs`，待替换。
 - **profile 测试期望**：`profile_get_returns_default_values` 仍按旧注册奖励 0 钻石断言，需校准为 `REGISTER_BONUS_DIAMONDS`（当前 80）。
+- **AI 伴学部署**：后端需要重启以加载画像接口；前端需要配置 `AI_CHAT_*`（兼容旧 `CLOUDOPS_AI_*`）并连接 vLLM。
 
 ## 临时决策
 

@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-最后更新：2026-05-11
+最后更新：2026-08-08
 
 ## 当前状态
 
@@ -33,6 +33,11 @@
 - `components/spend-confirm-dialog.tsx`：通用消费确认对话框（钻石/金币、显示余额变化与不足提示）。
 - `components/pretest/*`、`components/auth/*`、`components/panels/*`、`components/skeletons.tsx`。
 
+### Part 6：AI 伴学
+- `components/ai/ai-chat-surface.tsx` 提供 compact/fullscreen 两种聊天布局、SSE 流式输出、停止/重试/清空和 Markdown 渲染。
+- 主页和任务页 AI 伴学已接通；新增受保护的 `/ai-chat` 全屏页面，移动端主页提供嵌入式入口。
+- 浏览器按用户与知识点场景隔离保存最近 50 条消息；不会把 JWT 或聊天历史发送给模型服务。
+
 ### API 代理（`src/app/api/...`）
 - 认证：`auth/login`、`auth/logout`、`auth/register`。
 - 用户：`me`、`me/mistakes`、`me/bookmarks`。
@@ -56,6 +61,7 @@
 - **资源分享**：公开/取消公开切换、公开浏览页都未做。
 - **钻石商店 / 充值**：缺面向用户的购买流程。
 - **任务派生资源加入工具画廊**：需后端反向 link 后再做。
+- **模型服务配置**：Part 6 依赖 Linux RTX 4090 上的 `cloudops-cloud-assistant`；本地 macOS 需要先建立 SSH 隧道。
 
 ## 临时决策
 
@@ -68,3 +74,4 @@
 1. 统一错误展示：补 `error.tsx` 边界 + Server Action 错误 toast helper + Query 全局 `onError`，避免 Next 红屏直出。
 2. 搜索栏点亮：后端就绪后接通 Dashboard 顶部搜索框，下拉聚合 + 跳转详情。
 3. 移动端审查：`(app)/dashboard`、`(learn)/tasks/[id]` 在窄屏的右侧栏内容降级方案。
+4. 使用真实 vLLM 重启前后端，验收领域拒答、知识点上下文和全屏续接。

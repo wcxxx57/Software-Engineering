@@ -9,6 +9,7 @@ import { DashboardSearch } from "@/components/dashboard/dashboard-search";
 import { FeatureGrid } from "@/components/dashboard/feature-grid";
 import { PlanToolbar } from "@/components/dashboard/plan-toolbar";
 import { PlanRecommendationCard } from "@/components/dashboard/plan-recommendation-card";
+import { AiChatLauncher } from "@/components/ai/ai-chat-launcher";
 import { pickActiveSubject } from "@/lib/api/active-subject";
 import { serverFetch } from "@/lib/api/client";
 import { getPublicConfig } from "@/lib/api/public-config";
@@ -63,6 +64,8 @@ export default async function DashboardPage() {
 
             <DashboardSearch />
           </header>
+
+          <AiChatLauncher className="lg:hidden" />
 
           <section className="mx-auto flex w-full max-w-[900px] flex-col gap-6">
             {active === null ? (

@@ -1,11 +1,14 @@
-import { BookOpen, Sparkles } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AiChatSurface } from "@/components/ai/ai-chat-surface";
 import { PlanRecommendationCard } from "@/components/dashboard/plan-recommendation-card";
 import { ContentCard } from "@/components/learn/content-card";
 import { KnowledgePointRecommendations } from "@/components/learn/knowledge-point-recommendations";
 import { TaskSidebar } from "@/components/learn/task-sidebar";
 import { Iteration4ToolPreview } from "@/components/preview/iteration4-tool-preview";
+import { buildPreviewAiContext } from "@/lib/ai/preview-context";
 import type {
   RecommendedPlan,
   StudyStageDetail,
@@ -39,6 +42,7 @@ const recommendations: TaskRecommendations = {
 };
 const chat: TaskChatContext = {
   course_title: "Python 基础", stage_title: "树结构", knowledge_point_title: "二叉搜索树",
+  knowledge_point_prompt: "二叉搜索树的查找、插入和删除规则。",
   suggested_questions: [{ question: "二叉搜索树和普通二叉树有什么区别？" }, { question: "为什么查找效率与树的高度有关？" }],
   popular_questions: [{ question: "删除有两个子节点的节点时怎么办？", learner_count: 8 }, { question: "为什么二叉搜索树会退化成链表？", learner_count: 12 }],
 };
@@ -52,6 +56,7 @@ export default async function Iteration4PreviewPage({ searchParams }: { searchPa
   const { view = "task" } = await searchParams;
   if (view === "plan") return <PlanPreview />;
   if (view === "k2v" || view === "c2v" || view === "interactive") return <ToolPreview kind={view} />;
+  if (view === "chat") return <ChatPreview />;
   return <TaskPreview />;
 }
 
@@ -74,6 +79,26 @@ function TaskPreview() {
 
 function PlanPreview() {
   return <main className="mx-auto flex min-h-dvh w-full max-w-[900px] items-center bg-canvas px-8 py-14"><ContentCard theme="yellow" icon={<Sparkles />} title="学完打卡" subtitle="完整学习计划已完成"><PlanRecommendationCard subjectId={90} next previewPlan={nextPlan} /></ContentCard></main>;
+}
+
+function ChatPreview() {
+  const context = buildPreviewAiContext(task.id, chat);
+  return (
+    <div className="flex h-dvh w-full flex-col bg-canvas">
+      <header className="flex shrink-0 items-center justify-between border-b border-border/30 bg-white/60 px-4 py-3 backdrop-blur-md md:px-8">
+        <Link href="/preview/iteration4?view=task" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-extrabold text-brand-medium transition hover:bg-palette-orange-mist hover:text-brand-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-orange">
+          <ArrowLeft className="size-4" />返回课程任务
+        </Link>
+        <div className="flex items-center gap-2 text-sm font-extrabold text-brand-dark">
+          <Bot className="size-5 text-palette-orange" />AI 伴学空间
+        </div>
+        <span className="hidden text-xs font-semibold text-brand-medium sm:block">预览上下文：Python 基础 · 树结构</span>
+      </header>
+      <main className="min-h-0 flex-1">
+        <AiChatSurface context={context} mode="fullscreen" />
+      </main>
+    </div>
+  );
 }
 
 function ToolPreview({ kind }: { kind: "k2v" | "c2v" | "interactive" }) {

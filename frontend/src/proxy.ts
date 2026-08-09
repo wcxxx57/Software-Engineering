@@ -10,6 +10,7 @@ const PROTECTED_PREFIXES = [
   "/mistakes",
   "/settings",
   "/education2d",
+  "/ai-chat",
 ];
 
 const AUTH_ONLY_PREFIXES = ["/login", "/register"];

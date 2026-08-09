@@ -392,6 +392,7 @@ struct ChatContextView {
     course_title: String,
     stage_title: String,
     knowledge_point_title: String,
+    knowledge_point_prompt: String,
     suggested_questions: Vec<serde_json::Value>,
     popular_questions: Vec<ChatQuestionView>,
 }
@@ -490,7 +491,12 @@ pub async fn chat_context(State(state): State<AppState>, auth: AuthUser, Path(id
     }).collect::<Vec<_>>();
     popular_questions.sort_by(|a, b| b.learner_count.cmp(&a.learner_count).then_with(|| a.question.cmp(&b.question)));
     popular_questions.truncate(5);
-    Ok(ok(ChatContextView { course_title, stage_title: stage.title, knowledge_point_title: title.clone(), suggested_questions: suggested_questions(&title, &asked), popular_questions }))
+    let knowledge_point_prompt = if task.description.trim().is_empty() {
+        title.clone()
+    } else {
+        format!("{}\n\n{}", title, task.description.trim())
+    };
+    Ok(ok(ChatContextView { course_title, stage_title: stage.title, knowledge_point_title: title.clone(), knowledge_point_prompt, suggested_questions: suggested_questions(&title, &asked), popular_questions }))
 }
 
 pub async fn record_chat_question(State(state): State<AppState>, auth: AuthUser, Path(id): Path<i32>, Json(payload): Json<ChatQuestionRequest>) -> Result<impl axum::response::IntoResponse, AppError> {

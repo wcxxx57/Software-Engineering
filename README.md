@@ -34,6 +34,8 @@
 
 多模态本地联调步骤见 [`docs/MULTIMODAL_LOCAL_VALIDATION.md`](./docs/MULTIMODAL_LOCAL_VALIDATION.md)；Code2Video 本次迭代接入说明见 [`docs/CODE2VIDEO_INTEGRATION.md`](./docs/CODE2VIDEO_INTEGRATION.md)；知识视频服务的内部结构见 [`services/knowledge2video/README.md`](./services/knowledge2video/README.md)，代码题讲解视频的原生 API 与部署说明见 [`services/code2video/README.md`](./services/code2video/README.md)。
 
+Part 6 个性化 AI 伴学的本地隧道、Docker 接入、上下文注入和验收清单见 [`docs/part6-ai-chat.md`](./docs/part6-ai-chat.md)。
+
 ## 2. 架构
 
 ```mermaid

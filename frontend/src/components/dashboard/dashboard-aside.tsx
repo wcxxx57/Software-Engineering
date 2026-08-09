@@ -156,7 +156,7 @@ export function DashboardAside({
         </div>
       </div>
 
-      <AiChatPanel />
+      <AiChatPanel className="min-h-0 flex-1 rounded-none border-0 bg-transparent shadow-none" />
 
       <ProfileEditDialog
         user={user}

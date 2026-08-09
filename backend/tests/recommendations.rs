@@ -559,6 +559,10 @@ async fn chat_context_hides_single_user_questions_and_returns_suggestions() {
         .request("GET", &format!("/api/v1/study-tasks/{task_id}/chat-context"), Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
+    assert!(body["data"]["knowledge_point_prompt"]
+        .as_str()
+        .unwrap()
+        .contains("学习查找与插入"));
     assert!(!body["data"]["suggested_questions"].as_array().unwrap().is_empty());
     let popular = body["data"]["popular_questions"].as_array().unwrap();
     assert_eq!(popular.len(), 1);

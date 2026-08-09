@@ -459,10 +459,77 @@ export const taskChatContextSchema = z.object({
   course_title: z.string(),
   stage_title: z.string(),
   knowledge_point_title: z.string(),
+  knowledge_point_prompt: z.string(),
   suggested_questions: z.array(chatQuestionSchema),
   popular_questions: z.array(popularChatQuestionSchema),
 });
 export type TaskChatContext = z.infer<typeof taskChatContextSchema>;
+
+// ── AI 伴学 ──
+
+export const learningProfileWeakPointSchema = z.object({
+  title: z.string(),
+  mistake_count: z.number().int().nonnegative(),
+});
+
+export const learningProfileSubjectSchema = z.object({
+  id: z.number().int(),
+  subject: z.string(),
+  language: z.string(),
+  target: z.string(),
+  total_stages: z.number().int().nonnegative(),
+  finished_stages: z.number().int().nonnegative(),
+  total_tasks: z.number().int().nonnegative(),
+  finished_tasks: z.number().int().nonnegative(),
+  progress_percent: z.number().int().min(0).max(100),
+  current_stage_title: z.string().nullable(),
+  current_task_title: z.string().nullable(),
+  quiz_total_problems: z.number().int().nonnegative(),
+  quiz_correct_problems: z.number().int().nonnegative(),
+  quiz_accuracy_percent: z.number().int().min(0).max(100).nullable(),
+  weak_points: z.array(learningProfileWeakPointSchema),
+});
+
+export const learningProfileSchema = z.object({
+  user_id: z.number().int(),
+  username: z.string(),
+  age_band: z.string().nullable(),
+  introduction: z.string(),
+  level: z.number().int().nonnegative(),
+  experience_points: z.number().int(),
+  total_checkins: z.number().int().nonnegative(),
+  streak_checkins: z.number().int().nonnegative(),
+  active_subject: learningProfileSubjectSchema.nullable(),
+});
+export type LearningProfile = z.infer<typeof learningProfileSchema>;
+
+export const aiScopeSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("general") }),
+  z.object({ type: z.literal("task"), task_id: z.number().int().positive() }),
+]);
+export type AiScope = z.infer<typeof aiScopeSchema>;
+
+export const aiTaskContextSchema = z.object({
+  task_id: z.number().int().positive(),
+  course_title: z.string(),
+  stage_title: z.string(),
+  knowledge_point_title: z.string(),
+  knowledge_point_prompt: z.string(),
+  page_context_excerpt: z.string().nullable(),
+  suggested_questions: z.array(chatQuestionSchema),
+  popular_questions: z.array(popularChatQuestionSchema),
+});
+export type AiTaskContext = z.infer<typeof aiTaskContextSchema>;
+
+export const aiContextSchema = z.object({
+  scope: aiScopeSchema,
+  profile: learningProfileSchema,
+  task: aiTaskContextSchema.nullable(),
+  // Local UI previews use a synthetic task that is intentionally not looked
+  // up through the authenticated backend context endpoint.
+  is_preview: z.boolean().optional(),
+});
+export type AiContext = z.infer<typeof aiContextSchema>;
 
 export const recommendedPlanSchema = z.object({
   id: z.number().int(),

@@ -2,6 +2,7 @@ mod checkins;
 mod code_videos;
 mod interactive_htmls;
 mod internal;
+mod learning_profile;
 mod knowledge_explanations;
 mod knowledge_videos;
 mod me;
@@ -60,6 +61,7 @@ fn api_router() -> Router<AppState> {
         .route("/users", axum::routing::post(users::create_user))
         .route("/tokens", axum::routing::post(tokens::create_token))
         .route("/me", get(me::get_me).patch(me::update_me))
+        .route("/me/learning-profile", get(learning_profile::get_learning_profile))
         .route("/me/assets", get(me::get_assets))
         .route("/me/username", axum::routing::patch(me::update_username))
         .route("/me/mistakes", get(me::list_mistakes))

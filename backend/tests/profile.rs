@@ -257,6 +257,27 @@ async fn profile_get_returns_default_values() {
 }
 
 #[tokio::test]
+async fn learning_profile_is_compact_and_requires_authentication() {
+    let app = TestApp::new().await;
+    let (status, body) = app
+        .request("GET", "/api/v1/me/learning-profile", None, None)
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["code"], "MISSING_AUTHORIZATION_HEADER");
+
+    let token = app.create_user_and_login("profile_ai", "password123").await;
+    let (status, body) = app
+        .request("GET", "/api/v1/me/learning-profile", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["username"], "profile_ai");
+    assert_eq!(body["data"]["active_subject"], serde_json::Value::Null);
+    assert!(body["data"].get("gold").is_none());
+    assert!(body["data"].get("diamond").is_none());
+    assert!(body["data"].get("birth_year").is_none());
+}
+
+#[tokio::test]
 async fn profile_update_invalid_gender_returns_422() {
     let app = TestApp::new().await;
     let token = app.create_user_and_login("alice", "password123").await;
