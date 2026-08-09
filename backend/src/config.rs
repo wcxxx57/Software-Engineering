@@ -80,8 +80,12 @@ impl Config {
             .parse()
             .map_err(|_| AppError::internal("APP_PORT is invalid"))?;
 
-        let database_url = env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "sqlite://zhiying-backend.db?mode=rwc".to_owned());
+        // Production deployments must choose their database explicitly. The
+        // repository's Compose configuration supplies PostgreSQL; SQLite and
+        // MySQL remain supported for tests or dedicated local setups.
+        let database_url = env::var("DATABASE_URL").map_err(|_| {
+            AppError::internal("DATABASE_URL must be set (use PostgreSQL in production)")
+        })?;
 
         let jwt_secret =
             env::var("JWT_SECRET").unwrap_or_else(|_| "change-me-in-production".to_owned());

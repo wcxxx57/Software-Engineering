@@ -36,7 +36,7 @@
 ### Part 6：AI 伴学
 - `components/ai/ai-chat-surface.tsx` 提供 compact/fullscreen 两种聊天布局、SSE 流式输出、停止/重试/清空和 Markdown 渲染。
 - 主页和任务页 AI 伴学已接通；新增受保护的 `/ai-chat` 全屏页面，移动端主页提供嵌入式入口。
-- 浏览器按用户与知识点场景隔离保存最近 50 条消息；不会把 JWT 或聊天历史发送给模型服务。
+- AI Chat 历史通过 Next.js 服务端代理持久化到后端 PostgreSQL 的 `ai_chat_message` 表，按用户与知识点场景隔离并限制最近 50 条；旧 localStorage 记录仅在首次打开时一次性迁移，不会把 JWT 或聊天历史发送给模型服务。
 
 ### API 代理（`src/app/api/...`）
 - 认证：`auth/login`、`auth/logout`、`auth/register`。
@@ -45,6 +45,7 @@
 - 小测：`study-quizzes`（含 `submit`、`problems`、`problem detail`）。
 - 工具：`knowledge-videos` / `code-videos` / `interactive-htmls`（list / get / create / delete）。
 - 公开：`config`。
+- AI 伴学：`ai/context`、`ai/chat`、`ai/history`（历史由后端 PostgreSQL 持久化）。
 - 错题/收藏切换：`quiz-problems/[id]/bookmark`、`mistake-visibility`。
 
 ### 已修过的坑

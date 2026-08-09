@@ -531,6 +531,19 @@ export const aiContextSchema = z.object({
 });
 export type AiContext = z.infer<typeof aiContextSchema>;
 
+export const aiChatMessageSchema = z.object({
+  id: z.string().min(1),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  created_at: z.number().finite(),
+});
+export type AiChatMessage = z.infer<typeof aiChatMessageSchema>;
+
+export const aiChatHistorySchema = z.object({
+  messages: z.array(aiChatMessageSchema).max(50),
+});
+export type AiChatHistory = z.infer<typeof aiChatHistorySchema>;
+
 export const recommendedPlanSchema = z.object({
   id: z.number().int(),
   title: z.string(),

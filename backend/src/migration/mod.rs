@@ -7,6 +7,7 @@ mod m0006_bookmark_timestamps;
 mod m0006_recommendations;
 mod m0007_chat_and_backfill;
 mod m0008_plan_recommendations;
+mod m0009_ai_chat_history;
 
 use sea_orm_migration::prelude::*;
 
@@ -25,6 +26,7 @@ impl MigratorTrait for Migrator {
             Box::new(m0006_recommendations::Migration),
             Box::new(m0007_chat_and_backfill::Migration),
             Box::new(m0008_plan_recommendations::Migration),
+            Box::new(m0009_ai_chat_history::Migration),
         ]
     }
 }

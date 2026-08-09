@@ -20,6 +20,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import type { AiContext } from "@/lib/api/schemas";
 import { consumeAiStream } from "@/lib/ai/stream";
+import { appendAiHistory, clearAiHistory, loadAiHistory } from "@/lib/ai/history";
 import {
   clearAiMessages,
   aiStorageKey,
@@ -46,6 +47,7 @@ export function AiChatSurface({
   const [isHydrated, setIsHydrated] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastQuestionRef = useRef<string | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -57,19 +59,58 @@ export function AiChatSurface({
   );
 
   useEffect(() => {
+    const controller = new AbortController();
+    const localMessages = loadAiMessages(context.profile.user_id, context.scope);
+    let active = true;
     setIsHydrated(false);
-    setMessages(loadAiMessages(context.profile.user_id, context.scope));
+    setMessages([]);
     setStreamError(null);
-    setIsHydrated(true);
+    setHistoryNotice(null);
     abortRef.current?.abort();
     setIsStreaming(false);
-  }, [storageKey, context.profile.user_id, context.scope]);
-
-  useEffect(() => {
-    if (isHydrated) {
-      saveAiMessages(context.profile.user_id, context.scope, messages);
+    if (context.is_preview) {
+      setMessages(localMessages);
+      setIsHydrated(true);
+      return () => {
+        active = false;
+        controller.abort();
+      };
     }
-  }, [context.profile.user_id, context.scope, isHydrated, messages]);
+    void loadAiHistory(context.scope, controller.signal)
+      .then(async (serverMessages) => {
+        if (!active) return;
+        if (serverMessages.length) {
+          setMessages(serverMessages);
+          clearAiMessages(context.profile.user_id, context.scope);
+          return;
+        }
+        if (!localMessages.length) return;
+        setMessages(localMessages);
+        const migratableMessages = localMessages.filter((message) => message.content.trim().length > 0);
+        if (!migratableMessages.length) {
+          clearAiMessages(context.profile.user_id, context.scope);
+          return;
+        }
+        try {
+          await appendAiHistory(context.scope, migratableMessages, controller.signal);
+          clearAiMessages(context.profile.user_id, context.scope);
+        } catch {
+          if (active) setHistoryNotice("旧版本地对话尚未同步，当前仍可继续使用。");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!active || controller.signal.aborted) return;
+        setMessages(localMessages);
+        setHistoryNotice(error instanceof Error ? error.message : "AI 伴学历史暂时不可用");
+      })
+      .finally(() => {
+        if (active) setIsHydrated(true);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [storageKey, context.is_preview, context.profile.user_id, context.scope]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -81,7 +122,7 @@ export function AiChatSurface({
 
   const sendMessage = async (rawQuestion: string, startingMessages = messages) => {
     const question = rawQuestion.trim();
-    if (!question || isStreaming || context.is_preview) return;
+    if (!question || !isHydrated || isStreaming || context.is_preview) return;
     const userMessage: StoredAiMessage = {
       id: createMessageId(),
       role: "user",
@@ -103,6 +144,17 @@ export function AiChatSurface({
     setStreamError(null);
     setIsStreaming(true);
     lastQuestionRef.current = question;
+    const persistHistory = (batch: StoredAiMessage[], fallback: StoredAiMessage[]) => {
+      void appendAiHistory(context.scope, batch)
+        .then(() => {
+          clearAiMessages(context.profile.user_id, context.scope);
+          setHistoryNotice(null);
+        })
+        .catch(() => {
+          saveAiMessages(context.profile.user_id, context.scope, fallback);
+          setHistoryNotice("数据库暂时不可用，已保留在本地，恢复后会自动尝试同步。");
+        });
+    };
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -120,8 +172,11 @@ export function AiChatSurface({
         const payload = await response.json().catch(() => null) as { message?: string } | null;
         throw new Error(payload?.message ?? "AI 服务暂时不可用");
       }
+      let assistantContent = "";
+      let streamFinished = false;
       await consumeAiStream(response, (event) => {
         if (event.type === "delta") {
+          assistantContent += event.data.text;
           setMessages((current) =>
             current.map((message) =>
               message.id === assistantMessage.id
@@ -130,6 +185,7 @@ export function AiChatSurface({
             ),
           );
         }
+        if (event.type === "done") streamFinished = true;
         if (event.type === "error") {
           setStreamError(event.data.message);
           setMessages((current) =>
@@ -141,6 +197,13 @@ export function AiChatSurface({
           );
         }
       });
+      if (streamFinished && assistantContent.trim()) {
+        const persistedAssistant: StoredAiMessage = {
+          ...assistantMessage,
+          content: assistantContent,
+        };
+        persistHistory([persistedAssistant], [...history, persistedAssistant]);
+      }
     } catch (error) {
       if (!controller.signal.aborted) {
         const message = error instanceof Error ? error.message : "AI 生成失败，请重试";
@@ -182,6 +245,12 @@ export function AiChatSurface({
     clearAiMessages(context.profile.user_id, context.scope);
     setMessages([]);
     setStreamError(null);
+    setHistoryNotice(null);
+    if (!context.is_preview) {
+      void clearAiHistory(context.scope).catch((error: unknown) => {
+        setHistoryNotice(error instanceof Error ? error.message : "数据库历史清理失败");
+      });
+    }
   };
 
   const compact = mode === "compact";
@@ -335,7 +404,7 @@ export function AiChatSurface({
                     void sendMessage(draft);
                   }
                 }}
-                disabled={isStreaming || previewOnly}
+                disabled={isStreaming || previewOnly || !isHydrated}
                 rows={compact ? 1 : 2}
                 maxLength={4000}
                 placeholder={previewOnly ? "本地预览模式，连接真实课程后可提问…" : "输入计算机学习问题，Enter 发送…"}
@@ -362,6 +431,9 @@ export function AiChatSurface({
                 </button>
               )}
             </div>
+            {historyNotice ? (
+              <p className="mt-2 text-center text-[11px] font-medium text-danger/80">{historyNotice}</p>
+            ) : null}
             <p className="mt-2 text-center text-[11px] font-medium text-brand-medium/75">
               {previewOnly ? "这是本地界面预览，真实课程中会结合你的学习画像回答问题。" : "AI 只回答计算机与当前课程学习问题；重要命令请先在测试环境验证。"}
             </p>

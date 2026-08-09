@@ -9,8 +9,8 @@
 ## 已完成
 
 ### 基础设施
-- SeaORM migration 单文件 `m0001_init_schema.rs`，启动时直接 apply（早期阶段允许删库重建）。
-- 数据库兼容 `sqlite / postgresql / mysql`，本地默认 sqlite，联调默认 PostgreSQL（`zhiying-infra` 提供）。
+- SeaORM migrations 在启动时自动 apply；AI Chat 当前由 `m0009_ai_chat_history` 追加消息表。
+- 数据库兼容 `sqlite / postgresql / mysql`；服务启动必须显式提供 `DATABASE_URL`，生产 Compose 使用 PostgreSQL。
 - 错误统一走 `src/error.rs`：业务错误中文化、校验错误归并为 `VALIDATION_FAILED`。
 - 鉴权：JWT（`AuthUser`） + 微服务 API Key（`ServiceAuth` / `ServiceKind`，`sk-` 前缀区分来源）。
 - CORS、TraceLayer、`/health`。
@@ -54,7 +54,7 @@
 ### Part 6：AI 伴学上下文
 - 新增鉴权接口 `GET /api/v1/me/learning-profile`，返回课程进度、测验正确率和错题聚合出的前 5 个薄弱知识点。
 - 扩充 `GET /api/v1/study-tasks/{id}/chat-context`，增加 `knowledge_point_prompt`，供服务端 AI 网关注入当前知识点。
-- 画像接口不返回密码、资产余额、原始出生年份或性别；无聊天数据库迁移。
+- 画像接口不返回密码、资产余额、原始出生年份或性别；`m0009_ai_chat_history` 将 AI Chat 消息按用户和场景持久化到数据库。
 
 ### 测试
 - 集成测试覆盖：认证、签到、学习主题完整链路、四类资源 dispatch + 回调 + 退款、quiz dispatch payload、管理员充值、wiremock + InMemoryPublisher 双轨。
@@ -69,7 +69,7 @@
 - **mistake 详情聚合接口**：当前仅列表，详情走 quiz_problem 路径。
 - **占位路由 `placeholders::router()`**：见 `src/routes/placeholders.rs`，待替换。
 - **profile 测试期望**：`profile_get_returns_default_values` 仍按旧注册奖励 0 钻石断言，需校准为 `REGISTER_BONUS_DIAMONDS`（当前 80）。
-- **AI 伴学部署**：后端需要重启以加载画像接口；前端需要配置 `AI_CHAT_*`（兼容旧 `CLOUDOPS_AI_*`）并连接 vLLM。
+- **AI 伴学部署**：后端需要配置 PostgreSQL 并执行启动迁移；前端需要配置 `AI_CHAT_*`（兼容旧 `CLOUDOPS_AI_*`）并连接 vLLM。
 
 ## 临时决策
 

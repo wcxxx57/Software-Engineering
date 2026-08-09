@@ -10,6 +10,9 @@ export type StoredAiMessage = {
 const STORAGE_PREFIX = "zhiying:ai-chat:v1";
 const MAX_MESSAGES = 50;
 
+// This is a migration/failure fallback only. Production history is persisted
+// by the authenticated backend in PostgreSQL through /api/ai/history.
+
 export function aiStorageKey(userId: number, scope: AiScope): string {
   return scope.type === "general"
     ? `${STORAGE_PREFIX}:${userId}:general`

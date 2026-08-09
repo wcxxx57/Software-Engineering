@@ -1,3 +1,4 @@
+pub mod ai_chat_message;
 pub mod asset_transaction;
 pub mod code_video;
 pub mod chat_question;

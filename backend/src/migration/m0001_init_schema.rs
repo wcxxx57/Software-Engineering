@@ -2,8 +2,9 @@ use sea_orm::Schema;
 use sea_orm_migration::prelude::*;
 
 use crate::entities::{
-    code_video, interactive_html, knowledge_explanation, knowledge_video, pretest_problem,
-    study_quiz, study_quiz_problem, study_stage, study_subject, study_task, user, user_checkin,
+    code_video, curriculum_node, curriculum_source, curriculum_template, interactive_html,
+    knowledge_explanation, knowledge_video, pretest_problem, study_quiz, study_quiz_problem,
+    study_stage, study_subject, study_task, study_task_curriculum_node, user, user_checkin,
     user_code_video_link, user_interactive_html_link, user_knowledge_video_link,
 };
 
@@ -51,6 +52,19 @@ impl MigrationTrait for Migration {
         knowledge_explanation_table.if_not_exists();
         manager.create_table(knowledge_explanation_table).await?;
 
+        // These tables are introduced formally by m0004, but study_task's
+        // current entity already contains a foreign key to curriculum_node.
+        // Creating the referenced tables here keeps a fresh PostgreSQL schema
+        // valid; SQLite permits the old out-of-order foreign key instead.
+        for mut table in [
+            schema.create_table_from_entity(curriculum_template::Entity),
+            schema.create_table_from_entity(curriculum_source::Entity),
+            schema.create_table_from_entity(curriculum_node::Entity),
+        ] {
+            table.if_not_exists();
+            manager.create_table(table).await?;
+        }
+
         let mut study_subject_table = schema.create_table_from_entity(study_subject::Entity);
         study_subject_table.if_not_exists();
         manager.create_table(study_subject_table).await?;
@@ -66,6 +80,13 @@ impl MigrationTrait for Migration {
         let mut study_task_table = schema.create_table_from_entity(study_task::Entity);
         study_task_table.if_not_exists();
         manager.create_table(study_task_table).await?;
+
+        let mut study_task_curriculum_node_table =
+            schema.create_table_from_entity(study_task_curriculum_node::Entity);
+        study_task_curriculum_node_table.if_not_exists();
+        manager
+            .create_table(study_task_curriculum_node_table)
+            .await?;
 
         let mut study_quiz_table = schema.create_table_from_entity(study_quiz::Entity);
         study_quiz_table.if_not_exists();

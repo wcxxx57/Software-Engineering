@@ -26,9 +26,9 @@ stop:
 log:
   @tmux attach -t {{session}}
 
-# Remove the local SQLite database file (and its WAL / SHM / journal sidecars).
-# Depends on stop because a running backend holds the file open — rm would
-# unlink the inode but the process keeps writing and re-flushes on exit.
+# Remove an optional local SQLite database used by isolated tests. Production
+# data lives in PostgreSQL and must be reset through an explicitly approved
+# database backup/maintenance workflow, not this target.
 reset: stop
   @rm -f zhiying-backend.db zhiying-backend.db-shm zhiying-backend.db-wal zhiying-backend.db-journal \
     && printf '\033[32m✔\033[0m zhiying-backend \033[32mReset\033[0m\n'

@@ -58,8 +58,7 @@ fn parse_user_ids() -> Vec<i32> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite://zhiying-backend.db?mode=rwc".to_owned());
+    let database_url = env::var("DATABASE_URL")?;
     let db = Database::connect(database_url).await?;
     Migrator::up(&db, None).await?;
 

@@ -55,7 +55,23 @@ AI_CHAT_API_KEY=<与 vLLM 一致的密钥>
 
 每条新问题先经过领域分类，再进入生成模型。模型系统提示再次限制在计算机知识和当前计算机课程范围内。分类失败采用失败关闭；越界问题返回固定拒答，不将内容交给生成模型。
 
-聊天历史只保存在当前浏览器的 `localStorage`，按用户和场景隔离：
+聊天历史现在由后端通过 PostgreSQL 持久化，按用户和场景隔离。浏览器不能直接连接数据库，Next.js
+服务端代理会把 JWT 转发给后端的受保护接口：
+
+```text
+GET    /api/v1/me/ai-chat/messages?scope=general
+GET    /api/v1/me/ai-chat/messages?scope=task&task_id=<任务 ID>
+POST   /api/v1/me/ai-chat/messages
+DELETE /api/v1/me/ai-chat/messages?scope=...
+```
+
+后端迁移 `m0009_ai_chat_history` 创建 `ai_chat_message` 表，消息使用客户端 ID 做幂等去重，
+每个用户和场景最多保留最近 50 条。任务场景在读写前会再次校验任务归属，避免不同用户互相读取历史。
+
+旧版本已经写入浏览器的 `localStorage` 会在首次打开对应场景时尝试迁移；迁移成功后删除旧副本。
+数据库暂时不可用时才使用本地副本作为短暂降级，不把它作为生产数据源。
+
+历史键仍保持兼容，便于一次性迁移：
 
 ```text
 zhiying:ai-chat:v1:<userId>:general

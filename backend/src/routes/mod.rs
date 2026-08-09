@@ -1,3 +1,4 @@
+mod ai_chat;
 mod checkins;
 mod code_videos;
 mod interactive_htmls;
@@ -62,6 +63,12 @@ fn api_router() -> Router<AppState> {
         .route("/tokens", axum::routing::post(tokens::create_token))
         .route("/me", get(me::get_me).patch(me::update_me))
         .route("/me/learning-profile", get(learning_profile::get_learning_profile))
+        .route(
+            "/me/ai-chat/messages",
+            get(ai_chat::list_messages)
+                .post(ai_chat::append_messages)
+                .delete(ai_chat::clear_messages),
+        )
         .route("/me/assets", get(me::get_assets))
         .route("/me/username", axum::routing::patch(me::update_username))
         .route("/me/mistakes", get(me::list_mistakes))
