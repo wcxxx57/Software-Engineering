@@ -12,7 +12,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     init_tracing();
 
     let config = Config::from_env()?;
-    let app = build_app(config.clone()).await?;
+    let app = if std::env::var("DEV_IN_MEMORY_QUEUE").as_deref() == Ok("true") {
+        use std::sync::Arc;
+        use zhiying_backend::services::message_queue::{InMemoryPublisher, MessagePublisher};
+
+        zhiying_backend::build_app_with_publisher(
+            config.clone(),
+            InMemoryPublisher::new() as Arc<dyn MessagePublisher>,
+        )
+        .await?
+    } else {
+        build_app(config.clone()).await?
+    };
     let addr = SocketAddr::new(config.host, config.port);
     let listener = TcpListener::bind(addr).await?;
 
