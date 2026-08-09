@@ -1,6 +1,8 @@
 # 仓库根目录本地配置
 /.env
 /.env.local
+**/.env
+**/.env.local
 
 # 旧仓库元数据、单仓库导入用临时 Git 元数据与本地 pnpm 缓存
 /.git/

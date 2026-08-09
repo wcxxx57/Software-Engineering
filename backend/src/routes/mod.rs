@@ -69,6 +69,10 @@ fn api_router() -> Router<AppState> {
                 .post(ai_chat::append_messages)
                 .delete(ai_chat::clear_messages),
         )
+        .route(
+            "/me/ai-chat/conversations",
+            get(ai_chat::list_conversations),
+        )
         .route("/me/assets", get(me::get_assets))
         .route("/me/username", axum::routing::patch(me::update_username))
         .route("/me/mistakes", get(me::list_mistakes))

@@ -8,7 +8,11 @@ import {
   ArrowLeft,
   Bot,
   BookOpen,
+  Clock3,
+  Loader2,
   Maximize2,
+  MessageSquareText,
+  Plus,
   RotateCcw,
   Send,
   Sparkles,
@@ -16,24 +20,27 @@ import {
   Target,
   Trash2,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-import type { AiContext } from "@/lib/api/schemas";
+import type {
+  AiChatConversation,
+  AiChatMessage,
+  AiContext,
+} from "@/lib/api/schemas";
 import { consumeAiStream } from "@/lib/ai/stream";
-import { appendAiHistory, clearAiHistory, loadAiHistory } from "@/lib/ai/history";
 import {
-  clearAiMessages,
-  aiStorageKey,
-  loadAiMessages,
-  saveAiMessages,
-  type StoredAiMessage,
-} from "@/lib/ai/storage";
+  appendAiHistory,
+  clearAiHistory,
+  listAiConversations,
+  loadAiHistory,
+} from "@/lib/ai/history";
 
 type AiChatSurfaceProps = {
   context: AiContext;
   mode?: "compact" | "fullscreen";
   className?: string;
   onClose?: () => void;
+  initialConversationId?: string;
 };
 
 export function AiChatSurface({
@@ -41,66 +48,75 @@ export function AiChatSurface({
   mode = "compact",
   className = "",
   onClose,
+  initialConversationId,
 }: AiChatSurfaceProps) {
-  const [messages, setMessages] = useState<StoredAiMessage[]>([]);
+  const compact = mode === "compact";
+  const previewOnly = context.is_preview === true;
+  const scopeIdentity =
+    context.scope.type === "general" ? "general" : `task:${context.scope.task_id}`;
+  const [conversationId, setConversationId] = useState(initialConversationId ?? "");
+  const [messages, setMessages] = useState<AiChatMessage[]>([]);
+  const [conversations, setConversations] = useState<AiChatConversation[]>([]);
   const [draft, setDraft] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const [historyListError, setHistoryListError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastQuestionRef = useRef<string | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastMessageContent = messages[messages.length - 1]?.content;
-  const storageKey = useMemo(
-    () => aiStorageKey(context.profile.user_id, context.scope),
-    [context.profile.user_id, context.scope],
+
+  const refreshConversations = useCallback(
+    async (signal?: AbortSignal) => {
+      if (compact || previewOnly) return;
+      setIsHistoryLoading(true);
+      try {
+        const items = await listAiConversations(context.scope, signal);
+        setConversations(items);
+        setHistoryListError(null);
+      } catch (error) {
+        if (signal?.aborted) return;
+        setHistoryListError(
+          error instanceof Error ? error.message : "历史会话列表加载失败",
+        );
+      } finally {
+        if (!signal?.aborted) setIsHistoryLoading(false);
+      }
+    },
+    [compact, context.scope, previewOnly],
   );
 
   useEffect(() => {
     const controller = new AbortController();
-    const localMessages = loadAiMessages(context.profile.user_id, context.scope);
     let active = true;
+    const nextConversationId = initialConversationId ?? createConversationId();
+    setConversationId(nextConversationId);
     setIsHydrated(false);
     setMessages([]);
+    setDraft("");
     setStreamError(null);
     setHistoryNotice(null);
     abortRef.current?.abort();
     setIsStreaming(false);
-    if (context.is_preview) {
-      setMessages(localMessages);
+    if (previewOnly || !initialConversationId) {
       setIsHydrated(true);
       return () => {
         active = false;
         controller.abort();
       };
     }
-    void loadAiHistory(context.scope, controller.signal)
-      .then(async (serverMessages) => {
+    void loadAiHistory(context.scope, nextConversationId, controller.signal)
+      .then((serverMessages) => {
         if (!active) return;
-        if (serverMessages.length) {
-          setMessages(serverMessages);
-          clearAiMessages(context.profile.user_id, context.scope);
-          return;
-        }
-        if (!localMessages.length) return;
-        setMessages(localMessages);
-        const migratableMessages = localMessages.filter((message) => message.content.trim().length > 0);
-        if (!migratableMessages.length) {
-          clearAiMessages(context.profile.user_id, context.scope);
-          return;
-        }
-        try {
-          await appendAiHistory(context.scope, migratableMessages, controller.signal);
-          clearAiMessages(context.profile.user_id, context.scope);
-        } catch {
-          if (active) setHistoryNotice("旧版本地对话尚未同步，当前仍可继续使用。");
-        }
+        setMessages(serverMessages);
       })
       .catch((error: unknown) => {
         if (!active || controller.signal.aborted) return;
-        setMessages(localMessages);
         setHistoryNotice(error instanceof Error ? error.message : "AI 伴学历史暂时不可用");
       })
       .finally(() => {
@@ -110,7 +126,14 @@ export function AiChatSurface({
       active = false;
       controller.abort();
     };
-  }, [storageKey, context.is_preview, context.profile.user_id, context.scope]);
+  }, [context.scope, initialConversationId, previewOnly, scopeIdentity]);
+
+  useEffect(() => {
+    if (compact || previewOnly) return;
+    const controller = new AbortController();
+    void refreshConversations(controller.signal);
+    return () => controller.abort();
+  }, [compact, previewOnly, refreshConversations, scopeIdentity]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -122,14 +145,14 @@ export function AiChatSurface({
 
   const sendMessage = async (rawQuestion: string, startingMessages = messages) => {
     const question = rawQuestion.trim();
-    if (!question || !isHydrated || isStreaming || context.is_preview) return;
-    const userMessage: StoredAiMessage = {
+    if (!question || !conversationId || !isHydrated || isStreaming || context.is_preview) return;
+    const userMessage: AiChatMessage = {
       id: createMessageId(),
       role: "user",
       content: question,
       created_at: Date.now(),
     };
-    const assistantMessage: StoredAiMessage = {
+    const assistantMessage: AiChatMessage = {
       id: createMessageId(),
       role: "assistant",
       content: "",
@@ -144,21 +167,22 @@ export function AiChatSurface({
     setStreamError(null);
     setIsStreaming(true);
     lastQuestionRef.current = question;
-    const persistHistory = (batch: StoredAiMessage[], fallback: StoredAiMessage[]) => {
-      void appendAiHistory(context.scope, batch)
-        .then(() => {
-          clearAiMessages(context.profile.user_id, context.scope);
-          setHistoryNotice(null);
-        })
-        .catch(() => {
-          saveAiMessages(context.profile.user_id, context.scope, fallback);
-          setHistoryNotice("数据库暂时不可用，已保留在本地，恢复后会自动尝试同步。");
-        });
-    };
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
+      try {
+        await appendAiHistory(context.scope, conversationId, [userMessage]);
+        setHistoryNotice(null);
+        void refreshConversations();
+      } catch (error) {
+        setHistoryNotice(
+          error instanceof Error
+            ? `${error.message}；本轮消息不会写入历史记录`
+            : "数据库暂时不可用，本轮消息不会写入历史记录",
+        );
+      }
+
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { accept: "text/event-stream", "content-type": "application/json" },
@@ -198,11 +222,26 @@ export function AiChatSurface({
         }
       });
       if (streamFinished && assistantContent.trim()) {
-        const persistedAssistant: StoredAiMessage = {
+        const persistedAssistant: AiChatMessage = {
           ...assistantMessage,
           content: assistantContent,
         };
-        persistHistory([persistedAssistant], [...history, persistedAssistant]);
+        try {
+          // Re-send the user message with the assistant response. The backend
+          // is idempotent, so this also repairs a transient first-write failure.
+          await appendAiHistory(context.scope, conversationId, [
+            userMessage,
+            persistedAssistant,
+          ]);
+          setHistoryNotice(null);
+          void refreshConversations();
+        } catch (error) {
+          setHistoryNotice(
+            error instanceof Error
+              ? `${error.message}；本轮消息不会写入历史记录`
+              : "数据库暂时不可用，本轮消息不会写入历史记录",
+          );
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -239,28 +278,74 @@ export function AiChatSurface({
     void sendMessage(draft);
   };
 
-  const clearConversation = () => {
+  const startNewConversation = () => {
     abortRef.current?.abort();
     setIsStreaming(false);
-    clearAiMessages(context.profile.user_id, context.scope);
+    setConversationId(createConversationId());
     setMessages([]);
+    setDraft("");
     setStreamError(null);
     setHistoryNotice(null);
-    if (!context.is_preview) {
-      void clearAiHistory(context.scope).catch((error: unknown) => {
-        setHistoryNotice(error instanceof Error ? error.message : "数据库历史清理失败");
-      });
+    setIsHydrated(true);
+    lastQuestionRef.current = null;
+    if (!compact && typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("conversationId");
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     }
   };
 
-  const compact = mode === "compact";
-  const previewOnly = context.is_preview === true;
+  const openConversation = async (nextConversationId: string) => {
+    if (nextConversationId === conversationId || isStreaming || previewOnly) return;
+    abortRef.current?.abort();
+    setConversationId(nextConversationId);
+    setMessages([]);
+    setDraft("");
+    setStreamError(null);
+    setHistoryNotice(null);
+    setIsHydrated(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("conversationId", nextConversationId);
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    try {
+      setMessages(await loadAiHistory(context.scope, nextConversationId));
+    } catch (error) {
+      setHistoryNotice(error instanceof Error ? error.message : "AI 伴学历史暂时不可用");
+    } finally {
+      setIsHydrated(true);
+    }
+  };
+
+  const deleteConversation = () => {
+    if (previewOnly) {
+      startNewConversation();
+      return;
+    }
+    if (isDeletingConversation) return;
+    if (!window.confirm("确定删除当前对话吗？删除后无法恢复。")) return;
+    const deletingConversationId = conversationId;
+    setIsDeletingConversation(true);
+    void clearAiHistory(context.scope, deletingConversationId)
+      .then(() => {
+        startNewConversation();
+        void refreshConversations();
+      })
+      .catch((error: unknown) => {
+        setHistoryNotice(error instanceof Error ? error.message : "数据库历史删除失败");
+      })
+      .finally(() => setIsDeletingConversation(false));
+  };
+
   const taskTitle = context.task?.knowledge_point_title;
   const fullscreenHref = context.is_preview
     ? "/preview/iteration4?view=chat"
     : context.task
-      ? `/ai-chat?taskId=${context.task.task_id}`
-      : "/ai-chat";
+      ? `/ai-chat?taskId=${context.task.task_id}${conversationId ? `&conversationId=${encodeURIComponent(conversationId)}` : ""}`
+      : conversationId
+        ? `/ai-chat?conversationId=${encodeURIComponent(conversationId)}`
+        : "/ai-chat";
   const welcome = context.task
     ? `你现在正在学习「${context.task.knowledge_point_title}」，可以直接问我概念、代码或易错点。`
     : context.profile.active_subject
@@ -302,10 +387,11 @@ export function AiChatSurface({
           {messages.length ? (
             <button
               type="button"
-              onClick={clearConversation}
-              aria-label="清空当前对话"
-              title="清空当前对话"
-              className="flex size-11 items-center justify-center rounded-xl text-brand-medium transition-colors hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-orange"
+              onClick={deleteConversation}
+              disabled={isStreaming || isDeletingConversation}
+              aria-label="删除当前对话"
+              title="删除当前对话"
+              className="flex size-11 items-center justify-center rounded-xl text-brand-medium transition-colors hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-orange"
             >
               <Trash2 className="size-4" />
             </button>
@@ -323,8 +409,30 @@ export function AiChatSurface({
         </div>
       </header>
 
-      <div className={`flex min-h-0 flex-1 ${compact ? "flex-col" : "flex-col lg:flex-row"}`}>
+      <div className={`flex min-h-0 flex-1 ${compact ? "flex-col" : "flex-col xl:flex-row"}`}>
+        {!compact ? (
+          <ConversationHistoryPanel
+            conversations={conversations}
+            currentConversationId={conversationId}
+            isLoading={isHistoryLoading}
+            error={historyListError}
+            disabled={isStreaming || isDeletingConversation}
+            onNew={startNewConversation}
+            onRetry={() => void refreshConversations()}
+            onSelect={(id) => void openConversation(id)}
+          />
+        ) : null}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {!compact ? (
+            <MobileConversationSelector
+              conversations={conversations}
+              currentConversationId={conversationId}
+              disabled={isStreaming || isDeletingConversation}
+              error={historyListError}
+              onNew={startNewConversation}
+              onSelect={(id) => void openConversation(id)}
+            />
+          ) : null}
           <div
             ref={scrollRef}
             aria-live="polite"
@@ -336,7 +444,11 @@ export function AiChatSurface({
                   <Sparkles className="size-4" />
                 </div>
                 <div className="max-w-[min(680px,90%)] rounded-2xl rounded-bl-sm bg-palette-orange-lighter/75 px-4 py-3 text-sm font-medium leading-7 text-brand-deep">
-                  {welcome}
+                  {!isHydrated ? (
+                    <span className="inline-flex items-center gap-2" role="status">
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />正在读取对话…
+                    </span>
+                  ) : welcome}
                 </div>
               </div>
             ) : null}
@@ -446,7 +558,148 @@ export function AiChatSurface({
   );
 }
 
-function MessageBubble({ message, onRegenerate }: { message: StoredAiMessage; onRegenerate?: () => void }) {
+function ConversationHistoryPanel({
+  conversations,
+  currentConversationId,
+  isLoading,
+  error,
+  disabled,
+  onNew,
+  onRetry,
+  onSelect,
+}: {
+  conversations: AiChatConversation[];
+  currentConversationId: string;
+  isLoading: boolean;
+  error: string | null;
+  disabled: boolean;
+  onNew: () => void;
+  onRetry: () => void;
+  onSelect: (conversationId: string) => void;
+}) {
+  return (
+    <aside
+      aria-label="历史对话"
+      className="hidden w-[280px] shrink-0 flex-col border-r border-border/25 bg-white/45 xl:flex"
+    >
+      <div className="border-b border-border/20 p-4">
+        <button
+          type="button"
+          onClick={onNew}
+          disabled={disabled}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-dark px-4 text-sm font-extrabold text-white transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-orange focus-visible:ring-offset-2"
+        >
+          <Plus className="size-4" />新对话
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="mb-2 flex items-center gap-2 px-2 text-xs font-extrabold tracking-wide text-brand-medium">
+          <MessageSquareText className="size-4 text-palette-orange" />历史对话
+        </div>
+        {error ? (
+          <div role="alert" className="m-2 rounded-xl bg-danger-soft p-3 text-xs font-semibold leading-5 text-danger">
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-white/80 px-3 text-danger transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+            >
+              <RotateCcw className="size-3.5" />重新加载
+            </button>
+          </div>
+        ) : null}
+        {isLoading ? (
+          <p className="px-2 py-4 text-xs font-semibold text-brand-medium">正在读取 PostgreSQL 历史…</p>
+        ) : conversations.length ? (
+          <div className="space-y-1.5">
+            {conversations.map((conversation) => {
+              const active = conversation.id === currentConversationId;
+              return (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => onSelect(conversation.id)}
+                  disabled={disabled}
+                  aria-current={active ? "true" : undefined}
+                  title={conversation.title}
+                  className={`min-h-11 w-full rounded-xl border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-orange ${
+                    active
+                      ? "border-palette-orange-light bg-palette-orange-mist text-brand-dark"
+                      : "border-transparent text-brand-medium hover:border-palette-orange-light/60 hover:bg-white/80 hover:text-brand-dark"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <span className="block truncate text-sm font-extrabold">{conversation.title}</span>
+                  <span className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold opacity-75">
+                    <Clock3 className="size-3" />
+                    {formatConversationTime(conversation.updated_at)} · {conversation.message_count} 条
+                    {active ? " · 当前" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="px-2 py-4 text-xs font-semibold leading-5 text-brand-medium">
+            还没有历史对话。发送第一条消息后，会话会保存到 PostgreSQL。
+          </p>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function MobileConversationSelector({
+  conversations,
+  currentConversationId,
+  disabled,
+  error,
+  onNew,
+  onSelect,
+}: {
+  conversations: AiChatConversation[];
+  currentConversationId: string;
+  disabled: boolean;
+  error: string | null;
+  onNew: () => void;
+  onSelect: (conversationId: string) => void;
+}) {
+  const hasCurrent = conversations.some((item) => item.id === currentConversationId);
+  return (
+    <div className="shrink-0 border-b border-border/20 bg-white/45 px-4 py-2.5 xl:hidden">
+      <div className="flex items-center gap-2">
+        <label htmlFor="ai-chat-conversation" className="sr-only">选择历史对话</label>
+        <select
+          id="ai-chat-conversation"
+          value={hasCurrent ? currentConversationId : ""}
+          onChange={(event) => {
+            if (event.target.value) onSelect(event.target.value);
+          }}
+          disabled={disabled || conversations.length === 0}
+          className="min-h-11 min-w-0 flex-1 rounded-xl border border-palette-orange-light/60 bg-white px-3 text-sm font-bold text-brand-dark outline-none focus-visible:ring-2 focus-visible:ring-palette-orange disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option value="">{conversations.length ? "选择历史对话" : "暂无历史对话"}</option>
+          {conversations.map((conversation) => (
+            <option key={conversation.id} value={conversation.id}>
+              {conversation.title}（{conversation.message_count} 条）
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onNew}
+          disabled={disabled}
+          aria-label="开始新对话"
+          className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-dark text-white transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-palette-orange"
+        >
+          <Plus className="size-4" />
+        </button>
+      </div>
+      {error ? <p role="alert" className="mt-2 text-xs font-semibold text-danger">{error}</p> : null}
+    </div>
+  );
+}
+
+function MessageBubble({ message, onRegenerate }: { message: AiChatMessage; onRegenerate?: () => void }) {
   const isUser = message.role === "user";
   return (
     <div className={`flex items-start gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -504,7 +757,7 @@ function SuggestionList({ questions, onPick }: { questions: string[]; onPick: (q
 function LearningProfileCard({ context }: { context: AiContext }) {
   const subject = context.profile.active_subject;
   return (
-    <aside className="w-full shrink-0 border-t border-border/25 bg-palette-yellow-mist/45 p-5 lg:w-[300px] lg:border-l lg:border-t-0 lg:p-6">
+    <aside className="w-full shrink-0 border-t border-border/25 bg-palette-yellow-mist/45 p-5 xl:w-[300px] xl:border-l xl:border-t-0 xl:p-6">
       {context.task ? (
         <div className="mb-5 rounded-2xl border border-palette-orange-light/55 bg-white/75 p-4">
           <p className="text-xs font-extrabold tracking-wide text-brand-medium">当前知识点</p>
@@ -541,4 +794,20 @@ function ProfileRow({ icon, label, value }: { icon: React.ReactNode; label: stri
 
 function createMessageId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function createConversationId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `conversation-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function formatConversationTime(timestamp: number): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
 }

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{Query, State},
@@ -19,13 +21,17 @@ use crate::{
 };
 
 const MAX_HISTORY_MESSAGES: usize = 50;
+const MAX_CONVERSATIONS: usize = 30;
 const MAX_MESSAGE_ID_CHARS: usize = 128;
+const MAX_CONVERSATION_ID_CHARS: usize = 128;
 const MAX_MESSAGE_CHARS: usize = 4_000;
+const CONVERSATION_TITLE_CHARS: usize = 36;
 
 #[derive(Debug, Deserialize)]
 pub struct HistoryQuery {
     pub scope: Option<String>,
     pub task_id: Option<i32>,
+    pub conversation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +44,7 @@ pub struct HistoryRequest {
 #[derive(Debug, Deserialize)]
 pub struct AppendMessagesRequest {
     pub scope: HistoryRequest,
+    pub conversation_id: String,
     pub messages: Vec<ChatMessageInput>,
 }
 
@@ -51,6 +58,20 @@ pub struct ChatMessageInput {
 #[derive(Debug, Serialize)]
 pub struct HistoryView {
     pub messages: Vec<ChatMessageView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConversationListView {
+    pub conversations: Vec<ConversationView>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConversationView {
+    pub id: String,
+    pub title: String,
+    pub message_count: usize,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,15 +96,28 @@ pub async fn list_messages(
     Query(query): Query<HistoryQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let scope = resolve_scope(&state, auth.user_id, query.scope.as_deref(), query.task_id).await?;
+    let conversation_id = require_conversation_id(query.conversation_id.as_deref())?;
     Ok(ok(HistoryView {
-        messages: load_history(&state.db, auth.user_id, &scope.key).await?,
+        messages: load_history(&state.db, auth.user_id, &scope.key, &conversation_id).await?,
+    }))
+}
+
+/// GET /api/v1/me/ai-chat/conversations
+pub async fn list_conversations(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<HistoryQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let scope = resolve_scope(&state, auth.user_id, query.scope.as_deref(), query.task_id).await?;
+    Ok(ok(ConversationListView {
+        conversations: load_conversations(&state.db, auth.user_id, &scope.key).await?,
     }))
 }
 
 /// POST /api/v1/me/ai-chat/messages
 ///
-/// Messages are appended idempotently by client id. This supports retries and
-/// a one-time migration from the old browser localStorage implementation.
+/// Messages are appended idempotently by client id and stored only in the
+/// authenticated user's PostgreSQL-backed conversation.
 pub async fn append_messages(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -92,6 +126,7 @@ pub async fn append_messages(
     if payload.messages.is_empty() || payload.messages.len() > MAX_HISTORY_MESSAGES {
         return Err(AppError::ValidationFailed);
     }
+    let conversation_id = require_conversation_id(Some(payload.conversation_id.as_str()))?;
     for message in &payload.messages {
         validate_message(message)?;
     }
@@ -109,6 +144,7 @@ pub async fn append_messages(
         let insert_result = ai_chat_message::Entity::insert(ai_chat_message::ActiveModel {
             user_id: Set(auth.user_id),
             scope_key: Set(scope.key.clone()),
+            conversation_id: Set(conversation_id.clone()),
             client_message_id: Set(message.id.trim().to_owned()),
             role: Set(message.role),
             content: Set(message.content.trim().to_owned()),
@@ -132,12 +168,13 @@ pub async fn append_messages(
             Err(error) => return Err(error.into()),
         }
     }
-    prune_history(&transaction, auth.user_id, &scope.key).await?;
+    prune_history(&transaction, auth.user_id, &scope.key, &conversation_id).await?;
     transaction.commit().await?;
 
     Ok(ok(serde_json::json!({
         "saved": true,
         "scope": scope.key,
+        "conversation_id": conversation_id,
     })))
 }
 
@@ -148,12 +185,27 @@ pub async fn clear_messages(
     Query(query): Query<HistoryQuery>,
 ) -> Result<impl IntoResponse, AppError> {
     let scope = resolve_scope(&state, auth.user_id, query.scope.as_deref(), query.task_id).await?;
+    let conversation_id = require_conversation_id(query.conversation_id.as_deref())?;
     let result = ai_chat_message::Entity::delete_many()
         .filter(ai_chat_message::Column::UserId.eq(auth.user_id))
         .filter(ai_chat_message::Column::ScopeKey.eq(scope.key))
+        .filter(ai_chat_message::Column::ConversationId.eq(conversation_id))
         .exec(&state.db)
         .await?;
     Ok(ok(serde_json::json!({ "deleted": result.rows_affected })))
+}
+
+fn require_conversation_id(value: Option<&str>) -> Result<String, AppError> {
+    let value = value.map(str::trim).unwrap_or_default();
+    if value.is_empty()
+        || value.chars().count() > MAX_CONVERSATION_ID_CHARS
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err(AppError::ValidationFailed);
+    }
+    Ok(value.to_owned())
 }
 
 async fn resolve_scope(
@@ -206,10 +258,12 @@ async fn load_history(
     db: &DatabaseConnection,
     user_id: i32,
     scope_key: &str,
+    conversation_id: &str,
 ) -> Result<Vec<ChatMessageView>, AppError> {
     let rows = ai_chat_message::Entity::find()
         .filter(ai_chat_message::Column::UserId.eq(user_id))
         .filter(ai_chat_message::Column::ScopeKey.eq(scope_key))
+        .filter(ai_chat_message::Column::ConversationId.eq(conversation_id))
         .order_by_desc(ai_chat_message::Column::Id)
         .limit(MAX_HISTORY_MESSAGES as u64)
         .all(db)
@@ -226,14 +280,83 @@ async fn load_history(
         .collect())
 }
 
+async fn load_conversations(
+    db: &DatabaseConnection,
+    user_id: i32,
+    scope_key: &str,
+) -> Result<Vec<ConversationView>, AppError> {
+    // Each conversation is pruned to MAX_HISTORY_MESSAGES, so this bound is
+    // sufficient to reconstruct the latest MAX_CONVERSATIONS without loading
+    // an unbounded user history into memory.
+    let rows = ai_chat_message::Entity::find()
+        .filter(ai_chat_message::Column::UserId.eq(user_id))
+        .filter(ai_chat_message::Column::ScopeKey.eq(scope_key))
+        .order_by_desc(ai_chat_message::Column::CreatedAt)
+        .order_by_desc(ai_chat_message::Column::Id)
+        .limit((MAX_CONVERSATIONS * MAX_HISTORY_MESSAGES) as u64)
+        .all(db)
+        .await?;
+
+    let mut conversations = Vec::<ConversationView>::new();
+    let mut positions = HashMap::<String, usize>::new();
+    for message in rows {
+        let conversation_id = message.conversation_id.clone();
+        let position = if let Some(position) = positions.get(&conversation_id) {
+            *position
+        } else {
+            if conversations.len() >= MAX_CONVERSATIONS {
+                continue;
+            }
+            let position = conversations.len();
+            positions.insert(conversation_id.clone(), position);
+            conversations.push(ConversationView {
+                id: conversation_id,
+                title: "新对话".to_owned(),
+                message_count: 0,
+                created_at: message.created_at.timestamp_millis(),
+                updated_at: message.created_at.timestamp_millis(),
+            });
+            position
+        };
+
+        let conversation = &mut conversations[position];
+        conversation.message_count += 1;
+        conversation.created_at = message.created_at.timestamp_millis();
+        // Rows are newest-first, so the last user message seen is the earliest
+        // retained question and becomes a stable, human-readable title.
+        if message.role == "user" {
+            conversation.title = summarize_title(&message.content);
+        }
+    }
+    Ok(conversations)
+}
+
+fn summarize_title(content: &str) -> String {
+    let normalized = content.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = normalized.chars();
+    let title = chars
+        .by_ref()
+        .take(CONVERSATION_TITLE_CHARS)
+        .collect::<String>();
+    if chars.next().is_some() {
+        format!("{title}…")
+    } else if title.is_empty() {
+        "新对话".to_owned()
+    } else {
+        title
+    }
+}
+
 async fn prune_history(
     db: &DatabaseTransaction,
     user_id: i32,
     scope_key: &str,
+    conversation_id: &str,
 ) -> Result<(), AppError> {
     let rows = ai_chat_message::Entity::find()
         .filter(ai_chat_message::Column::UserId.eq(user_id))
         .filter(ai_chat_message::Column::ScopeKey.eq(scope_key))
+        .filter(ai_chat_message::Column::ConversationId.eq(conversation_id))
         .order_by_desc(ai_chat_message::Column::Id)
         .all(db)
         .await?;

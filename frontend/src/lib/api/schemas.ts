@@ -539,6 +539,25 @@ export const aiChatMessageSchema = z.object({
 });
 export type AiChatMessage = z.infer<typeof aiChatMessageSchema>;
 
+export const aiConversationIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/);
+
+export const aiChatConversationSchema = z.object({
+  id: aiConversationIdSchema,
+  title: z.string().min(1),
+  message_count: z.number().int().nonnegative(),
+  created_at: z.number().finite(),
+  updated_at: z.number().finite(),
+});
+export type AiChatConversation = z.infer<typeof aiChatConversationSchema>;
+
+export const aiChatConversationListSchema = z.object({
+  conversations: z.array(aiChatConversationSchema).max(30),
+});
+
 export const aiChatHistorySchema = z.object({
   messages: z.array(aiChatMessageSchema).max(50),
 });

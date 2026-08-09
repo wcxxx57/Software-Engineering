@@ -14,9 +14,9 @@ impl MigrationTrait for Migration {
         table.if_not_exists();
         manager.create_table(table).await?;
 
-        // The client message id makes retries and browser-to-server migration
-        // idempotent. The scope key also avoids PostgreSQL/SQLite differences
-        // around NULL values in composite unique indexes.
+        // The client message id makes retries idempotent. The scope key also
+        // avoids PostgreSQL/SQLite differences around NULL values in composite
+        // unique indexes.
         manager
             .create_index(
                 Index::create()

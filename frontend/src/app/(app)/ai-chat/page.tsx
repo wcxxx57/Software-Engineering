@@ -4,20 +4,27 @@ import { redirect } from "next/navigation";
 
 import { AiChatSurface } from "@/components/ai/ai-chat-surface";
 import { getAiContext } from "@/lib/ai/context";
-import { aiScopeSchema } from "@/lib/api/schemas";
+import { aiConversationIdSchema, aiScopeSchema } from "@/lib/api/schemas";
 import { ApiError } from "@/lib/api/errors";
 
 export default async function AiChatPage({
   searchParams,
 }: {
-  searchParams: Promise<{ taskId?: string }>;
+  searchParams: Promise<{ taskId?: string; conversationId?: string }>;
 }) {
-  const { taskId: rawTaskId } = await searchParams;
+  const { taskId: rawTaskId, conversationId: rawConversationId } = await searchParams;
   const taskId = rawTaskId == null ? null : Number(rawTaskId);
   const parsed = aiScopeSchema.safeParse(
     taskId == null ? { type: "general" } : { type: "task", task_id: taskId },
   );
   if (!parsed.success) redirect("/ai-chat");
+  const parsedConversationId =
+    rawConversationId == null
+      ? null
+      : aiConversationIdSchema.safeParse(rawConversationId);
+  if (parsedConversationId && !parsedConversationId.success) {
+    redirect(taskId == null ? "/ai-chat" : `/ai-chat?taskId=${taskId}`);
+  }
 
   let context;
   try {
@@ -38,10 +45,14 @@ export default async function AiChatPage({
           <div className="flex items-center gap-2 text-sm font-extrabold text-brand-dark">
             <Bot className="size-5 text-palette-orange" />AI 伴学空间
           </div>
-          <span className="hidden text-xs font-semibold text-brand-medium sm:block">当前会话仅保存在本机浏览器</span>
+          <span className="hidden text-xs font-semibold text-brand-medium sm:block">历史记录由 PostgreSQL 持久化</span>
         </header>
         <main className="min-h-0 flex-1">
-          <AiChatSurface context={context} mode="fullscreen" />
+          <AiChatSurface
+            context={context}
+            mode="fullscreen"
+            initialConversationId={parsedConversationId?.data}
+          />
         </main>
       </div>
   );

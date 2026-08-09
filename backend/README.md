@@ -102,13 +102,14 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/v1/config` | 公开业务配置（学习主题定价等，无需鉴权） |
-| `GET` | `/api/v1/me/ai-chat/messages` | 获取当前用户指定场景的 AI 伴学历史 |
+| `GET` | `/api/v1/me/ai-chat/conversations` | 列出当前用户指定场景的 AI 伴学会话 |
+| `GET` | `/api/v1/me/ai-chat/messages` | 获取当前用户指定会话的 AI 伴学历史 |
 | `POST` | `/api/v1/me/ai-chat/messages` | 幂等追加 AI 伴学消息 |
-| `DELETE` | `/api/v1/me/ai-chat/messages` | 清空当前用户指定场景的 AI 伴学历史 |
+| `DELETE` | `/api/v1/me/ai-chat/messages` | 删除当前用户指定会话的 AI 伴学历史 |
 | `GET` | `/health` | 健康检查 |
 
-AI 伴学历史由后端写入 `ai_chat_message` 表，并按用户和场景隔离；生产 Compose 默认使用
-PostgreSQL。浏览器仅作为旧版本历史的一次性迁移来源，不再是生产数据的唯一存储位置。
+AI 伴学历史只由后端写入 `ai_chat_message` 表，并按用户、场景和会话隔离；生产 Compose 默认使用
+PostgreSQL。浏览器不读取或持久化聊天历史。
 
 ## 本地启动
 

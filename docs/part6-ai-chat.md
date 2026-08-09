@@ -49,7 +49,7 @@ AI_CHAT_API_KEY=<与 vLLM 一致的密钥>
 
 知识点会话还会携带课程、阶段、知识点任务描述，以及当前页面已生成讲解的限长摘要。该机制是结构化页面上下文注入，不是向量数据库 RAG。
 
-桌面端在主页和知识点页显示侧栏聊天框；窄屏会隐藏侧栏并显示右下角的“AI 伴学”浮动入口，点击后打开响应式底部抽屉。抽屉和全屏页共用同一个场景会话。
+桌面端在主页和知识点页显示侧栏聊天框；窄屏会隐藏侧栏并显示右下角的“AI 伴学”浮动入口，点击后打开响应式底部抽屉。每次打开默认开始一段新对话；从小窗进入全屏时会携带当前会话 ID，保证正在进行的对话可以继续。
 
 ## 安全边界
 
@@ -59,29 +59,21 @@ AI_CHAT_API_KEY=<与 vLLM 一致的密钥>
 服务端代理会把 JWT 转发给后端的受保护接口：
 
 ```text
-GET    /api/v1/me/ai-chat/messages?scope=general
-GET    /api/v1/me/ai-chat/messages?scope=task&task_id=<任务 ID>
+GET    /api/v1/me/ai-chat/conversations?scope=general
+GET    /api/v1/me/ai-chat/messages?scope=general&conversation_id=<会话 ID>
+GET    /api/v1/me/ai-chat/messages?scope=task&task_id=<任务 ID>&conversation_id=<会话 ID>
 POST   /api/v1/me/ai-chat/messages
-DELETE /api/v1/me/ai-chat/messages?scope=...
+DELETE /api/v1/me/ai-chat/messages?scope=...&conversation_id=<会话 ID>
 ```
 
-后端迁移 `m0009_ai_chat_history` 创建 `ai_chat_message` 表，消息使用客户端 ID 做幂等去重，
-每个用户和场景最多保留最近 50 条。任务场景在读写前会再次校验任务归属，避免不同用户互相读取历史。
-
-旧版本已经写入浏览器的 `localStorage` 会在首次打开对应场景时尝试迁移；迁移成功后删除旧副本。
-数据库暂时不可用时才使用本地副本作为短暂降级，不把它作为生产数据源。
-
-历史键仍保持兼容，便于一次性迁移：
-
-```text
-zhiying:ai-chat:v1:<userId>:general
-zhiying:ai-chat:v1:<userId>:task:<taskId>
-```
+后端迁移 `m0009_ai_chat_history` 创建 `ai_chat_message` 表，`m0010_ai_chat_conversations`
+增加会话维度。消息使用客户端 ID 做幂等去重，每段会话最多保留最近 50 条，全屏页最多列出最近
+30 段会话。任务场景在读写前会再次校验任务归属，避免不同用户互相读取历史。浏览器不读取、迁移或降级保存聊天历史；数据库不可用时只保留当前页面内存中的临时显示，并明确提示本轮不会写入历史记录。
 
 ## 验收清单
 
 - 主页侧边栏和移动端 AI 入口可以发送问题并看到流式回答。
 - 知识点页面回答会显示当前知识点相关内容；从小窗打开全屏后历史不丢失。
-- `/ai-chat` 可清空、停止、重试和重新开始对话。
+- `/ai-chat` 可选择历史会话继续对话，也可删除、停止、重试和开始新对话。
 - 询问娱乐、情感、医疗等非计算机内容时得到固定拒答。
-- 清理浏览器缓存或切换账号后不会看到其他用户的聊天历史。
+- 刷新页面默认进入新对话；只有显式选择历史会话或携带会话 ID 进入全屏时才会恢复旧对话。
